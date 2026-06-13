@@ -11,6 +11,8 @@ let camera: THREE.PerspectiveCamera;
 let controls: OrbitControls;
 let terrainMesh: THREE.Mesh;
 let terrainMaterial: THREE.ShaderMaterial;
+let fluidMesh: THREE.Mesh;
+let fluidMaterial: THREE.ShaderMaterial;
 let gpgpu: GPGPUSimulation;
 
 // Lighting representation
@@ -88,6 +90,7 @@ function init() {
       u_sun_dir: { value: new THREE.Vector3() },
       u_sun_color: { value: new THREE.Color() },
       u_local_camera_pos: { value: new THREE.Vector3() },
+      u_layer: { value: 0.0 },
     },
     depthWrite: true,
     depthTest: true,
@@ -97,6 +100,31 @@ function init() {
   // Rotate horizontal plane in world space (XZ plane)
   terrainMesh.rotation.x = -Math.PI / 2;
   scene.add(terrainMesh);
+
+  fluidMaterial = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    vertexShader: renderVS,
+    fragmentShader: renderFS,
+    uniforms: {
+      u_texA: { value: null },
+      u_texB: { value: null },
+      u_height_scale: { value: config.heightScale },
+      u_grid_size: { value: config.gridSize },
+      u_view_mode: { value: 0.0 },
+      u_time: { value: 0.0 },
+      u_sun_dir: { value: new THREE.Vector3() },
+      u_sun_color: { value: new THREE.Color() },
+      u_local_camera_pos: { value: new THREE.Vector3() },
+      u_layer: { value: 1.0 },
+    },
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+  });
+
+  fluidMesh = new THREE.Mesh(geometry, fluidMaterial);
+  fluidMesh.rotation.x = -Math.PI / 2;
+  scene.add(fluidMesh);
 
   // 8. Event Listeners
   window.addEventListener('resize', onWindowResize);
@@ -494,13 +522,22 @@ function animate() {
   terrainMaterial.uniforms.u_height_scale.value = config.heightScale;
   terrainMaterial.uniforms.u_time.value = now * 0.001;
 
+  fluidMaterial.uniforms.u_texA.value = gpgpu.targetA_read.texture;
+  fluidMaterial.uniforms.u_texB.value = gpgpu.targetB_read.texture;
+  fluidMaterial.uniforms.u_height_scale.value = config.heightScale;
+  fluidMaterial.uniforms.u_time.value = now * 0.001;
+
   // Pass local light directions and camera position vectors to ShaderMaterial
   const localSun = terrainMesh.worldToLocal(sunLight.position.clone()).normalize();
   terrainMaterial.uniforms.u_sun_dir.value.copy(localSun);
   terrainMaterial.uniforms.u_sun_color.value.copy(sunColor);
+  
+  fluidMaterial.uniforms.u_sun_dir.value.copy(localSun);
+  fluidMaterial.uniforms.u_sun_color.value.copy(sunColor);
 
   const localCam = terrainMesh.worldToLocal(camera.position.clone());
   terrainMaterial.uniforms.u_local_camera_pos.value.copy(localCam);
+  fluidMaterial.uniforms.u_local_camera_pos.value.copy(localCam);
 
   // Set visual debug view modes
   let modeVal = 0.0;
@@ -509,6 +546,7 @@ function animate() {
   else if (config.viewMode === 'lava-only') modeVal = 3.0;
   else if (config.viewMode === 'sand-only') modeVal = 4.0;
   terrainMaterial.uniforms.u_view_mode.value = modeVal;
+  fluidMaterial.uniforms.u_view_mode.value = modeVal;
 
   // Render Scene
   renderer.render(scene, camera);

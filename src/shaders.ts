@@ -425,6 +425,7 @@ export const renderVS = `
   uniform sampler2D u_texA;
   uniform sampler2D u_texB;
   uniform float u_height_scale;
+  uniform float u_layer;
 
   void main() {
     v_uv = uv;
@@ -437,11 +438,14 @@ export const renderVS = `
     v_water = cellB.r;
     v_lava = cellB.g;
 
-    float total_h = v_rock + v_sand + v_water + v_lava;
+    float h = v_rock + v_sand;
+    if (u_layer > 0.5) {
+      h += v_water + v_lava;
+    }
 
     // Displace vertex position along its normal (which is local Z for PlaneGeometry)
     vec3 displaced = position;
-    displaced.z = total_h * u_height_scale;
+    displaced.z = h * u_height_scale;
     v_pos = displaced;
 
     gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
@@ -468,6 +472,7 @@ export const renderFS = `
   uniform float u_grid_size;
   uniform float u_view_mode; // 0: Realistic, 1: Heightmap, 2: Water Only, 3: Lava Only, 4: Sand Only
   uniform float u_time;
+  uniform float u_layer;
 
   uniform vec3 u_sun_dir;      // Light direction in local space
   uniform vec3 u_sun_color;    // Diffuse light color
@@ -502,133 +507,124 @@ export const renderFS = `
     vec2 texel = 1.0 / vec2(u_grid_size);
     vec3 view_dir = normalize(u_local_camera_pos - v_pos);
 
-    // -------------------------------------------------------------
-    // DEBUG VIEW MODES (HEIGHTMAP / FLUID ONLY)
-    // -------------------------------------------------------------
-    if (u_view_mode == 1.0) { // Heightmap (Rock)
-      fragColor = vec4(vec3(v_rock * 1.5), 1.0);
-      return;
-    } else if (u_view_mode == 2.0) { // Water Only
-      fragColor = vec4(0.0, 0.4, 1.0, v_water > 0.01 ? 1.0 : 0.0);
-      if (v_water <= 0.01) discard;
-      return;
-    } else if (u_view_mode == 3.0) { // Lava Only
-      fragColor = vec4(1.0, 0.25, 0.0, v_lava > 0.01 ? 1.0 : 0.0);
-      if (v_lava <= 0.01) discard;
-      return;
-    } else if (u_view_mode == 4.0) { // Sand Only
-      fragColor = vec4(0.85, 0.75, 0.3, v_sand > 0.01 ? 1.0 : 0.0);
-      if (v_sand <= 0.01) discard;
-      return;
-    }
+    if (u_layer < 0.5) {
+      // -------------------------------------------------------------
+      // TERRAIN LAYER
+      // -------------------------------------------------------------
+      if (u_view_mode == 2.0 || u_view_mode == 3.0) discard;
 
-    // -------------------------------------------------------------
-    // REALISTIC RENDER MODE
-    // -------------------------------------------------------------
-    
-    // 1. Calculate lighting normal for ground/lava top surface
-    float hL = get_height(v_uv - vec2(texel.x, 0.0));
-    float hR = get_height(v_uv + vec2(texel.x, 0.0));
-    float hD = get_height(v_uv - vec2(0.0, texel.y));
-    float hU = get_height(v_uv + vec2(0.0, texel.y));
-
-    float spacing = 100.0 / u_grid_size;
-    vec3 normal = normalize(vec3(
-      (hL - hR) * u_height_scale,
-      (hD - hU) * u_height_scale,
-      2.0 * spacing
-    ));
-
-    // Calculate light shading (diffuse)
-    float diff = max(0.05, dot(normal, u_sun_dir));
-
-    // 2. Define Materials and Shading Colors
-    // Rock (slate-gray base with noise texture)
-    vec3 rock_base = vec3(0.32, 0.29, 0.27);
-    float r_noise = noise(v_uv * 180.0) * 0.08;
-    vec3 rock_color = rock_base + vec3(r_noise);
-
-    // Sand (warm desert-yellow)
-    vec3 sand_base = vec3(0.88, 0.72, 0.42);
-    float s_noise = noise(v_uv * 200.0) * 0.04;
-    vec3 sand_color = sand_base + vec3(s_noise);
-
-    // Slope calculation to make steep rock cliffs bare
-    float slope = 1.0 - normal.z; // Higher slope value = steeper cliff
-    float sand_mask = smoothstep(0.01, 0.15, v_sand) * (1.0 - smoothstep(0.35, 0.6, slope));
-    vec3 ground_color = mix(rock_color, sand_color, sand_mask);
-
-    // Apply ground diffuse lighting
-    vec3 terrain_lit = ground_color * (diff * u_sun_color + vec3(0.12)); // Diffuse + Ambient
-
-    // 3. Render Lava
-    vec3 lava_lit = vec3(0.0);
-    float lava_mask = smoothstep(0.01, 0.1, v_lava);
-    if (lava_mask > 0.0) {
-      // Lava crust simulation using time-animated noise
-      float crust_pattern = noise(v_uv * 45.0 + vec2(u_time * 0.04));
-      float crust = smoothstep(0.36, 0.55, crust_pattern);
-
-      // Glowing liquid lava vs black basalt crust
-      vec3 glowing_lava = vec3(2.2, 0.45, 0.01);
-      vec3 basalt_crust = vec3(0.1, 0.09, 0.09) * (diff * u_sun_color + vec3(0.05));
-      vec3 lava_base_col = mix(glowing_lava, basalt_crust, crust);
-
-      // Hot cracks glow brighter
-      if (crust < 0.2) {
-        lava_base_col += vec3(0.4, 0.08, 0.0) * (1.0 - crust * 5.0);
+      if (u_view_mode == 1.0) { // Heightmap (Rock)
+        fragColor = vec4(vec3(v_rock * 1.5), 1.0);
+        return;
+      } else if (u_view_mode == 4.0) { // Sand Only
+        fragColor = vec4(0.85, 0.75, 0.3, v_sand > 0.01 ? 1.0 : 0.0);
+        if (v_sand <= 0.01) discard;
+        return;
       }
 
-      lava_lit = lava_base_col;
-    }
+      float hL = get_ground_height(v_uv - vec2(texel.x, 0.0));
+      float hR = get_ground_height(v_uv + vec2(texel.x, 0.0));
+      float hD = get_ground_height(v_uv - vec2(0.0, texel.y));
+      float hU = get_ground_height(v_uv + vec2(0.0, texel.y));
 
-    // Blend ground and lava
-    vec3 surface_color = mix(terrain_lit, lava_lit, lava_mask);
-
-    // 4. Render Water (refraction + Beer's Law depth absorption + specular + Fresnel reflection)
-    float water_mask = smoothstep(0.01, 0.1, v_water);
-    if (water_mask > 0.0) {
-      // Calculate normal specifically for the water surface
-      float h_wL = get_height(v_uv - vec2(texel.x, 0.0));
-      float h_wR = get_height(v_uv + vec2(texel.x, 0.0));
-      float h_wD = get_height(v_uv - vec2(0.0, texel.y));
-      float h_wU = get_height(v_uv + vec2(0.0, texel.y));
-
-      // Water surface normal
-      vec3 water_normal = normalize(vec3(
-        (h_wL - h_wR) * u_height_scale,
-        (h_wD - h_wU) * u_height_scale,
+      float spacing = 100.0 / u_grid_size;
+      vec3 normal = normalize(vec3(
+        (hL - hR) * u_height_scale,
+        (hD - hU) * u_height_scale,
         2.0 * spacing
       ));
 
-      // Specular highlight on water
-      vec3 r_water = reflect(-u_sun_dir, water_normal);
-      float spec_water = pow(max(0.0, dot(r_water, view_dir)), 80.0) * 0.8;
+      float diff = max(0.05, dot(normal, u_sun_dir));
 
-      // Fresnel reflection coefficient
-      float fresnel = 0.02 + 0.98 * pow(1.0 - max(0.0, dot(water_normal, view_dir)), 5.0);
+      vec3 rock_base = vec3(0.32, 0.29, 0.27);
+      float r_noise = noise(v_uv * 180.0) * 0.08;
+      vec3 rock_color = rock_base + vec3(r_noise);
 
-      // Beer's Law absorption (turquoise in shallow, deep blue in deep)
-      vec3 shallow_water_col = vec3(0.0, 0.9, 0.8);
-      vec3 deep_water_col = vec3(0.0, 0.1, 0.45);
-      
-      float depth = v_water * 15.0; // Scale absorption
-      float transmission = exp(-depth);
-      vec3 water_body_col = mix(deep_water_col, shallow_water_col, transmission);
+      vec3 sand_base = vec3(0.88, 0.72, 0.42);
+      float s_noise = noise(v_uv * 200.0) * 0.04;
+      vec3 sand_color = sand_base + vec3(s_noise);
 
-      // Refract/blend with the land/lava underneath
-      vec3 under_water = mix(water_body_col, surface_color, transmission);
+      float slope = 1.0 - normal.z; 
+      float sand_mask = smoothstep(0.01, 0.15, v_sand) * (1.0 - smoothstep(0.35, 0.6, slope));
+      vec3 ground_color = mix(rock_color, sand_color, sand_mask);
 
-      // Sky reflection color (adjusts with daylight)
-      vec3 sky_refl = vec3(0.65, 0.8, 1.0) * (u_sun_color + vec3(0.1));
-      
-      // Final shaded water color
-      vec3 water_shaded = mix(under_water, sky_refl + vec3(spec_water), fresnel);
+      vec3 terrain_lit = ground_color * (diff * u_sun_color + vec3(0.12));
+      fragColor = vec4(terrain_lit, 1.0);
 
-      surface_color = mix(surface_color, water_shaded, water_mask);
+    } else {
+      // -------------------------------------------------------------
+      // FLUID LAYER
+      // -------------------------------------------------------------
+      if (v_water <= 0.001 && v_lava <= 0.001) discard;
+      if (u_view_mode == 1.0 || u_view_mode == 4.0) discard;
+
+      if (u_view_mode == 2.0) { // Water Only
+        fragColor = vec4(0.0, 0.4, 1.0, v_water > 0.01 ? 1.0 : 0.0);
+        if (v_water <= 0.01) discard;
+        return;
+      } else if (u_view_mode == 3.0) { // Lava Only
+        fragColor = vec4(1.0, 0.25, 0.0, v_lava > 0.01 ? 1.0 : 0.0);
+        if (v_lava <= 0.01) discard;
+        return;
+      }
+
+      float hL = get_height(v_uv - vec2(texel.x, 0.0));
+      float hR = get_height(v_uv + vec2(texel.x, 0.0));
+      float hD = get_height(v_uv - vec2(0.0, texel.y));
+      float hU = get_height(v_uv + vec2(0.0, texel.y));
+
+      float spacing = 100.0 / u_grid_size;
+      vec3 normal = normalize(vec3(
+        (hL - hR) * u_height_scale,
+        (hD - hU) * u_height_scale,
+        2.0 * spacing
+      ));
+
+      float diff = max(0.05, dot(normal, u_sun_dir));
+      vec4 finalColor = vec4(0.0);
+
+      // Lava
+      float lava_mask = smoothstep(0.01, 0.1, v_lava);
+      if (lava_mask > 0.0) {
+        float crust_pattern = noise(v_uv * 45.0 + vec2(u_time * 0.04));
+        float crust = smoothstep(0.36, 0.55, crust_pattern);
+
+        vec3 glowing_lava = vec3(2.2, 0.45, 0.01);
+        vec3 basalt_crust = vec3(0.1, 0.09, 0.09) * (diff * u_sun_color + vec3(0.05));
+        vec3 lava_base_col = mix(glowing_lava, basalt_crust, crust);
+
+        if (crust < 0.2) {
+          lava_base_col += vec3(0.4, 0.08, 0.0) * (1.0 - crust * 5.0);
+        }
+
+        finalColor = mix(finalColor, vec4(lava_base_col, 1.0), lava_mask);
+      }
+
+      // Water
+      float water_mask = smoothstep(0.01, 0.1, v_water);
+      if (water_mask > 0.0) {
+        vec3 r_water = reflect(-u_sun_dir, normal);
+        float spec_water = pow(max(0.0, dot(r_water, view_dir)), 80.0) * 0.8;
+
+        float fresnel = 0.02 + 0.98 * pow(1.0 - max(0.0, dot(normal, view_dir)), 5.0);
+
+        vec3 shallow_water_col = vec3(0.0, 0.9, 0.8);
+        vec3 deep_water_col = vec3(0.0, 0.1, 0.45);
+        
+        float depth = v_water * 15.0;
+        float transmission = exp(-depth);
+        vec3 water_body_col = mix(deep_water_col, shallow_water_col, transmission);
+
+        vec3 sky_refl = vec3(0.65, 0.8, 1.0) * (u_sun_color + vec3(0.1));
+        vec3 water_shaded = mix(water_body_col, sky_refl + vec3(spec_water), fresnel);
+        
+        float base_alpha = mix(0.9, 0.35, transmission);
+        float water_alpha = mix(base_alpha, 1.0, fresnel);
+
+        finalColor = mix(finalColor, vec4(water_shaded, water_alpha), water_mask);
+      }
+
+      fragColor = finalColor;
     }
-
-    // Output final color
-    fragColor = vec4(surface_color, 1.0);
   }
 `;
