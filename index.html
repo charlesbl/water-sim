@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TerraGPU - 2.5D Fluid Simulation (From Dust Inspired)</title>
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- Sleek Glassmorphic HUD -->
+    <div id="hud" class="glass-panel">
+      <header>
+        <h1>TERRA<span>GPU</span></h1>
+        <p class="subtitle">2.5D GPU Fluid Simulation</p>
+      </header>
+
+      <!-- Section: Brushes -->
+      <section class="hud-section">
+        <h2>Pinceau Interactif</h2>
+        <div class="brush-grid">
+          <button class="btn-brush active" data-brush="0" title="Ajouter de l'eau">
+            <span class="icon">🌊</span> Eau
+          </button>
+          <button class="btn-brush" data-brush="1" title="Ajouter de la lave">
+            <span class="icon">🌋</span> Lave
+          </button>
+          <button class="btn-brush" data-brush="2" title="Ajouter du sable">
+            <span class="icon">⏳</span> Sable
+          </button>
+          <button class="btn-brush" data-brush="3" title="Surélever le terrain">
+            <span class="icon">⛰️</span> Monter
+          </button>
+          <button class="btn-brush" data-brush="4" title="Creuser le terrain">
+            <span class="icon">🕳️</span> Creuser
+          </button>
+          <button class="btn-brush" data-brush="5" title="Effacer l'eau et la lave">
+            <span class="icon">🧹</span> Effacer
+          </button>
+        </div>
+
+        <div class="control-group">
+          <div class="label-row">
+            <label for="brush-radius">Taille du pinceau</label>
+            <span id="brush-radius-val" class="value-display">15</span>
+          </div>
+          <input type="range" id="brush-radius" min="2" max="60" value="15" step="1" />
+        </div>
+
+        <div class="control-group">
+          <div class="label-row">
+            <label for="brush-strength">Intensité</label>
+            <span id="brush-strength-val" class="value-display">1.0</span>
+          </div>
+          <input type="range" id="brush-strength" min="0.1" max="2.0" value="1.0" step="0.05" />
+        </div>
+      </section>
+
+      <!-- Section: Simulation Parameters -->
+      <section class="hud-section">
+        <h2>Paramètres Physiques</h2>
+        <div class="control-group">
+          <div class="label-row">
+            <label for="water-gravity">Gravité de l'eau (Vagues)</label>
+            <span id="water-gravity-val" class="value-display">9.81</span>
+          </div>
+          <input type="range" id="water-gravity" min="1.0" max="25.0" value="9.81" step="0.1" />
+        </div>
+
+        <div class="control-group">
+          <div class="label-row">
+            <label for="water-damping">Friction de l'eau</label>
+            <span id="water-damping-val" class="value-display">0.990</span>
+          </div>
+          <input type="range" id="water-damping" min="0.90" max="1.0" value="0.99" step="0.001" />
+        </div>
+
+        <div class="control-group">
+          <div class="label-row">
+            <label for="lava-viscosity">Viscosité de la lave</label>
+            <span id="lava-viscosity-val" class="value-display">0.005</span>
+          </div>
+          <input
+            type="range"
+            id="lava-viscosity"
+            min="0.001"
+            max="0.03"
+            value="0.005"
+            step="0.001"
+          />
+        </div>
+
+        <div class="control-group">
+          <div class="label-row">
+            <label for="sand-slide">Glissement du sable</label>
+            <span id="sand-slide-val" class="value-display">0.05</span>
+          </div>
+          <input type="range" id="sand-slide" min="0.01" max="0.2" value="0.05" step="0.01" />
+        </div>
+
+        <div class="control-group">
+          <div class="label-row">
+            <label for="evaporation">Évaporation de l'eau</label>
+            <span id="evaporation-val" class="value-display">0.0000</span>
+          </div>
+          <input type="range" id="evaporation" min="0.0" max="0.003" value="0.0" step="0.0001" />
+        </div>
+      </section>
+
+      <!-- Section: Controls -->
+      <section class="hud-section">
+        <h2>Contrôles Globaux</h2>
+        <div class="btn-row">
+          <button id="btn-pause" class="btn-action">⏸️ Pause</button>
+          <button id="btn-clear" class="btn-action danger">🧹 Vider Fluides</button>
+          <button id="btn-reset" class="btn-action danger">⛰️ Reset Terrain</button>
+        </div>
+      </section>
+
+      <!-- Section: Aesthetics -->
+      <section class="hud-section">
+        <h2>Affichage & Heure</h2>
+        <div class="control-group">
+          <div class="label-row">
+            <label for="view-mode">Mode de vue</label>
+          </div>
+          <select id="view-mode" class="select-input">
+            <option value="realistic">Réaliste</option>
+            <option value="heightmap">Hauteur (Roche)</option>
+            <option value="water-only">Eau uniquement</option>
+            <option value="lava-only">Lave uniquement</option>
+            <option value="sand-only">Sable uniquement</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <div class="label-row">
+            <label for="time-of-day">Cycle Jour / Nuit</label>
+            <span id="time-of-day-val" class="value-display">12:00</span>
+          </div>
+          <input type="range" id="time-of-day" min="0" max="24" value="12" step="0.1" />
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="auto-rotate" />
+          <label for="auto-rotate">Rotation Caméra Auto</label>
+        </div>
+      </section>
+
+      <!-- Performance Info -->
+      <footer id="perf-display">FPS: <span id="fps-val">60</span> | Grille: 256x256</footer>
+    </div>
+
+    <!-- Script entry point -->
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
