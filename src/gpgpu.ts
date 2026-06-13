@@ -144,6 +144,10 @@ export class GPGPUSimulation {
         u_grid_size: { value: this.size },
         u_evaporation: { value: config.evaporation },
         u_initialized: { value: 0.0 },
+        u_rain_active: { value: 0.0 },
+        u_rain_quantity: { value: config.rainQuantity },
+        u_rain_size: { value: config.rainSize },
+        u_time: { value: 0.0 },
       },
       depthWrite: false,
       depthTest: false,
@@ -191,6 +195,9 @@ export class GPGPUSimulation {
     this.simLavaFluxMaterial.uniforms.u_gravity.value = config.lavaGravity;
     this.simLavaFluxMaterial.uniforms.u_damping.value = config.lavaDamping;
     this.simFluidsMaterial.uniforms.u_evaporation.value = config.evaporation;
+    this.simFluidsMaterial.uniforms.u_rain_active.value = config.rainActive ? 1.0 : 0.0;
+    this.simFluidsMaterial.uniforms.u_rain_quantity.value = config.rainQuantity;
+    this.simFluidsMaterial.uniforms.u_rain_size.value = config.rainSize;
   }
 
   /**
@@ -258,6 +265,7 @@ export class GPGPUSimulation {
     const initVal = this.initialized ? 1.0 : 0.0;
     this.simTerrainMaterial.uniforms.u_initialized.value = initVal;
     this.simFluidsMaterial.uniforms.u_initialized.value = initVal;
+    this.simFluidsMaterial.uniforms.u_time.value = performance.now() * 0.001;
 
     // --- PASS A: Simulate Terrain & Sand sliding ---
     // Read A_read and B_read, write to A_write

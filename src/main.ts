@@ -395,7 +395,9 @@ function setupUI() {
       | 'terrainScale'
       | 'terrainSharpness'
       | 'fbmOctaves'
-      | 'fbmPersistence',
+      | 'fbmPersistence'
+      | 'rainQuantity'
+      | 'rainSize',
     displayId?: string
   ) => {
     const slider = document.getElementById(id) as HTMLInputElement;
@@ -443,6 +445,8 @@ function setupUI() {
   bindSlider('terrain-sharpness', 'terrainSharpness', 'terrain-sharpness-val');
   bindSlider('fbm-octaves', 'fbmOctaves', 'fbm-octaves-val');
   bindSlider('fbm-persistence', 'fbmPersistence', 'fbm-persistence-val');
+  bindSlider('rain-quantity', 'rainQuantity', 'rain-quantity-val');
+  bindSlider('rain-size', 'rainSize', 'rain-size-val');
 
   // 3. Pause / Play button
   const pauseBtn = document.getElementById('btn-pause') as HTMLButtonElement;
@@ -492,6 +496,15 @@ function setupUI() {
   if (rotateCheck) {
     rotateCheck.addEventListener('change', () => {
       config.autoRotate = rotateCheck.checked;
+    });
+  }
+
+  // 8. Rain Active checkbox
+  const rainCheck = document.getElementById('rain-active') as HTMLInputElement;
+  if (rainCheck) {
+    rainCheck.checked = config.rainActive;
+    rainCheck.addEventListener('change', () => {
+      config.rainActive = rainCheck.checked;
     });
   }
 }

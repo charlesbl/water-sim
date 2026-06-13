@@ -21,6 +21,24 @@ uniform float u_grid_size;
 uniform float u_evaporation;
 uniform float u_initialized;
 
+// Rain settings
+uniform float u_rain_active;
+uniform float u_rain_quantity;
+uniform float u_rain_size;
+uniform float u_time;
+
+uint hash3D(uvec3 p) {
+  p = p * uvec3(1103515245U, 205891187U, 123456789U);
+  uint h = p.x ^ p.y ^ p.z;
+  h = h * 0x27d4eb2dU;
+  h = h ^ (h >> 15);
+  return h;
+}
+
+float random3D(uvec3 p) {
+  return float(hash3D(p)) * (1.0 / 4294967295.0);
+}
+
 void getCellData(vec2 uv, out float ground, out float water, out float lava) {
   vec4 a = texture(u_texA, uv);
   vec4 b = texture(u_texB, uv);
@@ -65,6 +83,23 @@ void main() {
   if (v_uv.y < 1.0 - texel.y) water_in += texture(u_texFlux, v_uv + vec2(0.0, 1.0) * texel).b;
 
   water = max(0.0, water - water_out + water_in);
+
+  // Apply global rain simulation if active
+  if (u_rain_active > 0.5) {
+    uvec2 cell = uvec2(floor(v_uv * u_grid_size));
+    uint t = uint(u_time * 60.0);
+    
+    // Generate high-quality uniform random hash in [0, 1]
+    float h = random3D(uvec3(cell, t));
+    
+    // The rain quantity slider controls the probability of a raindrop falling in this cell.
+    // u_rain_quantity is from 0.001 to 0.01
+    float threshold = 1.0 - u_rain_quantity;
+    if (h > threshold) {
+      // Each drop adds an amount of water defined by u_rain_size (0.01 to 0.1)
+      water += u_rain_size;
+    }
+  }
 
   // LAVA VOLUME UPDATE (Virtual Pipe Model)
   vec4 my_lava_flux = texture(u_texLavaFlux, v_uv);

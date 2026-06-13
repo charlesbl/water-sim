@@ -27,6 +27,11 @@ export interface Config {
   terrainSharpness: number; // Exponent for peak sharpness
   fbmOctaves: number; // Number of noise detail layers
   fbmPersistence: number; // Persistence of details in FBM
+
+  // Rain settings
+  rainActive: boolean;
+  rainQuantity: number;
+  rainSize: number;
 }
 
 export const config: Config = {
@@ -52,4 +57,8 @@ export const config: Config = {
   terrainSharpness: 1.4,
   fbmOctaves: 4,
   fbmPersistence: 0.44,
+
+  rainActive: false,
+  rainQuantity: 0.0005,
+  rainSize: 0.005,
 };
