@@ -389,7 +389,11 @@ function setupUI() {
       | 'lavaViscosity'
       | 'sandSlideRate'
       | 'evaporation'
-      | 'timeOfDay',
+      | 'timeOfDay'
+      | 'terrainScale'
+      | 'terrainSharpness'
+      | 'fbmOctaves'
+      | 'fbmPersistence',
     displayId?: string
   ) => {
     const slider = document.getElementById(id) as HTMLInputElement;
@@ -414,6 +418,13 @@ function setupUI() {
           );
         }
       }
+
+      // Automatically regenerate terrain when changing noise parameters, keeping seed
+      if (
+        ['terrainScale', 'terrainSharpness', 'fbmOctaves', 'fbmPersistence'].includes(configKey)
+      ) {
+        gpgpu.resetTerrain(false);
+      }
     });
   };
 
@@ -425,6 +436,10 @@ function setupUI() {
   bindSlider('sand-slide', 'sandSlideRate', 'sand-slide-val');
   bindSlider('evaporation', 'evaporation', 'evaporation-val');
   bindSlider('time-of-day', 'timeOfDay', 'time-of-day-val');
+  bindSlider('terrain-scale', 'terrainScale', 'terrain-scale-val');
+  bindSlider('terrain-sharpness', 'terrainSharpness', 'terrain-sharpness-val');
+  bindSlider('fbm-octaves', 'fbmOctaves', 'fbm-octaves-val');
+  bindSlider('fbm-persistence', 'fbmPersistence', 'fbm-persistence-val');
 
   // 3. Pause / Play button
   const pauseBtn = document.getElementById('btn-pause') as HTMLButtonElement;

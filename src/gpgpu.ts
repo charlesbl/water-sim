@@ -74,6 +74,10 @@ export class GPGPUSimulation {
         u_sand_slide_rate: { value: config.sandSlideRate },
         u_initialized: { value: 0.0 },
         u_seed: { value: this.seed },
+        u_terrain_scale: { value: config.terrainScale },
+        u_terrain_sharpness: { value: config.terrainSharpness },
+        u_fbm_octaves: { value: config.fbmOctaves },
+        u_fbm_persistence: { value: config.fbmPersistence },
       },
       depthWrite: false,
       depthTest: false,
@@ -153,6 +157,10 @@ export class GPGPUSimulation {
    */
   public updateParameters() {
     this.simTerrainMaterial.uniforms.u_sand_slide_rate.value = config.sandSlideRate;
+    this.simTerrainMaterial.uniforms.u_terrain_scale.value = config.terrainScale;
+    this.simTerrainMaterial.uniforms.u_terrain_sharpness.value = config.terrainSharpness;
+    this.simTerrainMaterial.uniforms.u_fbm_octaves.value = Math.round(config.fbmOctaves);
+    this.simTerrainMaterial.uniforms.u_fbm_persistence.value = config.fbmPersistence;
     this.simFluxMaterial.uniforms.u_water_gravity.value = config.waterGravity;
     this.simFluxMaterial.uniforms.u_water_damping.value = config.waterDamping;
     this.simFluidsMaterial.uniforms.u_lava_viscosity.value = config.lavaViscosity;
@@ -191,9 +199,11 @@ export class GPGPUSimulation {
   /**
    * Resets simulation status and noise seed to regenerate the terrain
    */
-  public resetTerrain() {
+  public resetTerrain(newSeed = true) {
     this.initialized = false;
-    this.seed = Math.random() * 1000.0;
+    if (newSeed) {
+      this.seed = Math.random() * 1000.0;
+    }
     this.simTerrainMaterial.uniforms.u_initialized.value = 0.0;
     this.simTerrainMaterial.uniforms.u_seed.value = this.seed;
     this.simFluidsMaterial.uniforms.u_initialized.value = 0.0;

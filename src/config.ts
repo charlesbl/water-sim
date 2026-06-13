@@ -20,6 +20,12 @@ export interface Config {
   timeOfDay: number; // Sun position hour (0 to 24)
   autoRotate: boolean; // Auto-rotation of OrbitControls
   heightScale: number; // Scaling of Z-height displacement for mesh
+
+  // Terrain generation settings
+  terrainScale: number; // Frequency/zoom of terrain noise
+  terrainSharpness: number; // Exponent for peak sharpness
+  fbmOctaves: number; // Number of noise detail layers
+  fbmPersistence: number; // Persistence of details in FBM
 }
 
 export const config: Config = {
@@ -39,4 +45,9 @@ export const config: Config = {
   timeOfDay: 12.0,
   autoRotate: false,
   heightScale: 18.0,
+
+  terrainScale: 4.0,
+  terrainSharpness: 1.4,
+  fbmOctaves: 4,
+  fbmPersistence: 0.44,
 };
