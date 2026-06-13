@@ -35,6 +35,35 @@ float noise(vec2 p) {
              mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), u.x), u.y);
 }
 
+// Simplex 2D noise
+vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
+float snoise(vec2 v){
+  const vec4 C = vec4(0.211324865405187, 0.366025403784439,
+           -0.577350269189626, 0.024390243902439);
+  vec2 i  = floor(v + dot(v, C.yy) );
+  vec2 x0 = v -   i + dot(i, C.xx);
+  vec2 i1;
+  i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+  vec4 x12 = x0.xyxy + C.xxzz;
+  x12.xy -= i1;
+  i = mod(i, 289.0);
+  vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+  + i.x + vec3(0.0, i1.x, 1.0 ));
+  vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy),
+    dot(x12.zw,x12.zw)), 0.0);
+  m = m*m ;
+  m = m*m ;
+  vec3 x = 2.0 * fract(p * C.www) - 1.0;
+  vec3 h = abs(x) - 0.5;
+  vec3 ox = floor(x + 0.5);
+  vec3 a0 = x - ox;
+  m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+  vec3 g;
+  g.x  = a0.x  * x0.x  + h.x  * x0.y;
+  g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+  return 130.0 * dot(m, g);
+}
+
 // Get total height (rock + sand + water + lava) at given UV
 float get_height(vec2 uv) {
   vec4 a = texture(u_texA, uv);
@@ -46,6 +75,37 @@ float get_height(vec2 uv) {
 float get_ground_height(vec2 uv) {
   vec4 a = texture(u_texA, uv);
   return a.r + a.g;
+}
+
+// Bilinear interpolation for flux to prevent blocky flow directions
+vec4 get_smooth_flux(vec2 uv) {
+  vec2 texel = 1.0 / vec2(u_grid_size);
+  vec2 p = uv * u_grid_size - 0.5;
+  vec2 f = fract(p);
+  vec2 i = floor(p) * texel + texel * 0.5;
+  
+  vec4 tl = texture(u_texFlux, i);
+  vec4 tr = texture(u_texFlux, i + vec2(texel.x, 0.0));
+  vec4 bl = texture(u_texFlux, i + vec2(0.0, texel.y));
+  vec4 br = texture(u_texFlux, i + texel);
+  
+  vec4 tA = mix(tl, tr, f.x);
+  vec4 tB = mix(bl, br, f.x);
+  return mix(tA, tB, f.y);
+}
+
+// Line Integral Convolution (LIC) blur to create flow-aligned streaks
+float get_streak(vec2 uv, vec2 dir, float n_scale) {
+  float step_size = 0.4 / n_scale; 
+  float acc = 0.0;
+  acc += snoise((uv - dir * step_size * 3.0) * n_scale);
+  acc += snoise((uv - dir * step_size * 2.0) * n_scale);
+  acc += snoise((uv - dir * step_size * 1.0) * n_scale);
+  acc += snoise(uv * n_scale);
+  acc += snoise((uv + dir * step_size * 1.0) * n_scale);
+  acc += snoise((uv + dir * step_size * 2.0) * n_scale);
+  acc += snoise((uv + dir * step_size * 3.0) * n_scale);
+  return acc * 0.1428 * 1.5 + 0.5; // average and map to roughly 0-1
 }
 
 void main() {
@@ -148,8 +208,8 @@ void main() {
     // Water
     float water_mask = smoothstep(0.001, 0.005, v_water);
     if (water_mask > 0.0) {
-      // Read flux to compute flow velocity
-      vec4 flux = texture(u_texFlux, v_uv);
+      // Read flux to compute flow velocity with bilinear smoothing
+      vec4 flux = get_smooth_flux(v_uv);
       vec2 flowDir = vec2(flux.g - flux.r, flux.a - flux.b);
       float speed = length(flowDir);
 
@@ -168,17 +228,36 @@ void main() {
       // Use a logarithmic response to balance small and large flows visually
       float visual_speed = log(1.0 + speed * 50.0);
       float foam_mask = smoothstep(0.1, 1.5, visual_speed);
-      vec2 flowUV = v_uv * 80.0 - normalize(flowDir + vec2(0.0001)) * (u_time * visual_speed * 5.0);
-      float streak = noise(flowUV);
-      float current_foam = foam_mask * smoothstep(0.4, 0.6, streak);
+      
+      vec2 dir = normalize(flowDir + vec2(0.0001));
+      
+      // Flow map time cycles
+      float flow_time = u_time * visual_speed * 1.5;
+      float cycle1 = fract(flow_time);
+      float cycle2 = fract(flow_time + 0.5);
+      
+      float weight1 = 1.0 - abs(cycle1 - 0.5) * 2.0;
+      float weight2 = 1.0 - abs(cycle2 - 0.5) * 2.0;
+      
+      // Advect UVs without rotating space, preventing circular Moire
+      vec2 uv1 = v_uv - dir * (cycle1 * 0.03);
+      vec2 uv2 = v_uv - dir * (cycle2 * 0.03);
+      
+      float n_scale = 1000.0;
+      float streak1 = get_streak(uv1, dir, n_scale);
+      float streak2 = get_streak(uv2, dir, n_scale);
+      
+      float streak = streak1 * weight1 + streak2 * weight2;
+      
+      float current_foam = foam_mask * smoothstep(0.55, 0.70, streak);
       
       water_body_col = mix(water_body_col, vec3(1.0), current_foam * 0.7);
 
       vec3 sky_refl = vec3(0.65, 0.8, 1.0) * (u_sun_color + vec3(0.1));
       vec3 water_shaded = mix(water_body_col, sky_refl + vec3(spec_water), fresnel);
       
-      // Increase opacity of shallow water
-      float base_alpha = mix(0.95, 0.85, transmission);
+      // Base transparency (slightly more transparent than before)
+      float base_alpha = mix(0.85, 0.65, transmission);
       float water_alpha = mix(base_alpha, 1.0, fresnel);
 
       finalColor = mix(finalColor, vec4(water_shaded, water_alpha), water_mask);
