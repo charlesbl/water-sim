@@ -602,7 +602,7 @@ export const renderFS = `
       }
 
       // Water
-      float water_mask = smoothstep(0.01, 0.1, v_water);
+      float water_mask = smoothstep(0.001, 0.005, v_water);
       if (water_mask > 0.0) {
         // Read flux to compute flow velocity
         vec4 flux = texture(u_texFlux, v_uv);
@@ -621,9 +621,10 @@ export const renderFS = `
         float transmission = exp(-depth);
         vec3 water_body_col = mix(deep_water_col, shallow_water_col, transmission);
 
-        // Add visual foam/streaks based on current speed
-        float foam_mask = smoothstep(0.001, 0.01, speed);
-        vec2 flowUV = v_uv * 400.0 - normalize(flowDir + vec2(0.0001)) * (u_time * speed * 200.0);
+        // Use a logarithmic response to balance small and large flows visually
+        float visual_speed = log(1.0 + speed * 50.0);
+        float foam_mask = smoothstep(0.1, 1.5, visual_speed);
+        vec2 flowUV = v_uv * 80.0 - normalize(flowDir + vec2(0.0001)) * (u_time * visual_speed * 5.0);
         float streak = noise(flowUV);
         float current_foam = foam_mask * smoothstep(0.4, 0.6, streak);
         
@@ -632,8 +633,8 @@ export const renderFS = `
         vec3 sky_refl = vec3(0.65, 0.8, 1.0) * (u_sun_color + vec3(0.1));
         vec3 water_shaded = mix(water_body_col, sky_refl + vec3(spec_water), fresnel);
         
-        // Increase opacity of shallow water (was 0.35, changed to 0.7)
-        float base_alpha = mix(0.9, 0.7, transmission);
+        // Increase opacity of shallow water
+        float base_alpha = mix(0.95, 0.85, transmission);
         float water_alpha = mix(base_alpha, 1.0, fresnel);
 
         finalColor = mix(finalColor, vec4(water_shaded, water_alpha), water_mask);

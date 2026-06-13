@@ -23,9 +23,9 @@ export interface Config {
 }
 
 export const config: Config = {
-  gridSize: 1024,
+  gridSize: 4096,
   waterGravity: 9.81,
-  waterDamping: 0.99,
+  waterDamping: 0.998,
   lavaViscosity: 0.005,
   sandSlideRate: 0.05,
   evaporation: 0.0,
