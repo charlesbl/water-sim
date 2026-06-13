@@ -63,10 +63,10 @@ void getCellData(vec2 uv, out float rock, out float sand, out float water, out f
   water = b.r;
   lava = b.g;
 
-  // Water/Lava interaction: convert lava to rock in-place
+  // Water/Lava interaction: convert lava to rock gradually
   if (water > 0.01 && lava > 0.01) {
-    rock += lava;
-    lava = 0.0;
+    float react = min(0.002, lava);
+    rock += react;
   }
 }
 

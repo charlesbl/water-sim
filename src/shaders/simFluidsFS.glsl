@@ -7,6 +7,7 @@ out vec4 fragColor;
 uniform sampler2D u_texA; // Updated Terrain state
 uniform sampler2D u_texB; // Previous Fluids state
 uniform sampler2D u_texFlux; // Calculated water fluxes
+uniform sampler2D u_texLavaFlux; // Calculated lava fluxes
 
 // Brush settings
 uniform float u_brush_active;
@@ -17,7 +18,6 @@ uniform float u_brush_strength;
 
 // Parameters
 uniform float u_grid_size;
-uniform float u_lava_viscosity;
 uniform float u_evaporation;
 uniform float u_initialized;
 
@@ -33,50 +33,10 @@ void getCellData(vec2 uv, out float ground, out float water, out float lava) {
   ground = rock + sand;
 
   if (water > 0.01 && b.g > 0.01) {
-    lava = 0.0;
-    water = max(0.0, water - 0.05);
+    float react = min(0.002, lava);
+    lava = max(0.0, lava - react);
+    water = max(0.0, water - react * 2.0); // Evaporates water faster
   }
-}
-
-// Calculate flow of liquid from src to dst (LAVA ONLY)
-float computeLavaFlow(vec2 src_uv, vec2 dst_uv) {
-  float src_ground, src_water, src_lava;
-  getCellData(src_uv, src_ground, src_water, src_lava);
-
-  if (src_lava <= 0.0001) return 0.0;
-
-  float rate = u_lava_viscosity;
-  float h_src = src_ground + src_water + src_lava;
-
-  float dst_ground, dst_water, dst_lava;
-  getCellData(dst_uv, dst_ground, dst_water, dst_lava);
-  float h_dst = dst_ground + dst_water + dst_lava;
-
-  float diff = h_src - h_dst;
-  if (diff > 0.00001) {
-    float sum_diff = 0.0;
-    vec2 texel = 1.0 / vec2(u_grid_size);
-    vec2 dirs[4] = vec2[](
-      vec2(-1.0, 0.0), vec2(1.0, 0.0),
-      vec2(0.0, -1.0), vec2(0.0, 1.0)
-    );
-
-    for (int i = 0; i < 4; i++) {
-      vec2 n_uv = clamp(src_uv + dirs[i] * texel, 0.0, 1.0);
-      float n_ground, n_water, n_lava;
-      getCellData(n_uv, n_ground, n_water, n_lava);
-      float h_n = n_ground + n_water + n_lava;
-      float n_diff = h_src - h_n;
-      if (n_diff > 0.0) sum_diff += n_diff;
-    }
-
-    if (sum_diff > 0.0) {
-      float max_out = sum_diff * 0.2;
-      float total_out = min(src_lava * rate, max_out);
-      return total_out * (diff / sum_diff);
-    }
-  }
-  return 0.0;
 }
 
 void main() {
@@ -89,10 +49,6 @@ void main() {
   getCellData(v_uv, ground, water, lava);
 
   vec2 texel = 1.0 / vec2(u_grid_size);
-  vec2 dirs[4] = vec2[](
-    vec2(-1.0, 0.0), vec2(1.0, 0.0),
-    vec2(0.0, -1.0), vec2(0.0, 1.0)
-  );
 
   // WATER VOLUME UPDATE (Virtual Pipe Model)
   vec4 my_flux = texture(u_texFlux, v_uv);
@@ -110,14 +66,20 @@ void main() {
 
   water = max(0.0, water - water_out + water_in);
 
-  // LAVA VOLUME UPDATE (Viscous Cellular Automata)
+  // LAVA VOLUME UPDATE (Virtual Pipe Model)
+  vec4 my_lava_flux = texture(u_texLavaFlux, v_uv);
+  float lava_out = my_lava_flux.r + my_lava_flux.g + my_lava_flux.b + my_lava_flux.a;
   float lava_in = 0.0;
-  float lava_out = 0.0;
-  for (int i = 0; i < 4; i++) {
-    vec2 n_uv = clamp(v_uv + dirs[i] * texel, 0.0, 1.0);
-    lava_in += computeLavaFlow(n_uv, v_uv);
-    lava_out += computeLavaFlow(v_uv, n_uv);
-  }
+  
+  // In from Left neighbor
+  if (v_uv.x > texel.x) lava_in += texture(u_texLavaFlux, v_uv + vec2(-1.0, 0.0) * texel).g;
+  // In from Right neighbor
+  if (v_uv.x < 1.0 - texel.x) lava_in += texture(u_texLavaFlux, v_uv + vec2(1.0, 0.0) * texel).r;
+  // In from Bottom neighbor
+  if (v_uv.y > texel.y) lava_in += texture(u_texLavaFlux, v_uv + vec2(0.0, -1.0) * texel).a;
+  // In from Top neighbor
+  if (v_uv.y < 1.0 - texel.y) lava_in += texture(u_texLavaFlux, v_uv + vec2(0.0, 1.0) * texel).b;
+
   lava = max(0.0, lava - lava_out + lava_in);
 
   // Evaporate water slowly
@@ -139,6 +101,12 @@ void main() {
         lava = max(0.0, lava - amount * 5.0);
       }
     }
+  }
+
+  // Boundary condition: Destroy liquids at bounds (infinite drain)
+  if (v_uv.x <= texel.x || v_uv.x >= 1.0 - texel.x || v_uv.y <= texel.y || v_uv.y >= 1.0 - texel.y) {
+    water = 0.0;
+    lava = 0.0;
   }
 
   water = clamp(water, 0.0, 10.0);

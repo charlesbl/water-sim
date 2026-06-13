@@ -5,7 +5,8 @@ export interface Config {
   // Simulation speed and physical properties
   waterGravity: number; // Gravity acceleration for waves
   waterDamping: number; // Friction / damping (1.0 = no friction)
-  lavaViscosity: number; // Rate at which lava spreads (low values mean high viscosity)
+  lavaGravity: number; // Gravity acceleration for lava
+  lavaDamping: number; // Friction / damping for lava
   sandSlideRate: number; // Rate at which sand collapses beyond angle of repose
   evaporation: number; // Water evaporation rate per step
   paused: boolean; // Is the simulation paused?
@@ -32,7 +33,8 @@ export const config: Config = {
   gridSize: 2048,
   waterGravity: 9.81,
   waterDamping: 0.998,
-  lavaViscosity: 0.005,
+  lavaGravity: 6.0,
+  lavaDamping: 0.95,
   sandSlideRate: 0.05,
   evaporation: 0.0,
   paused: false,

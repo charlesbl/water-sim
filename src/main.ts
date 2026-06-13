@@ -113,6 +113,7 @@ function init() {
       u_texA: { value: null },
       u_texB: { value: null },
       u_texFlux: { value: null },
+      u_texLavaFlux: { value: null },
       u_height_scale: { value: config.heightScale },
       u_grid_size: { value: config.gridSize },
       u_view_mode: { value: 0.0 },
@@ -386,7 +387,8 @@ function setupUI() {
       | 'brushStrength'
       | 'waterGravity'
       | 'waterDamping'
-      | 'lavaViscosity'
+      | 'lavaGravity'
+      | 'lavaDamping'
       | 'sandSlideRate'
       | 'evaporation'
       | 'timeOfDay'
@@ -432,7 +434,8 @@ function setupUI() {
   bindSlider('brush-strength', 'brushStrength', 'brush-strength-val');
   bindSlider('water-gravity', 'waterGravity', 'water-gravity-val');
   bindSlider('water-damping', 'waterDamping', 'water-damping-val');
-  bindSlider('lava-viscosity', 'lavaViscosity', 'lava-viscosity-val');
+  bindSlider('lava-gravity', 'lavaGravity', 'lava-gravity-val');
+  bindSlider('lava-damping', 'lavaDamping', 'lava-damping-val');
   bindSlider('sand-slide', 'sandSlideRate', 'sand-slide-val');
   bindSlider('evaporation', 'evaporation', 'evaporation-val');
   bindSlider('time-of-day', 'timeOfDay', 'time-of-day-val');
@@ -556,18 +559,21 @@ function animate() {
     // When paused we do a dry simulation step (physics params = 0) so the brush stroke shows up immediately
     const tempWaterGravity = config.waterGravity;
     const tempWaterDamping = config.waterDamping;
-    const tempLava = config.lavaViscosity;
+    const tempLavaGravity = config.lavaGravity;
+    const tempLavaDamping = config.lavaDamping;
     const tempSand = config.sandSlideRate;
 
     config.waterGravity = 0.0;
     config.waterDamping = 1.0;
-    config.lavaViscosity = 0.0;
+    config.lavaGravity = 0.0;
+    config.lavaDamping = 1.0;
     config.sandSlideRate = 0.0;
     gpgpu.step();
 
     config.waterGravity = tempWaterGravity;
     config.waterDamping = tempWaterDamping;
-    config.lavaViscosity = tempLava;
+    config.lavaGravity = tempLavaGravity;
+    config.lavaDamping = tempLavaDamping;
     config.sandSlideRate = tempSand;
   }
 
@@ -635,6 +641,7 @@ function animate() {
   fluidMaterial.uniforms.u_texA.value = gpgpu.targetA_read.texture;
   fluidMaterial.uniforms.u_texB.value = gpgpu.targetB_read.texture;
   fluidMaterial.uniforms.u_texFlux.value = gpgpu.targetFlux_read.texture;
+  fluidMaterial.uniforms.u_texLavaFlux.value = gpgpu.targetLavaFlux_read.texture;
   fluidMaterial.uniforms.u_height_scale.value = config.heightScale;
   fluidMaterial.uniforms.u_time.value = now * 0.001;
 

@@ -13,6 +13,7 @@ out vec4 fragColor;
 uniform sampler2D u_texA;
 uniform sampler2D u_texB;
 uniform sampler2D u_texFlux;
+uniform sampler2D u_texLavaFlux;
 uniform float u_height_scale;
 uniform float u_grid_size;
 uniform float u_view_mode; // 0: Realistic, 1: Heightmap, 2: Water Only, 3: Lava Only, 4: Sand Only
@@ -78,16 +79,16 @@ float get_ground_height(vec2 uv) {
 }
 
 // Bilinear interpolation for flux to prevent blocky flow directions
-vec4 get_smooth_flux(vec2 uv) {
+vec4 get_smooth_flux(vec2 uv, sampler2D tex) {
   vec2 texel = 1.0 / vec2(u_grid_size);
   vec2 p = uv * u_grid_size - 0.5;
   vec2 f = fract(p);
   vec2 i = floor(p) * texel + texel * 0.5;
   
-  vec4 tl = texture(u_texFlux, i);
-  vec4 tr = texture(u_texFlux, i + vec2(texel.x, 0.0));
-  vec4 bl = texture(u_texFlux, i + vec2(0.0, texel.y));
-  vec4 br = texture(u_texFlux, i + texel);
+  vec4 tl = texture(tex, i);
+  vec4 tr = texture(tex, i + vec2(texel.x, 0.0));
+  vec4 bl = texture(tex, i + vec2(0.0, texel.y));
+  vec4 br = texture(tex, i + texel);
   
   vec4 tA = mix(tl, tr, f.x);
   vec4 tB = mix(bl, br, f.x);
@@ -191,25 +192,33 @@ void main() {
     // Lava
     float lava_mask = smoothstep(0.01, 0.1, v_lava);
     if (lava_mask > 0.0) {
-      float crust_pattern = noise(v_uv * 45.0 + vec2(u_time * 0.04));
-      float crust = smoothstep(0.36, 0.55, crust_pattern);
+      vec3 shallow_lava_col = vec3(1.0, 0.8, 0.0); // Yellow/Orange for shallow
+      vec3 deep_lava_col = vec3(0.6, 0.05, 0.0);    // Deep Red for thick lava
+      
+      float depth = v_lava * 15.0;
+      float transmission = exp(-depth);
+      vec3 lava_body_col = mix(deep_lava_col, shallow_lava_col, transmission);
 
-      vec3 glowing_lava = vec3(2.2, 0.45, 0.01);
-      vec3 basalt_crust = vec3(0.1, 0.09, 0.09) * (diff * u_sun_color + vec3(0.05));
-      vec3 lava_base_col = mix(glowing_lava, basalt_crust, crust);
+      vec3 r_lava = reflect(-u_sun_dir, normal);
+      float spec_lava = pow(max(0.0, dot(r_lava, view_dir)), 80.0) * 0.8;
 
-      if (crust < 0.2) {
-        lava_base_col += vec3(0.4, 0.08, 0.0) * (1.0 - crust * 5.0);
-      }
+      float fresnel = 0.02 + 0.98 * pow(1.0 - max(0.0, dot(normal, view_dir)), 5.0);
 
-      finalColor = mix(finalColor, vec4(lava_base_col, 1.0), lava_mask);
+      vec3 sky_refl = vec3(0.65, 0.8, 1.0) * (u_sun_color + vec3(0.1));
+      vec3 lava_shaded = mix(lava_body_col, sky_refl + vec3(spec_lava), fresnel);
+      
+      // Lava is mostly opaque, but we can add a tiny bit of transparency for very shallow parts
+      float base_alpha = mix(1.0, 0.85, transmission);
+      float lava_alpha = mix(base_alpha, 1.0, fresnel);
+
+      finalColor = mix(finalColor, vec4(lava_shaded, lava_alpha), lava_mask);
     }
 
     // Water
     float water_mask = smoothstep(0.001, 0.005, v_water);
     if (water_mask > 0.0) {
       // Read flux to compute flow velocity with bilinear smoothing
-      vec4 flux = get_smooth_flux(v_uv);
+      vec4 flux = get_smooth_flux(v_uv, u_texFlux);
       vec2 flowDir = vec2(flux.g - flux.r, flux.a - flux.b);
       float speed = length(flowDir);
 

@@ -13,6 +13,8 @@ export class GPGPUSimulation {
   public targetB_write: THREE.WebGLRenderTarget;
   public targetFlux_read: THREE.WebGLRenderTarget;
   public targetFlux_write: THREE.WebGLRenderTarget;
+  public targetLavaFlux_read: THREE.WebGLRenderTarget;
+  public targetLavaFlux_write: THREE.WebGLRenderTarget;
 
   // GPGPU rendering helper scene
   private orthoScene: THREE.Scene;
@@ -22,6 +24,7 @@ export class GPGPUSimulation {
   // Shader materials
   private simTerrainMaterial: THREE.ShaderMaterial;
   private simFluxMaterial: THREE.ShaderMaterial;
+  private simLavaFluxMaterial: THREE.ShaderMaterial;
   private simFluidsMaterial: THREE.ShaderMaterial;
 
   // State
@@ -50,6 +53,8 @@ export class GPGPUSimulation {
     this.targetB_write = new THREE.WebGLRenderTarget(this.size, this.size, options);
     this.targetFlux_read = new THREE.WebGLRenderTarget(this.size, this.size, options);
     this.targetFlux_write = new THREE.WebGLRenderTarget(this.size, this.size, options);
+    this.targetLavaFlux_read = new THREE.WebGLRenderTarget(this.size, this.size, options);
+    this.targetLavaFlux_write = new THREE.WebGLRenderTarget(this.size, this.size, options);
 
     // Setup ortho camera and screen-space plane for simulation steps
     this.orthoScene = new THREE.Scene();
@@ -93,9 +98,29 @@ export class GPGPUSimulation {
         u_texB: { value: null },
         u_texFlux: { value: null },
         u_grid_size: { value: this.size },
-        u_water_gravity: { value: config.waterGravity },
-        u_water_damping: { value: config.waterDamping },
+        u_gravity: { value: config.waterGravity },
+        u_damping: { value: config.waterDamping },
         u_initialized: { value: 0.0 },
+        u_is_lava: { value: 0.0 },
+      },
+      depthWrite: false,
+      depthTest: false,
+    });
+
+    // Material B1.5: Lava Flux
+    this.simLavaFluxMaterial = new THREE.ShaderMaterial({
+      glslVersion: THREE.GLSL3,
+      vertexShader: simVS,
+      fragmentShader: simFluxFS,
+      uniforms: {
+        u_texA: { value: null },
+        u_texB: { value: null },
+        u_texFlux: { value: null },
+        u_grid_size: { value: this.size },
+        u_gravity: { value: config.lavaGravity },
+        u_damping: { value: config.lavaDamping },
+        u_initialized: { value: 0.0 },
+        u_is_lava: { value: 1.0 },
       },
       depthWrite: false,
       depthTest: false,
@@ -110,13 +135,13 @@ export class GPGPUSimulation {
         u_texA: { value: null },
         u_texB: { value: null },
         u_texFlux: { value: null },
+        u_texLavaFlux: { value: null },
         u_brush_active: { value: 0.0 },
         u_brush_uv: { value: new THREE.Vector2(0, 0) },
         u_brush_radius: { value: 0.05 },
         u_brush_type: { value: 0.0 },
         u_brush_strength: { value: 1.0 },
         u_grid_size: { value: this.size },
-        u_lava_viscosity: { value: config.lavaViscosity },
         u_evaporation: { value: config.evaporation },
         u_initialized: { value: 0.0 },
       },
@@ -161,9 +186,10 @@ export class GPGPUSimulation {
     this.simTerrainMaterial.uniforms.u_terrain_sharpness.value = config.terrainSharpness;
     this.simTerrainMaterial.uniforms.u_fbm_octaves.value = Math.round(config.fbmOctaves);
     this.simTerrainMaterial.uniforms.u_fbm_persistence.value = config.fbmPersistence;
-    this.simFluxMaterial.uniforms.u_water_gravity.value = config.waterGravity;
-    this.simFluxMaterial.uniforms.u_water_damping.value = config.waterDamping;
-    this.simFluidsMaterial.uniforms.u_lava_viscosity.value = config.lavaViscosity;
+    this.simFluxMaterial.uniforms.u_gravity.value = config.waterGravity;
+    this.simFluxMaterial.uniforms.u_damping.value = config.waterDamping;
+    this.simLavaFluxMaterial.uniforms.u_gravity.value = config.lavaGravity;
+    this.simLavaFluxMaterial.uniforms.u_damping.value = config.lavaDamping;
     this.simFluidsMaterial.uniforms.u_evaporation.value = config.evaporation;
   }
 
@@ -190,6 +216,16 @@ export class GPGPUSimulation {
 
     // Clear write target Flux
     this.renderer.setRenderTarget(this.targetFlux_write);
+    this.renderer.clearColor();
+    this.renderer.clear();
+
+    // Clear read target Lava Flux
+    this.renderer.setRenderTarget(this.targetLavaFlux_read);
+    this.renderer.clearColor();
+    this.renderer.clear();
+
+    // Clear write target Lava Flux
+    this.renderer.setRenderTarget(this.targetLavaFlux_write);
     this.renderer.clearColor();
     this.renderer.clear();
 
@@ -242,11 +278,22 @@ export class GPGPUSimulation {
     this.renderer.setRenderTarget(this.targetFlux_write);
     this.renderer.render(this.orthoScene, this.orthoCamera);
 
+    // --- PASS B1.5: Simulate Lava Flux ---
+    this.simLavaFluxMaterial.uniforms.u_texA.value = this.targetA_write.texture;
+    this.simLavaFluxMaterial.uniforms.u_texB.value = this.targetB_read.texture;
+    this.simLavaFluxMaterial.uniforms.u_texFlux.value = this.targetLavaFlux_read.texture;
+    this.simLavaFluxMaterial.uniforms.u_initialized.value = initVal;
+
+    this.orthoMesh.material = this.simLavaFluxMaterial;
+    this.renderer.setRenderTarget(this.targetLavaFlux_write);
+    this.renderer.render(this.orthoScene, this.orthoCamera);
+
     // --- PASS B2: Simulate Fluid flow and evaporation ---
     // Read A_write (new terrain state), B_read, Flux_write, write to B_write
     this.simFluidsMaterial.uniforms.u_texA.value = this.targetA_write.texture;
     this.simFluidsMaterial.uniforms.u_texB.value = this.targetB_read.texture;
     this.simFluidsMaterial.uniforms.u_texFlux.value = this.targetFlux_write.texture;
+    this.simFluidsMaterial.uniforms.u_texLavaFlux.value = this.targetLavaFlux_write.texture;
 
     this.orthoMesh.material = this.simFluidsMaterial;
     this.renderer.setRenderTarget(this.targetB_write);
@@ -262,6 +309,10 @@ export class GPGPUSimulation {
     const tempFlux = this.targetFlux_read;
     this.targetFlux_read = this.targetFlux_write;
     this.targetFlux_write = tempFlux;
+
+    const tempLavaFlux = this.targetLavaFlux_read;
+    this.targetLavaFlux_read = this.targetLavaFlux_write;
+    this.targetLavaFlux_write = tempLavaFlux;
 
     // Swap Fluids buffers (B)
     const tempB = this.targetB_read;
