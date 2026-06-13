@@ -171,9 +171,22 @@ function updatePointerUV(e: PointerEvent) {
   }
 }
 
+let isFPSLooking = false;
+let previousMousePosition = { x: 0, y: 0 };
+
 function onPointerDown(e: PointerEvent) {
   // If clicking on HUD overlay panel, bypass painting
   if ((e.target as HTMLElement).closest('#hud')) return;
+
+  if (e.button === 1) {
+    isFPSLooking = true;
+    previousMousePosition = { x: e.clientX, y: e.clientY };
+    controls.enabled = false;
+    e.preventDefault();
+    return;
+  }
+
+  if (e.button !== 0) return;
 
   isPointerDown = true;
   updatePointerUV(e);
@@ -183,16 +196,45 @@ function onPointerDown(e: PointerEvent) {
 }
 
 function onPointerMove(e: PointerEvent) {
+  if (isFPSLooking) {
+    const deltaX = e.clientX - previousMousePosition.x;
+    const deltaY = e.clientY - previousMousePosition.y;
+    previousMousePosition = { x: e.clientX, y: e.clientY };
+
+    const sensitivity = 0.003;
+    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    euler.setFromQuaternion(camera.quaternion);
+    
+    euler.y -= deltaX * sensitivity;
+    euler.x -= deltaY * sensitivity;
+    
+    const PI_2 = Math.PI / 2 - 0.01;
+    euler.x = Math.max(-PI_2, Math.min(PI_2, euler.x));
+    
+    camera.quaternion.setFromEuler(euler);
+    return;
+  }
+
   if (!isPointerDown) return;
   updatePointerUV(e);
 }
 
 function onPointerUp(_e: PointerEvent) {
-  isPointerDown = false;
-  pointerUV = null;
+  if (isFPSLooking) {
+    isFPSLooking = false;
+    
+    const dist = Math.max(15, camera.position.distanceTo(controls.target));
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    controls.target.copy(camera.position).add(forward.multiplyScalar(dist));
+    
+    controls.enabled = true;
+  }
 
-  // Enable OrbitControls navigation back
-  controls.enabled = true;
+  if (isPointerDown) {
+    isPointerDown = false;
+    pointerUV = null;
+    controls.enabled = true;
+  }
 }
 
 /**
@@ -322,7 +364,7 @@ function animate() {
   const now = performance.now();
 
   // Free camera movement
-  const moveSpeed = 1.0;
+  const moveSpeed = 1.0 / 3.0;
   const moveVec = new THREE.Vector3();
   const localMove = new THREE.Vector3();
   
@@ -349,7 +391,9 @@ function animate() {
   // OrbitControls damping update
   controls.autoRotate = config.autoRotate;
   controls.autoRotateSpeed = 1.2;
-  controls.update();
+  if (!isFPSLooking) {
+    controls.update();
+  }
 
   // Run GPGPU physical simulation ticks
   if (!config.paused) {
