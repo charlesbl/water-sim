@@ -70,6 +70,7 @@ export class GPGPUSimulation {
       uniforms: {
         u_texA: { value: null },
         u_texB: { value: null },
+        u_texFlux: { value: null },
         u_brush_active: { value: 0.0 },
         u_brush_uv: { value: new THREE.Vector2(0, 0) },
         u_brush_radius: { value: 0.05 },
@@ -77,6 +78,7 @@ export class GPGPUSimulation {
         u_brush_strength: { value: 1.0 },
         u_grid_size: { value: this.size },
         u_sand_slide_rate: { value: config.sandSlideRate },
+        u_erosion_rate: { value: config.erosionRate },
         u_initialized: { value: 0.0 },
         u_seed: { value: this.seed },
         u_terrain_scale: { value: config.terrainScale },
@@ -186,6 +188,7 @@ export class GPGPUSimulation {
    */
   public updateParameters() {
     this.simTerrainMaterial.uniforms.u_sand_slide_rate.value = config.sandSlideRate;
+    this.simTerrainMaterial.uniforms.u_erosion_rate.value = config.erosionRate;
     this.simTerrainMaterial.uniforms.u_terrain_scale.value = config.terrainScale;
     this.simTerrainMaterial.uniforms.u_terrain_sharpness.value = config.terrainSharpness;
     this.simTerrainMaterial.uniforms.u_fbm_octaves.value = Math.round(config.fbmOctaves);
@@ -271,6 +274,7 @@ export class GPGPUSimulation {
     // Read A_read and B_read, write to A_write
     this.simTerrainMaterial.uniforms.u_texA.value = this.targetA_read.texture;
     this.simTerrainMaterial.uniforms.u_texB.value = this.targetB_read.texture;
+    this.simTerrainMaterial.uniforms.u_texFlux.value = this.targetFlux_read.texture;
 
     this.orthoMesh.material = this.simTerrainMaterial;
     this.renderer.setRenderTarget(this.targetA_write);

@@ -6,6 +6,7 @@ out vec4 fragColor;
 
 uniform sampler2D u_texA; // Previous Terrain state
 uniform sampler2D u_texB; // Previous Fluids state
+uniform sampler2D u_texFlux; // Previous Water flux
 
 // Brush settings
 uniform float u_brush_active;
@@ -17,6 +18,7 @@ uniform float u_brush_strength;
 // Parameters
 uniform float u_grid_size;
 uniform float u_sand_slide_rate;
+uniform float u_erosion_rate;
 uniform float u_initialized;
 uniform float u_seed;
 
@@ -124,6 +126,18 @@ float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
   return 0.0;
 }
 
+// Compute ratio of sand that is carried by water flow out of a cell
+float computeErosionFactor(vec2 uv) {
+  float r, s, w, l;
+  getCellData(uv, r, s, w, l);
+  vec4 f = texture(u_texFlux, uv);
+  float sf = f.r + f.g + f.b + f.a;
+  if (sf <= 0.0001) return 0.0;
+  // Limit erosion to 50% of available sand to prevent mass creation when combined with sliding
+  float max_e = min(s * 0.5, sf * u_erosion_rate);
+  return max_e / sf;
+}
+
 void main() {
   // Initial procedural terrain generation on first pass
   if (u_initialized < 0.5) {
@@ -164,7 +178,40 @@ void main() {
     sand_out += computeSandFlow(v_uv, n_uv, dists[i]);
   }
 
-  sand = max(0.0, sand - sand_out + sand_in);
+  // Erosion by water flow
+  float my_erode_factor = computeErosionFactor(v_uv);
+  vec4 my_flux = texture(u_texFlux, v_uv);
+  float sand_eroded_out = (my_flux.r + my_flux.g + my_flux.b + my_flux.a) * my_erode_factor;
+
+  float sand_eroded_in = 0.0;
+  // Left neighbor flows Right (g)
+  if (v_uv.x > texel.x) {
+    vec2 n_uv = v_uv + vec2(-1.0, 0.0) * texel;
+    sand_eroded_in += texture(u_texFlux, n_uv).g * computeErosionFactor(n_uv);
+  }
+  // Right neighbor flows Left (r)
+  if (v_uv.x < 1.0 - texel.x) {
+    vec2 n_uv = v_uv + vec2(1.0, 0.0) * texel;
+    sand_eroded_in += texture(u_texFlux, n_uv).r * computeErosionFactor(n_uv);
+  }
+  // Bottom neighbor flows Top (a)
+  if (v_uv.y > texel.y) {
+    vec2 n_uv = v_uv + vec2(0.0, -1.0) * texel;
+    sand_eroded_in += texture(u_texFlux, n_uv).a * computeErosionFactor(n_uv);
+  }
+  // Top neighbor flows Bottom (b)
+  if (v_uv.y < 1.0 - texel.y) {
+    vec2 n_uv = v_uv + vec2(0.0, 1.0) * texel;
+    sand_eroded_in += texture(u_texFlux, n_uv).b * computeErosionFactor(n_uv);
+  }
+
+  // Boundary condition: Sand falls off the map (infinite drain to prevent stacking)
+  if (v_uv.x <= texel.x || v_uv.x >= 1.0 - texel.x || v_uv.y <= texel.y || v_uv.y >= 1.0 - texel.y) {
+    sand_in = 0.0;
+    sand_eroded_in = 0.0;
+  }
+
+  sand = max(0.0, sand - sand_out + sand_in - sand_eroded_out + sand_eroded_in);
 
   // Brush painting interface
   if (u_brush_active > 0.5) {

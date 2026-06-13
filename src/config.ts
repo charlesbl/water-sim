@@ -8,6 +8,7 @@ export interface Config {
   lavaGravity: number; // Gravity acceleration for lava
   lavaDamping: number; // Friction / damping for lava
   sandSlideRate: number; // Rate at which sand collapses beyond angle of repose
+  erosionRate: number; // Rate at which water flow erodes sand
   evaporation: number; // Water evaporation rate per step
   paused: boolean; // Is the simulation paused?
 
@@ -41,6 +42,7 @@ export const config: Config = {
   lavaGravity: 6.0,
   lavaDamping: 0.95,
   sandSlideRate: 0.05,
+  erosionRate: 0.01,
   evaporation: 0.0,
   paused: false,
 

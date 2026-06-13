@@ -390,6 +390,7 @@ function setupUI() {
       | 'lavaGravity'
       | 'lavaDamping'
       | 'sandSlideRate'
+      | 'erosionRate'
       | 'evaporation'
       | 'timeOfDay'
       | 'terrainScale'
@@ -439,6 +440,7 @@ function setupUI() {
   bindSlider('lava-gravity', 'lavaGravity', 'lava-gravity-val');
   bindSlider('lava-damping', 'lavaDamping', 'lava-damping-val');
   bindSlider('sand-slide', 'sandSlideRate', 'sand-slide-val');
+  bindSlider('erosion-rate', 'erosionRate', 'erosion-rate-val');
   bindSlider('evaporation', 'evaporation', 'evaporation-val');
   bindSlider('time-of-day', 'timeOfDay', 'time-of-day-val');
   bindSlider('terrain-scale', 'terrainScale', 'terrain-scale-val');
