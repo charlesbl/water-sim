@@ -124,9 +124,9 @@ export const simTerrainFS = `
   void main() {
     // Initial procedural terrain generation on first pass
     if (u_initialized < 0.5) {
-      vec2 p = v_uv * 4.0 + vec2(u_seed);
+      vec2 p = v_uv * 6.0 + vec2(u_seed);
       float rock = fbm(p);
-      rock = pow(rock, 1.4) * 0.7; // Exaggerate peaks
+      rock = pow(rock, 1.4) * 2.1; // Exaggerate peaks, make mountains 3x higher and create more valleys
       
       // Place initial sand in valleys
       float sand = max(0.0, 0.16 - rock) * 1.5;
