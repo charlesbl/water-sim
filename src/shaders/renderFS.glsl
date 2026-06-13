@@ -151,7 +151,7 @@ void main() {
     vec3 sand_color = sand_base + vec3(s_noise);
 
     float slope = 1.0 - normal.z; 
-    float sand_mask = smoothstep(0.01, 0.15, v_sand) * (1.0 - smoothstep(0.35, 0.6, slope));
+    float sand_mask = smoothstep(0.01, 0.15, v_sand);
     vec3 ground_color = mix(rock_color, sand_color, sand_mask);
 
     vec3 terrain_lit = ground_color * (diff * u_sun_color + vec3(0.12));

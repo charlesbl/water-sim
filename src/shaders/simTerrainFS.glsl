@@ -71,7 +71,7 @@ void getCellData(vec2 uv, out float rock, out float sand, out float water, out f
 }
 
 // Calculate sliding sand flow from src to dst
-float computeSandFlow(vec2 src_uv, vec2 dst_uv) {
+float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
   float src_rock, src_sand, src_water, src_lava;
   getCellData(src_uv, src_rock, src_sand, src_water, src_lava);
   if (src_sand <= 0.0001) return 0.0;
@@ -83,30 +83,41 @@ float computeSandFlow(vec2 src_uv, vec2 dst_uv) {
   float h_dst = dst_rock + dst_sand;
 
   float diff = h_src - h_dst;
-  float threshold = 0.05; // Angle of repose threshold
+  float threshold = 0.0015 * dist; // Angle of repose threshold, adjusted for distance
   if (diff > threshold) {
     float sum_excess = 0.0;
     float excess_dst = diff - threshold;
 
     vec2 texel = 1.0 / vec2(u_grid_size);
-    vec2 dirs[4] = vec2[](
+    vec2 dirs[8] = vec2[](
       vec2(-1.0, 0.0), vec2(1.0, 0.0),
-      vec2(0.0, -1.0), vec2(0.0, 1.0)
+      vec2(0.0, -1.0), vec2(0.0, 1.0),
+      vec2(-1.0, -1.0), vec2(1.0, -1.0),
+      vec2(-1.0, 1.0), vec2(1.0, 1.0)
+    );
+    float dists[8] = float[](
+      1.0, 1.0, 1.0, 1.0,
+      1.414, 1.414, 1.414, 1.414
     );
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 8; i++) {
       vec2 n_uv = clamp(src_uv + dirs[i] * texel, 0.0, 1.0);
       float n_rock, n_sand, n_water, n_lava;
       getCellData(n_uv, n_rock, n_sand, n_water, n_lava);
       float h_n = n_rock + n_sand;
       float n_diff = h_src - h_n;
-      if (n_diff > threshold) {
-        sum_excess += (n_diff - threshold);
+      float n_thresh = 0.0015 * dists[i];
+      if (n_diff > n_thresh) {
+        sum_excess += (n_diff - n_thresh);
       }
     }
 
     if (sum_excess > 0.0) {
-      float total_slide = min(src_sand * 0.25, sum_excess * u_sand_slide_rate);
+      // The absolute mathematical stability limit for 8 neighbors is 1/9 (approx 0.111).
+      // We clamp the rate to 0.11 to guarantee it never explodes (checkerboard pattern),
+      // regardless of how high the user sets the slider.
+      float effective_rate = min(0.11, u_sand_slide_rate);
+      float total_slide = min(src_sand * 0.25, sum_excess * effective_rate);
       return total_slide * (excess_dst / sum_excess);
     }
   }
@@ -133,18 +144,24 @@ void main() {
 
   // Compute sand sliding changes (cellular automata)
   vec2 texel = 1.0 / vec2(u_grid_size);
-  vec2 dirs[4] = vec2[](
+  vec2 dirs[8] = vec2[](
     vec2(-1.0, 0.0), vec2(1.0, 0.0),
-    vec2(0.0, -1.0), vec2(0.0, 1.0)
+    vec2(0.0, -1.0), vec2(0.0, 1.0),
+    vec2(-1.0, -1.0), vec2(1.0, -1.0),
+    vec2(-1.0, 1.0), vec2(1.0, 1.0)
+  );
+  float dists[8] = float[](
+    1.0, 1.0, 1.0, 1.0,
+    1.414, 1.414, 1.414, 1.414
   );
 
   float sand_in = 0.0;
   float sand_out = 0.0;
 
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 8; i++) {
     vec2 n_uv = clamp(v_uv + dirs[i] * texel, 0.0, 1.0);
-    sand_in += computeSandFlow(n_uv, v_uv);
-    sand_out += computeSandFlow(v_uv, n_uv);
+    sand_in += computeSandFlow(n_uv, v_uv, dists[i]);
+    sand_out += computeSandFlow(v_uv, n_uv, dists[i]);
   }
 
   sand = max(0.0, sand - sand_out + sand_in);
