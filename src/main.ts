@@ -14,6 +14,7 @@ let terrainMaterial: THREE.ShaderMaterial;
 let fluidMesh: THREE.Mesh;
 let fluidMaterial: THREE.ShaderMaterial;
 let gpgpu: GPGPUSimulation;
+let raycastMesh: THREE.Mesh;
 
 // Lighting representation
 let sunLight: THREE.DirectionalLight;
@@ -51,7 +52,7 @@ function init() {
 
   // 3. Perspective Camera
   camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 50, 75);
+  camera.position.set(0, 100, 150);
 
   // 4. OrbitControls navigation
   controls = new OrbitControls(camera, renderer.domElement);
@@ -59,7 +60,7 @@ function init() {
   controls.dampingFactor = 0.05;
   controls.maxPolarAngle = Math.PI / 2 - 0.05; // Lock camera from going below terrain
   controls.minDistance = 15;
-  controls.maxDistance = 250;
+  controls.maxDistance = 500;
 
   // 5. Ambient & Sun directional light sources (fallback/standard rendering helpers)
   ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
@@ -73,7 +74,7 @@ function init() {
 
   // 7. Terrain Mesh Construction
   // Create flat plane which we will displace on the GPU
-  const geometry = new THREE.PlaneGeometry(100, 100, config.gridSize - 1, config.gridSize - 1);
+  const geometry = new THREE.PlaneGeometry(200, 200, config.gridSize - 1, config.gridSize - 1);
 
   // Custom Material for Height displacement and realistic visual rendering
   terrainMaterial = new THREE.ShaderMaterial({
@@ -125,6 +126,14 @@ function init() {
   fluidMesh = new THREE.Mesh(geometry, fluidMaterial);
   fluidMesh.rotation.x = -Math.PI / 2;
   scene.add(fluidMesh);
+
+  // 7.5. Low-poly Raycast Mesh
+  // Raycasting a dense mesh (512x512) is extremely expensive on pointermove.
+  // We create a simple 1x1 plane with the same dimensions for physics/interaction raycasting.
+  const raycastGeometry = new THREE.PlaneGeometry(200, 200, 1, 1);
+  raycastMesh = new THREE.Mesh(raycastGeometry, new THREE.MeshBasicMaterial({ visible: false }));
+  raycastMesh.rotation.x = -Math.PI / 2;
+  scene.add(raycastMesh);
 
   // 8. Event Listeners
   window.addEventListener('resize', onWindowResize);
@@ -189,7 +198,7 @@ function updatePointerUV(e: PointerEvent) {
   mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
   raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObject(terrainMesh);
+  const intersects = raycaster.intersectObject(raycastMesh);
 
   if (intersects.length > 0 && intersects[0].uv) {
     if (!pointerUV) pointerUV = new THREE.Vector2();
