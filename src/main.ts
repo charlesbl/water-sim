@@ -14,17 +14,20 @@ let terrainMaterial: THREE.ShaderMaterial;
 let fluidMesh: THREE.Mesh;
 let fluidMaterial: THREE.ShaderMaterial;
 let gpgpu: GPGPUSimulation;
-let raycastMesh: THREE.Mesh;
+
+let pickingScene: THREE.Scene;
+let pickingMaterial: THREE.ShaderMaterial;
+let pickingMesh: THREE.Mesh;
+let pickingRenderTarget: THREE.WebGLRenderTarget;
 
 // Lighting representation
 let sunLight: THREE.DirectionalLight;
 let ambientLight: THREE.AmbientLight;
 
 // Raycasting and painting interaction state
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
 let isPointerDown = false;
 let pointerUV: THREE.Vector2 | null = null;
+let activeBrushType: number = 0;
 
 // Performance timing variables
 let frameCount = 0;
@@ -109,6 +112,7 @@ function init() {
     uniforms: {
       u_texA: { value: null },
       u_texB: { value: null },
+      u_texFlux: { value: null },
       u_height_scale: { value: config.heightScale },
       u_grid_size: { value: config.gridSize },
       u_view_mode: { value: 0.0 },
@@ -127,13 +131,57 @@ function init() {
   fluidMesh.rotation.x = -Math.PI / 2;
   scene.add(fluidMesh);
 
-  // 7.5. Low-poly Raycast Mesh
-  // Raycasting a dense mesh (512x512) is extremely expensive on pointermove.
-  // We create a simple 1x1 plane with the same dimensions for physics/interaction raycasting.
-  const raycastGeometry = new THREE.PlaneGeometry(200, 200, 1, 1);
-  raycastMesh = new THREE.Mesh(raycastGeometry, new THREE.MeshBasicMaterial({ visible: false }));
-  raycastMesh.rotation.x = -Math.PI / 2;
-  scene.add(raycastMesh);
+  // 7.5. GPU Picking for precise raycasting against displaced terrain mesh
+  pickingScene = new THREE.Scene();
+  pickingRenderTarget = new THREE.WebGLRenderTarget(1, 1, {
+    type: THREE.FloatType,
+    format: THREE.RGBAFormat,
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    generateMipmaps: false
+  });
+
+  pickingMaterial = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    vertexShader: `
+      out vec2 v_uv;
+      uniform sampler2D u_texA;
+      uniform sampler2D u_texB;
+      uniform float u_height_scale;
+
+      void main() {
+        v_uv = uv;
+        vec4 cellA = texture(u_texA, uv);
+        
+        // Only use rock and sand height for cursor collision, ignoring water and lava
+        float h = cellA.r + cellA.g;
+
+        vec3 displaced = position;
+        displaced.z = h * u_height_scale;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      in vec2 v_uv;
+      out vec4 fragColor;
+      void main() {
+        fragColor = vec4(v_uv, 0.0, 1.0);
+      }
+    `,
+    uniforms: {
+      u_texA: { value: null },
+      u_texB: { value: null },
+      u_height_scale: { value: config.heightScale },
+    },
+    depthWrite: true,
+    depthTest: true,
+    side: THREE.DoubleSide
+  });
+
+  pickingMesh = new THREE.Mesh(geometry, pickingMaterial);
+  pickingMesh.rotation.x = -Math.PI / 2;
+  pickingScene.add(pickingMesh);
 
   // 8. Event Listeners
   window.addEventListener('resize', onWindowResize);
@@ -165,6 +213,9 @@ function init() {
     }
   });
 
+  // Prevent context menu to allow right-click interaction
+  window.addEventListener('contextmenu', (e) => e.preventDefault());
+
   // Interactive painting event listeners
   window.addEventListener('pointerdown', onPointerDown);
   window.addEventListener('pointermove', onPointerMove);
@@ -191,18 +242,47 @@ function onWindowResize() {
 }
 
 /**
- * Pointer raycast calculation on flat terrain
+ * Pointer raycast calculation using GPU picking against displaced terrain
  */
 function updatePointerUV(e: PointerEvent) {
-  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  const x = Math.floor(e.clientX);
+  const y = Math.floor(e.clientY);
 
-  raycaster.setFromCamera(mouse, camera);
-  const intersects = raycaster.intersectObject(raycastMesh);
+  camera.setViewOffset(
+    window.innerWidth,
+    window.innerHeight,
+    x,
+    y,
+    1,
+    1
+  );
 
-  if (intersects.length > 0 && intersects[0].uv) {
+  const currentRenderTarget = renderer.getRenderTarget();
+  const currentClearColor = renderer.getClearColor(new THREE.Color());
+  const currentClearAlpha = renderer.getClearAlpha();
+
+  renderer.setRenderTarget(pickingRenderTarget);
+  renderer.setClearColor(0x000000, 0);
+  renderer.clear();
+
+  if (gpgpu) {
+    pickingMaterial.uniforms.u_texA.value = gpgpu.targetA_read.texture;
+    pickingMaterial.uniforms.u_texB.value = gpgpu.targetB_read.texture;
+    pickingMaterial.uniforms.u_height_scale.value = config.heightScale;
+  }
+
+  renderer.render(pickingScene, camera);
+
+  const pixelBuffer = new Float32Array(4);
+  renderer.readRenderTargetPixels(pickingRenderTarget, 0, 0, 1, 1, pixelBuffer);
+
+  renderer.setRenderTarget(currentRenderTarget);
+  renderer.setClearColor(currentClearColor, currentClearAlpha);
+  camera.clearViewOffset();
+
+  if (pixelBuffer[3] > 0.0) {
     if (!pointerUV) pointerUV = new THREE.Vector2();
-    pointerUV.copy(intersects[0].uv);
+    pointerUV.set(pixelBuffer[0], pixelBuffer[1]);
   } else {
     pointerUV = null;
   }
@@ -223,7 +303,13 @@ function onPointerDown(e: PointerEvent) {
     return;
   }
 
-  if (e.button !== 0) return;
+  if (e.button === 0) {
+    activeBrushType = config.brushType; // Left click uses selected brush
+  } else if (e.button === 2) {
+    activeBrushType = 5; // Right click = Erase/Clear
+  } else {
+    return;
+  }
 
   isPointerDown = true;
   updatePointerUV(e);
@@ -438,7 +524,7 @@ function animate() {
     gpgpu.setBrush(
       isPointerDown,
       pointerUV,
-      config.brushType,
+      activeBrushType,
       config.brushRadius,
       config.brushStrength
     );
@@ -448,7 +534,7 @@ function animate() {
     gpgpu.setBrush(
       isPointerDown,
       pointerUV,
-      config.brushType,
+      activeBrushType,
       config.brushRadius,
       config.brushStrength
     );
@@ -533,6 +619,7 @@ function animate() {
 
   fluidMaterial.uniforms.u_texA.value = gpgpu.targetA_read.texture;
   fluidMaterial.uniforms.u_texB.value = gpgpu.targetB_read.texture;
+  fluidMaterial.uniforms.u_texFlux.value = gpgpu.targetFlux_read.texture;
   fluidMaterial.uniforms.u_height_scale.value = config.heightScale;
   fluidMaterial.uniforms.u_time.value = now * 0.001;
 
