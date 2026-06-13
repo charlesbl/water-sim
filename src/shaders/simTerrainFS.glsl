@@ -19,12 +19,16 @@ uniform float u_brush_strength;
 uniform float u_grid_size;
 uniform float u_sand_slide_rate;
 uniform float u_erosion_rate;
+uniform float u_capacity_factor;
+uniform float u_deposition_rate;
+uniform float u_min_erosion_speed;
 uniform float u_initialized;
 uniform float u_seed;
 
 // Terrain parameters
 uniform float u_terrain_scale;
 uniform float u_terrain_sharpness;
+uniform float u_terrain_tilt;
 uniform int u_fbm_octaves;
 uniform float u_fbm_persistence;
 
@@ -57,11 +61,12 @@ float fbm(vec2 p) {
 }
 
 // Access cellular data at a given UV
-void getCellData(vec2 uv, out float rock, out float sand, out float water, out float lava) {
+void getCellData(vec2 uv, out float rock, out float sand, out float suspended_sand, out float water, out float lava) {
   vec4 a = texture(u_texA, uv);
   vec4 b = texture(u_texB, uv);
   rock = a.r;
   sand = a.g;
+  suspended_sand = a.b;
   water = b.r;
   lava = b.g;
 
@@ -74,14 +79,14 @@ void getCellData(vec2 uv, out float rock, out float sand, out float water, out f
 
 // Calculate sliding sand flow from src to dst
 float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
-  float src_rock, src_sand, src_water, src_lava;
-  getCellData(src_uv, src_rock, src_sand, src_water, src_lava);
+  float src_rock, src_sand, src_susp, src_water, src_lava;
+  getCellData(src_uv, src_rock, src_sand, src_susp, src_water, src_lava);
   if (src_sand <= 0.0001) return 0.0;
 
   float h_src = src_rock + src_sand;
 
-  float dst_rock, dst_sand, dst_water, dst_lava;
-  getCellData(dst_uv, dst_rock, dst_sand, dst_water, dst_lava);
+  float dst_rock, dst_sand, dst_susp, dst_water, dst_lava;
+  getCellData(dst_uv, dst_rock, dst_sand, dst_susp, dst_water, dst_lava);
   float h_dst = dst_rock + dst_sand;
 
   float diff = h_src - h_dst;
@@ -104,8 +109,8 @@ float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
 
     for (int i = 0; i < 8; i++) {
       vec2 n_uv = clamp(src_uv + dirs[i] * texel, 0.0, 1.0);
-      float n_rock, n_sand, n_water, n_lava;
-      getCellData(n_uv, n_rock, n_sand, n_water, n_lava);
+      float n_rock, n_sand, n_susp, n_water, n_lava;
+      getCellData(n_uv, n_rock, n_sand, n_susp, n_water, n_lava);
       float h_n = n_rock + n_sand;
       float n_diff = h_src - h_n;
       float n_thresh = 0.0015 * dists[i];
@@ -126,16 +131,26 @@ float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
   return 0.0;
 }
 
-// Compute ratio of sand that is carried by water flow out of a cell
-float computeErosionFactor(vec2 uv) {
-  float r, s, w, l;
-  getCellData(uv, r, s, w, l);
+// Compute local suspended sand after erosion/deposition reaction
+float getNewSuspended(vec2 uv) {
+  float r, s, susp, w, l;
+  getCellData(uv, r, s, susp, w, l);
+  if (w <= 0.001) return 0.0;
+  
   vec4 f = texture(u_texFlux, uv);
-  float sf = f.r + f.g + f.b + f.a;
-  if (sf <= 0.0001) return 0.0;
-  // Limit erosion to 50% of available sand to prevent mass creation when combined with sliding
-  float max_e = min(s * 0.5, sf * u_erosion_rate);
-  return max_e / sf;
+  float total_flux = f.r + f.g + f.b + f.a;
+  float velocity = total_flux / w;
+  
+  // Smooth transition to prevent oscillation (jiggling) around the threshold
+  float erosion_multiplier = smoothstep(u_min_erosion_speed * 0.5, u_min_erosion_speed * 1.5, velocity);
+  // Capacity proportional to FLUX (water volume * velocity) to prevent tiny films from eroding mountains
+  float capacity = total_flux * u_capacity_factor * 2.0 * erosion_multiplier;
+  
+  if (capacity > susp) {
+    return susp + min(s, (capacity - susp) * u_erosion_rate);
+  } else {
+    return susp - (susp - capacity) * u_deposition_rate;
+  }
 }
 
 void main() {
@@ -145,16 +160,22 @@ void main() {
     float rock = fbm(p);
     rock = pow(rock, u_terrain_sharpness) * 2.1;
     
-    // Place initial sand in valleys
-    float sand = max(0.0, 0.16 - rock) * 1.5;
+    // Add tilt based on X axis
+    rock += (v_uv.x - 0.5) * u_terrain_tilt;
+    
+    // Ensure rock doesn't go negative before sand calculation
+    rock = max(0.0, rock);
+    
+    // Place initial sand in valleys and add a uniform layer everywhere
+    float sand = max(0.0, 0.16 - rock) * 1.5 + 0.0375;
     
     fragColor = vec4(rock, sand, 0.0, 1.0);
     return;
   }
 
   // Read current state
-  float rock, sand, water, lava;
-  getCellData(v_uv, rock, sand, water, lava);
+  float rock, sand, suspended_sand, water, lava;
+  getCellData(v_uv, rock, sand, suspended_sand, water, lava);
 
   // Compute sand sliding changes (cellular automata)
   vec2 texel = 1.0 / vec2(u_grid_size);
@@ -178,40 +199,84 @@ void main() {
     sand_out += computeSandFlow(v_uv, n_uv, dists[i]);
   }
 
-  // Erosion by water flow
-  float my_erode_factor = computeErosionFactor(v_uv);
-  vec4 my_flux = texture(u_texFlux, v_uv);
-  float sand_eroded_out = (my_flux.r + my_flux.g + my_flux.b + my_flux.a) * my_erode_factor;
+  // Reaction: Erosion / Deposition based on Carrying Capacity
+  float ground_sand_change = 0.0;
+  float local_susp = suspended_sand;
+  
+  if (water <= 0.001) {
+    ground_sand_change = suspended_sand; // water evaporated, drop all sand
+    local_susp = 0.0;
+  } else {
+    vec4 f = texture(u_texFlux, v_uv);
+    float total_flux = f.r + f.g + f.b + f.a;
+    float velocity = total_flux / water;
+    
+    float erosion_multiplier = smoothstep(u_min_erosion_speed * 0.5, u_min_erosion_speed * 1.5, velocity);
+    float capacity = total_flux * u_capacity_factor * 2.0 * erosion_multiplier;
+    
+    if (capacity > suspended_sand) {
+      float erode = min(sand, (capacity - suspended_sand) * u_erosion_rate);
+      ground_sand_change = -erode;
+      local_susp = suspended_sand + erode;
+    } else {
+      float deposit = (suspended_sand - capacity) * u_deposition_rate;
+      ground_sand_change = deposit;
+      local_susp = suspended_sand - deposit;
+    }
+  }
+  
+  sand = max(0.0, sand - sand_out + sand_in + ground_sand_change);
+  
+  // Advection: Transport of suspended sand
+  float susp_out = 0.0;
+  if (water > 0.001) {
+    vec4 f = texture(u_texFlux, v_uv);
+    float total_flux = f.r + f.g + f.b + f.a;
+    susp_out = local_susp * min(1.0, total_flux / water);
+  }
 
-  float sand_eroded_in = 0.0;
+  float susp_in = 0.0;
   // Left neighbor flows Right (g)
   if (v_uv.x > texel.x) {
     vec2 n_uv = v_uv + vec2(-1.0, 0.0) * texel;
-    sand_eroded_in += texture(u_texFlux, n_uv).g * computeErosionFactor(n_uv);
+    float n_w = texture(u_texB, n_uv).r;
+    if (n_w > 0.001) {
+      susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).g / n_w);
+    }
   }
   // Right neighbor flows Left (r)
   if (v_uv.x < 1.0 - texel.x) {
     vec2 n_uv = v_uv + vec2(1.0, 0.0) * texel;
-    sand_eroded_in += texture(u_texFlux, n_uv).r * computeErosionFactor(n_uv);
+    float n_w = texture(u_texB, n_uv).r;
+    if (n_w > 0.001) {
+      susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).r / n_w);
+    }
   }
   // Bottom neighbor flows Top (a)
   if (v_uv.y > texel.y) {
     vec2 n_uv = v_uv + vec2(0.0, -1.0) * texel;
-    sand_eroded_in += texture(u_texFlux, n_uv).a * computeErosionFactor(n_uv);
+    float n_w = texture(u_texB, n_uv).r;
+    if (n_w > 0.001) {
+      susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).a / n_w);
+    }
   }
   // Top neighbor flows Bottom (b)
   if (v_uv.y < 1.0 - texel.y) {
     vec2 n_uv = v_uv + vec2(0.0, 1.0) * texel;
-    sand_eroded_in += texture(u_texFlux, n_uv).b * computeErosionFactor(n_uv);
+    float n_w = texture(u_texB, n_uv).r;
+    if (n_w > 0.001) {
+      susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).b / n_w);
+    }
   }
 
   // Boundary condition: Sand falls off the map (infinite drain to prevent stacking)
   if (v_uv.x <= texel.x || v_uv.x >= 1.0 - texel.x || v_uv.y <= texel.y || v_uv.y >= 1.0 - texel.y) {
     sand_in = 0.0;
-    sand_eroded_in = 0.0;
+    susp_in = 0.0;
+    local_susp = 0.0;
   }
 
-  sand = max(0.0, sand - sand_out + sand_in - sand_eroded_out + sand_eroded_in);
+  suspended_sand = max(0.0, local_susp - susp_out + susp_in);
 
   // Brush painting interface
   if (u_brush_active > 0.5) {
@@ -235,6 +300,7 @@ void main() {
   // Safety checks
   rock = clamp(rock, 0.0, 10.0);
   sand = clamp(sand, 0.0, 10.0);
+  suspended_sand = clamp(suspended_sand, 0.0, 10.0);
 
-  fragColor = vec4(rock, sand, 0.0, 1.0);
+  fragColor = vec4(rock, sand, suspended_sand, 1.0);
 }

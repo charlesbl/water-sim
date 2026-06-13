@@ -79,10 +79,14 @@ export class GPGPUSimulation {
         u_grid_size: { value: this.size },
         u_sand_slide_rate: { value: config.sandSlideRate },
         u_erosion_rate: { value: config.erosionRate },
+        u_capacity_factor: { value: config.capacityFactor },
+        u_deposition_rate: { value: config.depositionRate },
+        u_min_erosion_speed: { value: config.minErosionSpeed },
         u_initialized: { value: 0.0 },
         u_seed: { value: this.seed },
         u_terrain_scale: { value: config.terrainScale },
         u_terrain_sharpness: { value: config.terrainSharpness },
+        u_terrain_tilt: { value: config.terrainTilt },
         u_fbm_octaves: { value: config.fbmOctaves },
         u_fbm_persistence: { value: config.fbmPersistence },
       },
@@ -189,8 +193,12 @@ export class GPGPUSimulation {
   public updateParameters() {
     this.simTerrainMaterial.uniforms.u_sand_slide_rate.value = config.sandSlideRate;
     this.simTerrainMaterial.uniforms.u_erosion_rate.value = config.erosionRate;
+    this.simTerrainMaterial.uniforms.u_capacity_factor.value = config.capacityFactor;
+    this.simTerrainMaterial.uniforms.u_deposition_rate.value = config.depositionRate;
+    this.simTerrainMaterial.uniforms.u_min_erosion_speed.value = config.minErosionSpeed;
     this.simTerrainMaterial.uniforms.u_terrain_scale.value = config.terrainScale;
     this.simTerrainMaterial.uniforms.u_terrain_sharpness.value = config.terrainSharpness;
+    this.simTerrainMaterial.uniforms.u_terrain_tilt.value = config.terrainTilt;
     this.simTerrainMaterial.uniforms.u_fbm_octaves.value = Math.round(config.fbmOctaves);
     this.simTerrainMaterial.uniforms.u_fbm_persistence.value = config.fbmPersistence;
     this.simFluxMaterial.uniforms.u_gravity.value = config.waterGravity;
@@ -270,18 +278,8 @@ export class GPGPUSimulation {
     this.simFluidsMaterial.uniforms.u_initialized.value = initVal;
     this.simFluidsMaterial.uniforms.u_time.value = performance.now() * 0.001;
 
-    // --- PASS A: Simulate Terrain & Sand sliding ---
-    // Read A_read and B_read, write to A_write
-    this.simTerrainMaterial.uniforms.u_texA.value = this.targetA_read.texture;
-    this.simTerrainMaterial.uniforms.u_texB.value = this.targetB_read.texture;
-    this.simTerrainMaterial.uniforms.u_texFlux.value = this.targetFlux_read.texture;
-
-    this.orthoMesh.material = this.simTerrainMaterial;
-    this.renderer.setRenderTarget(this.targetA_write);
-    this.renderer.render(this.orthoScene, this.orthoCamera);
-
     // --- PASS B1: Simulate Water Flux ---
-    this.simFluxMaterial.uniforms.u_texA.value = this.targetA_write.texture;
+    this.simFluxMaterial.uniforms.u_texA.value = this.targetA_read.texture;
     this.simFluxMaterial.uniforms.u_texB.value = this.targetB_read.texture;
     this.simFluxMaterial.uniforms.u_texFlux.value = this.targetFlux_read.texture;
     this.simFluxMaterial.uniforms.u_initialized.value = initVal;
@@ -291,13 +289,23 @@ export class GPGPUSimulation {
     this.renderer.render(this.orthoScene, this.orthoCamera);
 
     // --- PASS B1.5: Simulate Lava Flux ---
-    this.simLavaFluxMaterial.uniforms.u_texA.value = this.targetA_write.texture;
+    this.simLavaFluxMaterial.uniforms.u_texA.value = this.targetA_read.texture;
     this.simLavaFluxMaterial.uniforms.u_texB.value = this.targetB_read.texture;
     this.simLavaFluxMaterial.uniforms.u_texFlux.value = this.targetLavaFlux_read.texture;
     this.simLavaFluxMaterial.uniforms.u_initialized.value = initVal;
 
     this.orthoMesh.material = this.simLavaFluxMaterial;
     this.renderer.setRenderTarget(this.targetLavaFlux_write);
+    this.renderer.render(this.orthoScene, this.orthoCamera);
+
+    // --- PASS A: Simulate Terrain & Sand sliding ---
+    // Read A_read and B_read, write to A_write
+    this.simTerrainMaterial.uniforms.u_texA.value = this.targetA_read.texture;
+    this.simTerrainMaterial.uniforms.u_texB.value = this.targetB_read.texture;
+    this.simTerrainMaterial.uniforms.u_texFlux.value = this.targetFlux_write.texture;
+
+    this.orthoMesh.material = this.simTerrainMaterial;
+    this.renderer.setRenderTarget(this.targetA_write);
     this.renderer.render(this.orthoScene, this.orthoCamera);
 
     // --- PASS B2: Simulate Fluid flow and evaporation ---

@@ -9,6 +9,9 @@ export interface Config {
   lavaDamping: number; // Friction / damping for lava
   sandSlideRate: number; // Rate at which sand collapses beyond angle of repose
   erosionRate: number; // Rate at which water flow erodes sand
+  capacityFactor: number; // Multiplier for sediment carrying capacity
+  depositionRate: number; // Rate at which suspended sand deposits
+  minErosionSpeed: number; // Minimum water speed to pick up sand
   evaporation: number; // Water evaporation rate per step
   paused: boolean; // Is the simulation paused?
 
@@ -28,6 +31,7 @@ export interface Config {
   terrainSharpness: number; // Exponent for peak sharpness
   fbmOctaves: number; // Number of noise detail layers
   fbmPersistence: number; // Persistence of details in FBM
+  terrainTilt: number; // Incline the map (one side higher than the other)
 
   // Rain settings
   rainActive: boolean;
@@ -43,6 +47,9 @@ export const config: Config = {
   lavaDamping: 0.95,
   sandSlideRate: 0.05,
   erosionRate: 0.01,
+  capacityFactor: 0.05,
+  depositionRate: 0.1,
+  minErosionSpeed: 0.001,
   evaporation: 0.0,
   paused: false,
 
@@ -59,6 +66,7 @@ export const config: Config = {
   terrainSharpness: 1.4,
   fbmOctaves: 4,
   fbmPersistence: 0.44,
+  terrainTilt: 0.0,
 
   rainActive: false,
   rainQuantity: 0.0005,

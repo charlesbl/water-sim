@@ -123,8 +123,8 @@ void main() {
       fragColor = vec4(vec3(v_rock * 1.5), 1.0);
       return;
     } else if (u_view_mode == 4.0) { // Sand Only
-      fragColor = vec4(0.85, 0.75, 0.3, v_sand > 0.01 ? 1.0 : 0.0);
-      if (v_sand <= 0.01) discard;
+      fragColor = vec4(0.85, 0.75, 0.3, v_sand > 0.001 ? 1.0 : 0.0);
+      if (v_sand <= 0.001) discard;
       return;
     }
 
@@ -151,7 +151,7 @@ void main() {
     vec3 sand_color = sand_base + vec3(s_noise);
 
     float slope = 1.0 - normal.z; 
-    float sand_mask = smoothstep(0.01, 0.15, v_sand);
+    float sand_mask = smoothstep(0.0001, 0.05, v_sand);
     vec3 ground_color = mix(rock_color, sand_color, sand_mask);
 
     vec3 terrain_lit = ground_color * (diff * u_sun_color + vec3(0.12));

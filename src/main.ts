@@ -391,10 +391,14 @@ function setupUI() {
       | 'lavaDamping'
       | 'sandSlideRate'
       | 'erosionRate'
+      | 'capacityFactor'
+      | 'depositionRate'
+      | 'minErosionSpeed'
       | 'evaporation'
       | 'timeOfDay'
       | 'terrainScale'
       | 'terrainSharpness'
+      | 'terrainTilt'
       | 'fbmOctaves'
       | 'fbmPersistence'
       | 'rainQuantity'
@@ -426,7 +430,7 @@ function setupUI() {
 
       // Automatically regenerate terrain when changing noise parameters, keeping seed
       if (
-        ['terrainScale', 'terrainSharpness', 'fbmOctaves', 'fbmPersistence'].includes(configKey)
+        ['terrainScale', 'terrainSharpness', 'terrainTilt', 'fbmOctaves', 'fbmPersistence'].includes(configKey)
       ) {
         gpgpu.resetTerrain(false);
       }
@@ -441,10 +445,14 @@ function setupUI() {
   bindSlider('lava-damping', 'lavaDamping', 'lava-damping-val');
   bindSlider('sand-slide', 'sandSlideRate', 'sand-slide-val');
   bindSlider('erosion-rate', 'erosionRate', 'erosion-rate-val');
+  bindSlider('capacity-factor', 'capacityFactor', 'capacity-factor-val');
+  bindSlider('deposition-rate', 'depositionRate', 'deposition-rate-val');
+  bindSlider('min-erosion-speed', 'minErosionSpeed', 'min-erosion-speed-val');
   bindSlider('evaporation', 'evaporation', 'evaporation-val');
   bindSlider('time-of-day', 'timeOfDay', 'time-of-day-val');
   bindSlider('terrain-scale', 'terrainScale', 'terrain-scale-val');
   bindSlider('terrain-sharpness', 'terrainSharpness', 'terrain-sharpness-val');
+  bindSlider('terrain-tilt', 'terrainTilt', 'terrain-tilt-val');
   bindSlider('fbm-octaves', 'fbmOctaves', 'fbm-octaves-val');
   bindSlider('fbm-persistence', 'fbmPersistence', 'fbm-persistence-val');
   bindSlider('rain-quantity', 'rainQuantity', 'rain-quantity-val');
