@@ -365,6 +365,17 @@ function onPointerUp(_e: PointerEvent) {
  * Setup and bind interactive HUD buttons & sliders
  */
 function setupUI() {
+  // 0. Collapsible HUD Sections Toggle
+  const headers = document.querySelectorAll('.hud-section-header');
+  headers.forEach((header) => {
+    header.addEventListener('click', () => {
+      const section = header.closest('.hud-section');
+      if (section) {
+        section.classList.toggle('collapsed');
+      }
+    });
+  });
+
   // 1. Brush Tool Buttons Selection
   const brushBtns = document.querySelectorAll('.btn-brush');
   brushBtns.forEach((btn) => {

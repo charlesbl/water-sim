@@ -26,233 +26,278 @@
 
       <!-- Section: Brushes -->
       <section class="hud-section">
-        <h2>Pinceau Interactif</h2>
-        <div class="brush-grid">
-          <button class="btn-brush active" data-brush="0" title="Ajouter de l'eau">
-            <span class="icon">🌊</span> Eau
-          </button>
-          <button class="btn-brush" data-brush="1" title="Ajouter de la lave">
-            <span class="icon">🌋</span> Lave
-          </button>
-          <button class="btn-brush" data-brush="2" title="Ajouter du sable">
-            <span class="icon">⏳</span> Sable
-          </button>
-          <button class="btn-brush" data-brush="3" title="Surélever le terrain">
-            <span class="icon">⛰️</span> Monter
-          </button>
-          <button class="btn-brush" data-brush="4" title="Creuser le terrain">
-            <span class="icon">🕳️</span> Creuser
-          </button>
-          <button class="btn-brush" data-brush="5" title="Effacer l'eau et la lave">
-            <span class="icon">🧹</span> Effacer
-          </button>
-        </div>
+        <button class="hud-section-header">
+          <h2><span>🖌️</span> Pinceau Interactif</h2>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="hud-section-content">
+          <div class="hud-section-content-inner">
+            <div class="brush-grid">
+              <button class="btn-brush active" data-brush="0" title="Ajouter de l'eau">
+                <span class="icon">🌊</span> Eau
+              </button>
+              <button class="btn-brush" data-brush="1" title="Ajouter de la lave">
+                <span class="icon">🌋</span> Lave
+              </button>
+              <button class="btn-brush" data-brush="2" title="Ajouter du sable">
+                <span class="icon">⏳</span> Sable
+              </button>
+              <button class="btn-brush" data-brush="3" title="Surélever le terrain">
+                <span class="icon">⛰️</span> Monter
+              </button>
+              <button class="btn-brush" data-brush="4" title="Creuser le terrain">
+                <span class="icon">🕳️</span> Creuser
+              </button>
+              <button class="btn-brush" data-brush="5" title="Effacer l'eau et la lave">
+                <span class="icon">🧹</span> Effacer
+              </button>
+            </div>
 
-        <div class="control-group">
-          <div class="label-row">
-            <label for="brush-radius">Taille du pinceau</label>
-            <span id="brush-radius-val" class="value-display">15</span>
-          </div>
-          <input type="range" id="brush-radius" min="2" max="200" value="15" step="1" />
-        </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="brush-radius">Taille du pinceau</label>
+                <span id="brush-radius-val" class="value-display">15</span>
+              </div>
+              <input type="range" id="brush-radius" min="2" max="200" value="15" step="1" />
+            </div>
 
-        <div class="control-group">
-          <div class="label-row">
-            <label for="brush-strength">Intensité</label>
-            <span id="brush-strength-val" class="value-display">1.0</span>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="brush-strength">Intensité</label>
+                <span id="brush-strength-val" class="value-display">1.0</span>
+              </div>
+              <input type="range" id="brush-strength" min="0.1" max="2.0" value="1.0" step="0.05" />
+            </div>
           </div>
-          <input type="range" id="brush-strength" min="0.1" max="2.0" value="1.0" step="0.05" />
-        </div>
-      </section>
-
-      <!-- Section: Simulation Parameters -->
-      <section class="hud-section">
-        <h2>Paramètres Physiques</h2>
-        <div class="control-group">
-          <div class="label-row">
-            <label for="water-gravity">Gravité de l'eau (Vagues)</label>
-            <span id="water-gravity-val" class="value-display">9.81</span>
-          </div>
-          <input type="range" id="water-gravity" min="1.0" max="25.0" value="9.81" step="0.1" />
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="water-damping">Friction de l'eau</label>
-            <span id="water-damping-val" class="value-display">0.998</span>
-          </div>
-          <input type="range" id="water-damping" min="0.90" max="1.0" value="0.998" step="0.001" />
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="lava-gravity">Gravité de la lave</label>
-            <span id="lava-gravity-val" class="value-display">6.0</span>
-          </div>
-          <input type="range" id="lava-gravity" min="0.1" max="25.0" value="6.0" step="0.1" />
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="lava-damping">Friction de la lave</label>
-            <span id="lava-damping-val" class="value-display">0.950</span>
-          </div>
-          <input type="range" id="lava-damping" min="0.50" max="1.0" value="0.95" step="0.001" />
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="sand-slide">Glissement du sable</label>
-            <span id="sand-slide-val" class="value-display">0.05</span>
-          </div>
-          <input type="range" id="sand-slide" min="0.01" max="0.2" value="0.05" step="0.01" />
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="sand-repose-slope">Pente limite sable</label>
-            <span id="sand-repose-slope-val" class="value-display">0.0015</span>
-          </div>
-          <input type="range" id="sand-repose-slope" min="0.0" max="0.04" value="0.0015" step="0.0005" />
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="erosion-rate">Vitesse d'érosion</label>
-            <span id="erosion-rate-val" class="value-display">0.005</span>
-          </div>
-          <input type="range" id="erosion-rate" min="0.0" max="0.1" value="0.005" step="0.001" />
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="capacity-factor">Capacité de transport</label>
-            <span id="capacity-factor-val" class="value-display">0.400</span>
-          </div>
-          <input type="range" id="capacity-factor" min="0.0" max="0.5" value="0.4" step="0.005" />
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="deposition-rate">Vitesse de dépôt</label>
-            <span id="deposition-rate-val" class="value-display">0.05</span>
-          </div>
-          <input type="range" id="deposition-rate" min="0.0" max="1.0" value="0.05" step="0.01" />
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="min-erosion-speed">Vitesse min. d'érosion</label>
-            <span id="min-erosion-speed-val" class="value-display">0.001</span>
-          </div>
-          <input type="range" id="min-erosion-speed" min="0.0" max="0.05" value="0.001" step="0.001" />
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="evaporation">Évaporation de l'eau</label>
-            <span id="evaporation-val" class="value-display">0.0000</span>
-          </div>
-          <input type="range" id="evaporation" min="0.0" max="0.003" value="0.0" step="0.0001" />
-        </div>
-      </section>
-
-      <!-- Section: Climat & Météo -->
-      <section class="hud-section">
-        <h2>Climat & Météo</h2>
-        <div class="checkbox-row">
-          <input type="checkbox" id="rain-active" />
-          <label for="rain-active">⛈️ Activer la Pluie</label>
-        </div>
-        <div class="control-group" style="margin-top: 12px;">
-          <div class="label-row">
-            <label for="rain-quantity">Quantité de gouttes</label>
-            <span id="rain-quantity-val" class="value-display">0.0005</span>
-          </div>
-          <input type="range" id="rain-quantity" min="0.0001" max="0.0010" value="0.0005" step="0.0001" />
-        </div>
-        <div class="control-group">
-          <div class="label-row">
-            <label for="rain-size">Taille des gouttes</label>
-            <span id="rain-size-val" class="value-display">0.005</span>
-          </div>
-          <input type="range" id="rain-size" min="0.001" max="0.010" value="0.005" step="0.001" />
         </div>
       </section>
 
       <!-- Section: Terrain Generation -->
-      <section class="hud-section">
-        <h2>Génération du Terrain</h2>
-        <div class="control-group">
-          <div class="label-row">
-            <label for="terrain-scale">Échelle (Zoom)</label>
-            <span id="terrain-scale-val" class="value-display">4.0</span>
-          </div>
-          <input type="range" id="terrain-scale" min="1.0" max="10.0" value="4.0" step="0.1" />
-        </div>
+      <section class="hud-section collapsed">
+        <button class="hud-section-header">
+          <h2><span>⛰️</span> Génération du Terrain</h2>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="hud-section-content">
+          <div class="hud-section-content-inner">
+            <div class="control-group">
+              <div class="label-row">
+                <label for="terrain-scale">Échelle (Zoom)</label>
+                <span id="terrain-scale-val" class="value-display">4.0</span>
+              </div>
+              <input type="range" id="terrain-scale" min="1.0" max="10.0" value="4.0" step="0.1" />
+            </div>
 
-        <div class="control-group">
-          <div class="label-row">
-            <label for="terrain-sharpness">Sharpness / Relief</label>
-            <span id="terrain-sharpness-val" class="value-display">1.4</span>
-          </div>
-          <input type="range" id="terrain-sharpness" min="0.5" max="3.0" value="1.4" step="0.05" />
-        </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="terrain-sharpness">Sharpness / Relief</label>
+                <span id="terrain-sharpness-val" class="value-display">1.4</span>
+              </div>
+              <input type="range" id="terrain-sharpness" min="0.5" max="3.0" value="1.4" step="0.05" />
+            </div>
 
-        <div class="control-group">
-          <div class="label-row">
-            <label for="terrain-tilt">Inclinaison</label>
-            <span id="terrain-tilt-val" class="value-display">0.0</span>
-          </div>
-          <input type="range" id="terrain-tilt" min="-5.0" max="5.0" value="0.0" step="0.1" />
-        </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="terrain-tilt">Inclinaison</label>
+                <span id="terrain-tilt-val" class="value-display">0.0</span>
+              </div>
+              <input type="range" id="terrain-tilt" min="-5.0" max="5.0" value="0.0" step="0.1" />
+            </div>
 
-        <div class="control-group">
-          <div class="label-row">
-            <label for="fbm-octaves">Détails (Octaves)</label>
-            <span id="fbm-octaves-val" class="value-display">4</span>
-          </div>
-          <input type="range" id="fbm-octaves" min="1" max="8" value="4" step="1" />
-        </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="fbm-octaves">Détails (Octaves)</label>
+                <span id="fbm-octaves-val" class="value-display">4</span>
+              </div>
+              <input type="range" id="fbm-octaves" min="1" max="8" value="4" step="1" />
+            </div>
 
-        <div class="control-group">
-          <div class="label-row">
-            <label for="fbm-persistence">Persistance</label>
-            <span id="fbm-persistence-val" class="value-display">0.44</span>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="fbm-persistence">Persistance</label>
+                <span id="fbm-persistence-val" class="value-display">0.44</span>
+              </div>
+              <input type="range" id="fbm-persistence" min="0.10" max="0.90" value="0.44" step="0.01" />
+            </div>
           </div>
-          <input type="range" id="fbm-persistence" min="0.10" max="0.90" value="0.44" step="0.01" />
+        </div>
+      </section>
+
+      <!-- Section: Fluid Physics -->
+      <section class="hud-section collapsed">
+        <button class="hud-section-header">
+          <h2><span>💧</span> Comportement des Fluides</h2>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="hud-section-content">
+          <div class="hud-section-content-inner">
+            <div class="control-group">
+              <div class="label-row">
+                <label for="water-gravity">Gravité de l'eau (Vagues)</label>
+                <span id="water-gravity-val" class="value-display">9.81</span>
+              </div>
+              <input type="range" id="water-gravity" min="1.0" max="25.0" value="9.81" step="0.1" />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="water-damping">Friction de l'eau</label>
+                <span id="water-damping-val" class="value-display">0.998</span>
+              </div>
+              <input type="range" id="water-damping" min="0.90" max="1.0" value="0.998" step="0.001" />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="evaporation">Évaporation de l'eau</label>
+                <span id="evaporation-val" class="value-display">0.0000</span>
+              </div>
+              <input type="range" id="evaporation" min="0.0" max="0.003" value="0.0" step="0.0001" />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="lava-gravity">Gravité de la lave</label>
+                <span id="lava-gravity-val" class="value-display">6.0</span>
+              </div>
+              <input type="range" id="lava-gravity" min="0.1" max="25.0" value="6.0" step="0.1" />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="lava-damping">Friction de la lave</label>
+                <span id="lava-damping-val" class="value-display">0.950</span>
+              </div>
+              <input type="range" id="lava-damping" min="0.50" max="1.0" value="0.95" step="0.001" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: Sediment & Erosion -->
+      <section class="hud-section collapsed">
+        <button class="hud-section-header">
+          <h2><span>⏳</span> Hydrologie & Sable</h2>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="hud-section-content">
+          <div class="hud-section-content-inner">
+            <div class="control-group">
+              <div class="label-row">
+                <label for="erosion-rate">Vitesse d'érosion</label>
+                <span id="erosion-rate-val" class="value-display">0.005</span>
+              </div>
+              <input type="range" id="erosion-rate" min="0.0" max="0.1" value="0.005" step="0.001" />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="capacity-factor">Capacité de transport</label>
+                <span id="capacity-factor-val" class="value-display">0.400</span>
+              </div>
+              <input type="range" id="capacity-factor" min="0.0" max="0.5" value="0.4" step="0.005" />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="deposition-rate">Vitesse de dépôt</label>
+                <span id="deposition-rate-val" class="value-display">0.05</span>
+              </div>
+              <input type="range" id="deposition-rate" min="0.0" max="1.0" value="0.05" step="0.01" />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="min-erosion-speed">Vitesse min. d'érosion</label>
+                <span id="min-erosion-speed-val" class="value-display">0.001</span>
+              </div>
+              <input type="range" id="min-erosion-speed" min="0.0" max="0.05" value="0.001" step="0.001" />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="sand-slide">Glissement du sable</label>
+                <span id="sand-slide-val" class="value-display">0.05</span>
+              </div>
+              <input type="range" id="sand-slide" min="0.01" max="0.2" value="0.05" step="0.01" />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="sand-repose-slope">Pente limite sable</label>
+                <span id="sand-repose-slope-val" class="value-display">0.0015</span>
+              </div>
+              <input type="range" id="sand-repose-slope" min="0.0" max="0.04" value="0.0015" step="0.0005" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: Climate & Weather -->
+      <section class="hud-section collapsed">
+        <button class="hud-section-header">
+          <h2><span>⛈️</span> Climat & Météo</h2>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="hud-section-content">
+          <div class="hud-section-content-inner">
+            <div class="checkbox-row">
+              <input type="checkbox" id="rain-active" />
+              <label for="rain-active">⛈️ Activer la Pluie</label>
+            </div>
+            <div class="control-group" style="margin-top: 12px;">
+              <div class="label-row">
+                <label for="rain-quantity">Quantité de gouttes</label>
+                <span id="rain-quantity-val" class="value-display">0.0005</span>
+              </div>
+              <input type="range" id="rain-quantity" min="0.0001" max="0.0010" value="0.0005" step="0.0001" />
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="rain-size">Taille des gouttes</label>
+                <span id="rain-size-val" class="value-display">0.005</span>
+              </div>
+              <input type="range" id="rain-size" min="0.001" max="0.010" value="0.005" step="0.001" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section: Aesthetics -->
+      <section class="hud-section collapsed">
+        <button class="hud-section-header">
+          <h2><span>🖥️</span> Affichage & Rendu</h2>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="hud-section-content">
+          <div class="hud-section-content-inner">
+            <div class="control-group">
+              <div class="label-row">
+                <label for="view-mode">Mode de vue</label>
+              </div>
+              <select id="view-mode" class="select-input">
+                <option value="realistic">Réaliste</option>
+                <option value="heightmap">Hauteur (Roche)</option>
+                <option value="water-only">Eau uniquement</option>
+                <option value="lava-only">Lave uniquement</option>
+                <option value="sand-only">Sable uniquement</option>
+              </select>
+            </div>
+
+            <div class="checkbox-row">
+              <input type="checkbox" id="auto-rotate" />
+              <label for="auto-rotate">Rotation Caméra Auto</label>
+            </div>
+          </div>
         </div>
       </section>
 
       <!-- Section: Controls -->
       <section class="hud-section">
-        <h2>Contrôles Globaux</h2>
         <div class="btn-row">
           <button id="btn-pause" class="btn-action">⏸️ Pause</button>
           <button id="btn-clear" class="btn-action danger">🧹 Vider Fluides</button>
           <button id="btn-reset" class="btn-action danger">⛰️ Reset Terrain</button>
-        </div>
-      </section>
-
-      <!-- Section: Aesthetics -->
-      <section class="hud-section">
-        <h2>Affichage</h2>
-        <div class="control-group">
-          <div class="label-row">
-            <label for="view-mode">Mode de vue</label>
-          </div>
-          <select id="view-mode" class="select-input">
-            <option value="realistic">Réaliste</option>
-            <option value="heightmap">Hauteur (Roche)</option>
-            <option value="water-only">Eau uniquement</option>
-            <option value="lava-only">Lave uniquement</option>
-            <option value="sand-only">Sable uniquement</option>
-          </select>
-        </div>
-
-        <div class="checkbox-row">
-          <input type="checkbox" id="auto-rotate" />
-          <label for="auto-rotate">Rotation Caméra Auto</label>
         </div>
       </section>
 

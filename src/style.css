@@ -95,18 +95,75 @@ h1 span {
   margin-top: 2px;
 }
 
-/* HUD Sections */
+/* Collapsible HUD Sections */
 .hud-section {
-  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 12px;
+  margin-bottom: 12px;
 }
 
-h2 {
-  font-size: 13px;
+.hud-section:last-of-type {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.hud-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #c5c5d2;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+  outline: none;
+  font-family: inherit;
+  transition: color 0.2s ease;
+}
+
+.hud-section-header:hover {
+  color: #fff;
+}
+
+.hud-section-header h2 {
+  font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: #a4a4b5;
-  margin-bottom: 12px;
+  color: inherit;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-section-header .chevron {
+  font-size: 10px;
+  color: #8a8a9d;
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.hud-section.collapsed .hud-section-header .chevron {
+  transform: rotate(-90deg);
+}
+
+.hud-section-content {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  overflow: hidden;
+}
+
+.hud-section.collapsed .hud-section-content {
+  grid-template-rows: 0fr;
+}
+
+.hud-section-content-inner {
+  min-height: 0;
+  padding-top: 12px;
 }
 
 /* Brush Grid Layout */
