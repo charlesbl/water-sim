@@ -95,6 +95,7 @@ function init() {
       u_sun_color: { value: new THREE.Color() },
       u_local_camera_pos: { value: new THREE.Vector3() },
       u_layer: { value: 0.0 },
+      u_smooth: { value: config.smoothRendering ? 1.0 : 0.0 },
     },
     depthWrite: true,
     depthTest: true,
@@ -122,6 +123,7 @@ function init() {
       u_sun_color: { value: new THREE.Color() },
       u_local_camera_pos: { value: new THREE.Vector3() },
       u_layer: { value: 1.0 },
+      u_smooth: { value: config.smoothRendering ? 1.0 : 0.0 },
     },
     transparent: true,
     depthWrite: false,
@@ -520,6 +522,15 @@ function setupUI() {
       config.rainActive = rainCheck.checked;
     });
   }
+
+  // 8.5. Smooth Rendering checkbox
+  const smoothCheck = document.getElementById('smooth-rendering') as HTMLInputElement;
+  if (smoothCheck) {
+    smoothCheck.checked = config.smoothRendering;
+    smoothCheck.addEventListener('change', () => {
+      config.smoothRendering = smoothCheck.checked;
+    });
+  }
 }
 
 /**
@@ -614,11 +625,11 @@ function animate() {
   renderer.setClearColor(skyColor);
   scene.background = skyColor;
 
-  // Pass current simulation textures as uniform attachments for rendering
   terrainMaterial.uniforms.u_texA.value = gpgpu.targetA_read.texture;
   terrainMaterial.uniforms.u_texB.value = gpgpu.targetB_read.texture;
   terrainMaterial.uniforms.u_height_scale.value = config.heightScale;
   terrainMaterial.uniforms.u_time.value = now * 0.001;
+  terrainMaterial.uniforms.u_smooth.value = config.smoothRendering ? 1.0 : 0.0;
 
   fluidMaterial.uniforms.u_texA.value = gpgpu.targetA_read.texture;
   fluidMaterial.uniforms.u_texB.value = gpgpu.targetB_read.texture;
@@ -626,6 +637,7 @@ function animate() {
   fluidMaterial.uniforms.u_texLavaFlux.value = gpgpu.targetLavaFlux_read.texture;
   fluidMaterial.uniforms.u_height_scale.value = config.heightScale;
   fluidMaterial.uniforms.u_time.value = now * 0.001;
+  fluidMaterial.uniforms.u_smooth.value = config.smoothRendering ? 1.0 : 0.0;
 
   // Pass local light directions and camera position vectors to ShaderMaterial
   const localSun = terrainMesh.worldToLocal(sunLight.position.clone()).normalize();

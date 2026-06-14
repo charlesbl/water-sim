@@ -19,6 +19,7 @@ uniform float u_grid_size;
 uniform float u_view_mode; // 0: Realistic, 1: Heightmap, 2: Water Only, 3: Lava Only, 4: Sand Only
 uniform float u_time;
 uniform float u_layer;
+uniform float u_smooth;
 
 uniform vec3 u_sun_dir;      // Light direction in local space
 uniform vec3 u_sun_color;    // Diffuse light color
@@ -67,15 +68,58 @@ float snoise(vec2 v){
 
 // Get total height (rock + sand + water + lava) at given UV
 float get_height(vec2 uv) {
-  vec4 a = texture(u_texA, uv);
-  vec4 b = texture(u_texB, uv);
-  return a.r + a.g + b.r + b.g;
+  if (u_smooth < 0.5) {
+    vec4 a = texture(u_texA, uv);
+    vec4 b = texture(u_texB, uv);
+    return a.r + a.g + b.r + b.g;
+  }
+  
+  vec2 texel = 1.0 / vec2(u_grid_size);
+  vec2 p = uv * u_grid_size - 0.5;
+  vec2 f = fract(p);
+  vec2 i = floor(p) * texel + texel * 0.5;
+  
+  vec4 tlA = texture(u_texA, i);
+  vec4 trA = texture(u_texA, i + vec2(texel.x, 0.0));
+  vec4 blA = texture(u_texA, i + vec2(0.0, texel.y));
+  vec4 brA = texture(u_texA, i + texel);
+
+  vec4 tlB = texture(u_texB, i);
+  vec4 trB = texture(u_texB, i + vec2(texel.x, 0.0));
+  vec4 blB = texture(u_texB, i + vec2(0.0, texel.y));
+  vec4 brB = texture(u_texB, i + texel);
+
+  float tl = tlA.r + tlA.g + tlB.r + tlB.g;
+  float tr = trA.r + trA.g + trB.r + trB.g;
+  float bl = blA.r + blA.g + blB.r + blB.g;
+  float br = brA.r + brA.g + brB.r + brB.g;
+  
+  return mix(mix(tl, tr, f.x), mix(bl, br, f.x), f.y);
 }
 
 // Get ground height (rock + sand) at given UV
 float get_ground_height(vec2 uv) {
-  vec4 a = texture(u_texA, uv);
-  return a.r + a.g;
+  if (u_smooth < 0.5) {
+    vec4 a = texture(u_texA, uv);
+    return a.r + a.g;
+  }
+  
+  vec2 texel = 1.0 / vec2(u_grid_size);
+  vec2 p = uv * u_grid_size - 0.5;
+  vec2 f = fract(p);
+  vec2 i = floor(p) * texel + texel * 0.5;
+  
+  vec4 tl = texture(u_texA, i);
+  vec4 tr = texture(u_texA, i + vec2(texel.x, 0.0));
+  vec4 bl = texture(u_texA, i + vec2(0.0, texel.y));
+  vec4 br = texture(u_texA, i + texel);
+  
+  float h_tl = tl.r + tl.g;
+  float h_tr = tr.r + tr.g;
+  float h_bl = bl.r + bl.g;
+  float h_br = br.r + br.g;
+  
+  return mix(mix(h_tl, h_tr, f.x), mix(h_bl, h_br, f.x), f.y);
 }
 
 // Bilinear interpolation for flux to prevent blocky flow directions

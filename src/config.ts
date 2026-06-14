@@ -24,6 +24,7 @@ export interface Config {
   // Visual settings
   viewMode: 'realistic' | 'heightmap' | 'water-only' | 'lava-only' | 'sand-only';
   autoRotate: boolean; // Auto-rotation of OrbitControls
+  smoothRendering: boolean;
   heightScale: number; // Scaling of Z-height displacement for mesh
 
   // Terrain generation settings
@@ -60,6 +61,7 @@ export const config: Config = {
 
   viewMode: 'realistic',
   autoRotate: false,
+  smoothRendering: true,
   heightScale: 18.0,
 
   terrainScale: 4.0,
