@@ -78,6 +78,7 @@ export class GPGPUSimulation {
         u_brush_strength: { value: 1.0 },
         u_grid_size: { value: this.size },
         u_sand_slide_rate: { value: config.sandSlideRate },
+        u_sand_repose_slope: { value: config.sandReposeSlope },
         u_erosion_rate: { value: config.erosionRate },
         u_capacity_factor: { value: config.capacityFactor },
         u_deposition_rate: { value: config.depositionRate },
@@ -192,6 +193,7 @@ export class GPGPUSimulation {
    */
   public updateParameters() {
     this.simTerrainMaterial.uniforms.u_sand_slide_rate.value = config.sandSlideRate;
+    this.simTerrainMaterial.uniforms.u_sand_repose_slope.value = config.sandReposeSlope;
     this.simTerrainMaterial.uniforms.u_erosion_rate.value = config.erosionRate;
     this.simTerrainMaterial.uniforms.u_capacity_factor.value = config.capacityFactor;
     this.simTerrainMaterial.uniforms.u_deposition_rate.value = config.depositionRate;

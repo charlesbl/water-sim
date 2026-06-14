@@ -79,9 +79,9 @@
         <div class="control-group">
           <div class="label-row">
             <label for="water-damping">Friction de l'eau</label>
-            <span id="water-damping-val" class="value-display">0.990</span>
+            <span id="water-damping-val" class="value-display">0.998</span>
           </div>
-          <input type="range" id="water-damping" min="0.90" max="1.0" value="0.99" step="0.001" />
+          <input type="range" id="water-damping" min="0.90" max="1.0" value="0.998" step="0.001" />
         </div>
 
         <div class="control-group">
@@ -110,26 +110,34 @@
 
         <div class="control-group">
           <div class="label-row">
-            <label for="erosion-rate">Vitesse d'érosion</label>
-            <span id="erosion-rate-val" class="value-display">0.010</span>
+            <label for="sand-repose-slope">Pente limite sable</label>
+            <span id="sand-repose-slope-val" class="value-display">0.0015</span>
           </div>
-          <input type="range" id="erosion-rate" min="0.0" max="0.1" value="0.01" step="0.001" />
+          <input type="range" id="sand-repose-slope" min="0.0" max="0.04" value="0.0015" step="0.0005" />
+        </div>
+
+        <div class="control-group">
+          <div class="label-row">
+            <label for="erosion-rate">Vitesse d'érosion</label>
+            <span id="erosion-rate-val" class="value-display">0.005</span>
+          </div>
+          <input type="range" id="erosion-rate" min="0.0" max="0.1" value="0.005" step="0.001" />
         </div>
 
         <div class="control-group">
           <div class="label-row">
             <label for="capacity-factor">Capacité de transport</label>
-            <span id="capacity-factor-val" class="value-display">0.050</span>
+            <span id="capacity-factor-val" class="value-display">0.400</span>
           </div>
-          <input type="range" id="capacity-factor" min="0.0" max="0.5" value="0.05" step="0.005" />
+          <input type="range" id="capacity-factor" min="0.0" max="0.5" value="0.4" step="0.005" />
         </div>
 
         <div class="control-group">
           <div class="label-row">
             <label for="deposition-rate">Vitesse de dépôt</label>
-            <span id="deposition-rate-val" class="value-display">0.10</span>
+            <span id="deposition-rate-val" class="value-display">0.05</span>
           </div>
-          <input type="range" id="deposition-rate" min="0.0" max="1.0" value="0.1" step="0.01" />
+          <input type="range" id="deposition-rate" min="0.0" max="1.0" value="0.05" step="0.01" />
         </div>
 
         <div class="control-group">
@@ -228,7 +236,7 @@
 
       <!-- Section: Aesthetics -->
       <section class="hud-section">
-        <h2>Affichage & Heure</h2>
+        <h2>Affichage</h2>
         <div class="control-group">
           <div class="label-row">
             <label for="view-mode">Mode de vue</label>
@@ -240,14 +248,6 @@
             <option value="lava-only">Lave uniquement</option>
             <option value="sand-only">Sable uniquement</option>
           </select>
-        </div>
-
-        <div class="control-group">
-          <div class="label-row">
-            <label for="time-of-day">Cycle Jour / Nuit</label>
-            <span id="time-of-day-val" class="value-display">12:00</span>
-          </div>
-          <input type="range" id="time-of-day" min="0" max="24" value="12" step="0.1" />
         </div>
 
         <div class="checkbox-row">

@@ -8,6 +8,7 @@ export interface Config {
   lavaGravity: number; // Gravity acceleration for lava
   lavaDamping: number; // Friction / damping for lava
   sandSlideRate: number; // Rate at which sand collapses beyond angle of repose
+  sandReposeSlope: number; // Slope threshold below which sand does not flow at all
   erosionRate: number; // Rate at which water flow erodes sand
   capacityFactor: number; // Multiplier for sediment carrying capacity
   depositionRate: number; // Rate at which suspended sand deposits
@@ -22,7 +23,6 @@ export interface Config {
 
   // Visual settings
   viewMode: 'realistic' | 'heightmap' | 'water-only' | 'lava-only' | 'sand-only';
-  timeOfDay: number; // Sun position hour (0 to 24)
   autoRotate: boolean; // Auto-rotation of OrbitControls
   heightScale: number; // Scaling of Z-height displacement for mesh
 
@@ -46,9 +46,10 @@ export const config: Config = {
   lavaGravity: 6.0,
   lavaDamping: 0.95,
   sandSlideRate: 0.05,
-  erosionRate: 0.01,
-  capacityFactor: 0.05,
-  depositionRate: 0.1,
+  sandReposeSlope: 0.0015,
+  erosionRate: 0.005,
+  capacityFactor: 0.4,
+  depositionRate: 0.05,
   minErosionSpeed: 0.001,
   evaporation: 0.0,
   paused: false,
@@ -58,7 +59,6 @@ export const config: Config = {
   brushStrength: 1.0,
 
   viewMode: 'realistic',
-  timeOfDay: 12.0,
   autoRotate: false,
   heightScale: 18.0,
 

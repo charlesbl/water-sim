@@ -390,12 +390,12 @@ function setupUI() {
       | 'lavaGravity'
       | 'lavaDamping'
       | 'sandSlideRate'
+      | 'sandReposeSlope'
       | 'erosionRate'
       | 'capacityFactor'
       | 'depositionRate'
       | 'minErosionSpeed'
       | 'evaporation'
-      | 'timeOfDay'
       | 'terrainScale'
       | 'terrainSharpness'
       | 'terrainTilt'
@@ -415,17 +415,9 @@ function setupUI() {
 
       if (valDisplay) {
         // Humanized text representation
-        if (configKey === 'timeOfDay') {
-          const hours = Math.floor(val);
-          const mins = Math.floor((val % 1) * 60)
-            .toString()
-            .padStart(2, '0');
-          valDisplay.textContent = `${hours}:${mins}`;
-        } else {
-          valDisplay.textContent = val.toFixed(
-            slider.step.includes('.') ? slider.step.split('.')[1].length : 0
-          );
-        }
+        valDisplay.textContent = val.toFixed(
+          slider.step.includes('.') ? slider.step.split('.')[1].length : 0
+        );
       }
 
       // Automatically regenerate terrain when changing noise parameters, keeping seed
@@ -444,12 +436,12 @@ function setupUI() {
   bindSlider('lava-gravity', 'lavaGravity', 'lava-gravity-val');
   bindSlider('lava-damping', 'lavaDamping', 'lava-damping-val');
   bindSlider('sand-slide', 'sandSlideRate', 'sand-slide-val');
+  bindSlider('sand-repose-slope', 'sandReposeSlope', 'sand-repose-slope-val');
   bindSlider('erosion-rate', 'erosionRate', 'erosion-rate-val');
   bindSlider('capacity-factor', 'capacityFactor', 'capacity-factor-val');
   bindSlider('deposition-rate', 'depositionRate', 'deposition-rate-val');
   bindSlider('min-erosion-speed', 'minErosionSpeed', 'min-erosion-speed-val');
   bindSlider('evaporation', 'evaporation', 'evaporation-val');
-  bindSlider('time-of-day', 'timeOfDay', 'time-of-day-val');
   bindSlider('terrain-scale', 'terrainScale', 'terrain-scale-val');
   bindSlider('terrain-sharpness', 'terrainSharpness', 'terrain-sharpness-val');
   bindSlider('terrain-tilt', 'terrainTilt', 'terrain-tilt-val');
@@ -600,58 +592,14 @@ function animate() {
     config.sandSlideRate = tempSand;
   }
 
-  // Calculate day / night cycle sky color and sun light parameters
-  const alpha = (config.timeOfDay / 24.0) * Math.PI * 2.0 - Math.PI / 2.0;
-  const sinAlpha = Math.sin(alpha);
-
-  // Dynamic Sun Direction
-  const sunPos = new THREE.Vector3(
-    Math.cos(alpha),
-    Math.max(0.02, sinAlpha),
-    Math.sin(alpha) * 0.5
-  ).normalize();
+  // Fixed Noon Sun Direction & Lighting
+  const sunPos = new THREE.Vector3(0.0, 1.0, 0.5).normalize();
   sunLight.position.copy(sunPos);
 
-  // Dynamic Sun Color & Sky Clear Color
-  const sunColor = new THREE.Color();
-  const skyColor = new THREE.Color();
+  const sunColor = new THREE.Color(1.0, 0.95, 0.85);
+  sunLight.color.copy(sunColor);
 
-  if (sinAlpha > 0.0) {
-    // Daytime light
-    const dayStrength = Math.min(1.0, sinAlpha / 0.3);
-
-    // Noon light is white-yellow, sunrise/sunset is orange
-    const noonColor = new THREE.Color(1.0, 0.95, 0.85);
-    const goldenColor = new THREE.Color(1.0, 0.35, 0.05);
-    sunColor.lerpColors(goldenColor, noonColor, dayStrength);
-    sunLight.color.copy(sunColor).multiplyScalar(dayStrength);
-
-    // Sky gradient transition
-    const noonSky = new THREE.Color(0.2, 0.45, 0.75);
-    const goldenSky = new THREE.Color(0.12, 0.04, 0.16);
-    skyColor.lerpColors(goldenSky, noonSky, dayStrength);
-  } else {
-    // Nighttime light (moon representation)
-    const nightStrength = Math.min(1.0, -sinAlpha / 0.3);
-    const moonColor = new THREE.Color(0.04, 0.08, 0.18);
-    sunColor.copy(moonColor);
-    sunLight.color.copy(moonColor).multiplyScalar(nightStrength);
-
-    // Set sun direction to moon (opposite side)
-    const moonPos = new THREE.Vector3(
-      -Math.cos(alpha),
-      -sinAlpha,
-      -Math.sin(alpha) * 0.5
-    ).normalize();
-    sunLight.position.copy(moonPos);
-
-    const nightSky = new THREE.Color(0.02, 0.02, 0.05);
-    const sunsetSky = new THREE.Color(0.12, 0.04, 0.16);
-    // Smooth transition from sunset to midnight
-    const t = Math.min(1.0, -sinAlpha / 0.15);
-    skyColor.lerpColors(sunsetSky, nightSky, t);
-  }
-
+  const skyColor = new THREE.Color(0.2, 0.45, 0.75);
   renderer.setClearColor(skyColor);
   scene.background = skyColor;
 

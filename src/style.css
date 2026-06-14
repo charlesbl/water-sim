@@ -326,10 +326,6 @@ input[type='range']#brush-radius::-webkit-slider-thumb {
   background: #a4a4b5;
   box-shadow: 0 0 8px rgba(164, 164, 181, 0.5);
 }
-input[type='range']#time-of-day::-webkit-slider-thumb {
-  background: #f2c94c;
-  box-shadow: 0 0 8px rgba(242, 201, 76, 0.5);
-}
 input[type='range']#water-flow::-webkit-slider-thumb {
   background: #4a90e2;
   box-shadow: 0 0 8px rgba(74, 144, 226, 0.5);

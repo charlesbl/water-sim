@@ -18,6 +18,7 @@ uniform float u_brush_strength;
 // Parameters
 uniform float u_grid_size;
 uniform float u_sand_slide_rate;
+uniform float u_sand_repose_slope;
 uniform float u_erosion_rate;
 uniform float u_capacity_factor;
 uniform float u_deposition_rate;
@@ -90,7 +91,7 @@ float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
   float h_dst = dst_rock + dst_sand;
 
   float diff = h_src - h_dst;
-  float threshold = 0.0015 * dist; // Angle of repose threshold, adjusted for distance
+  float threshold = u_sand_repose_slope * dist; // Angle of repose threshold, adjusted for distance
   if (diff > threshold) {
     float sum_excess = 0.0;
     float excess_dst = diff - threshold;
@@ -113,7 +114,7 @@ float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
       getCellData(n_uv, n_rock, n_sand, n_susp, n_water, n_lava);
       float h_n = n_rock + n_sand;
       float n_diff = h_src - h_n;
-      float n_thresh = 0.0015 * dists[i];
+      float n_thresh = u_sand_repose_slope * dists[i];
       if (n_diff > n_thresh) {
         sum_excess += (n_diff - n_thresh);
       }
