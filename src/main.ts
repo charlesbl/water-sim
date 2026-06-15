@@ -32,6 +32,7 @@ let activeBrushType: number = 0;
 // Performance timing variables
 let frameCount = 0;
 let lastFpsUpdate = 0;
+let simTicksAccumulator = 0.0;
 
 // Free camera keyboard state
 const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
@@ -449,7 +450,8 @@ function setupUI() {
       | 'rainSize'
       | 'borderWaterHeight'
       | 'minWaterDepth'
-      | 'renderResolution',
+      | 'renderResolution'
+      | 'simSpeed',
     displayId?: string
   ) => {
     const slider = document.getElementById(id) as HTMLInputElement;
@@ -517,6 +519,7 @@ function setupUI() {
   bindSlider('border-water-height', 'borderWaterHeight', 'border-water-height-val');
   bindSlider('min-water-depth', 'minWaterDepth', 'min-water-depth-val');
   bindSlider('render-resolution', 'renderResolution', 'render-resolution-val');
+  bindSlider('sim-speed', 'simSpeed', 'sim-speed-val');
 
   // 3. Pause / Play button
   const pauseBtn = document.getElementById('btn-pause') as HTMLButtonElement;
@@ -549,7 +552,15 @@ function setupUI() {
   const resetBtn = document.getElementById('btn-reset');
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      gpgpu.resetTerrain();
+      gpgpu.resetTerrain(false);
+    });
+  }
+
+  // 5.5 Nouveau Terrain
+  const newTerrainBtn = document.getElementById('btn-new-terrain');
+  if (newTerrainBtn) {
+    newTerrainBtn.addEventListener('click', () => {
+      gpgpu.resetTerrain(true);
     });
   }
 
@@ -684,15 +695,20 @@ function animate() {
 
   // Run GPGPU physical simulation ticks
   if (!config.paused) {
-    // Sync current pointer coordinates onto the simulation pass
-    gpgpu.setBrush(
-      isPointerDown,
-      pointerUV,
-      activeBrushType,
-      config.brushRadius,
-      config.brushStrength
-    );
-    gpgpu.step();
+    simTicksAccumulator += config.simSpeed;
+
+    while (simTicksAccumulator >= 1.0) {
+      // Sync current pointer coordinates onto the simulation pass
+      gpgpu.setBrush(
+        isPointerDown,
+        pointerUV,
+        activeBrushType,
+        config.brushRadius,
+        config.brushStrength
+      );
+      gpgpu.step();
+      simTicksAccumulator -= 1.0;
+    }
   } else {
     // If paused, we still allow drawing terrain & painting, just not fluid flows
     gpgpu.setBrush(
@@ -702,18 +718,26 @@ function animate() {
       config.brushRadius,
       config.brushStrength
     );
-    // When paused we do a dry simulation step (physics params = 0) so the brush stroke shows up immediately
+    // When paused we do a dry simulation step so the brush stroke shows up immediately
     const tempWaterGravity = config.waterGravity;
     const tempWaterDamping = config.waterDamping;
     const tempLavaGravity = config.lavaGravity;
     const tempLavaDamping = config.lavaDamping;
     const tempSand = config.sandSlideRate;
+    const tempErosion = config.erosionRate;
+    const tempDeposition = config.depositionRate;
+    const tempEvap = config.evaporation;
+    const tempRain = config.rainActive;
 
     config.waterGravity = 0.0;
-    config.waterDamping = 1.0;
+    config.waterDamping = 0.0;
     config.lavaGravity = 0.0;
-    config.lavaDamping = 1.0;
+    config.lavaDamping = 0.0;
     config.sandSlideRate = 0.0;
+    config.erosionRate = 0.0;
+    config.depositionRate = 0.0;
+    config.evaporation = 0.0;
+    config.rainActive = false;
     gpgpu.step();
 
     config.waterGravity = tempWaterGravity;
@@ -721,6 +745,10 @@ function animate() {
     config.lavaGravity = tempLavaGravity;
     config.lavaDamping = tempLavaDamping;
     config.sandSlideRate = tempSand;
+    config.erosionRate = tempErosion;
+    config.depositionRate = tempDeposition;
+    config.evaporation = tempEvap;
+    config.rainActive = tempRain;
   }
 
   // Fixed Noon Sun Direction & Lighting

@@ -231,35 +231,23 @@ export class GPGPUSimulation {
   public clearFluids() {
     const currentRenderTarget = this.renderer.getRenderTarget();
 
-    // Clear read target B
-    this.renderer.setRenderTarget(this.targetB_read);
-    this.renderer.clearColor();
-    this.renderer.clear();
+    const currentClearColor = this.renderer.getClearColor(new THREE.Color());
+    const currentClearAlpha = this.renderer.getClearAlpha();
 
-    // Clear write target B
-    this.renderer.setRenderTarget(this.targetB_write);
-    this.renderer.clearColor();
-    this.renderer.clear();
+    this.renderer.setClearColor(0x000000, 0);
 
-    // Clear read target Flux
-    this.renderer.setRenderTarget(this.targetFlux_read);
-    this.renderer.clearColor();
-    this.renderer.clear();
+    const targets = [
+      this.targetB_read, this.targetB_write,
+      this.targetFlux_read, this.targetFlux_write,
+      this.targetLavaFlux_read, this.targetLavaFlux_write
+    ];
 
-    // Clear write target Flux
-    this.renderer.setRenderTarget(this.targetFlux_write);
-    this.renderer.clearColor();
-    this.renderer.clear();
+    for (const target of targets) {
+      this.renderer.setRenderTarget(target);
+      this.renderer.clear();
+    }
 
-    // Clear read target Lava Flux
-    this.renderer.setRenderTarget(this.targetLavaFlux_read);
-    this.renderer.clearColor();
-    this.renderer.clear();
-
-    // Clear write target Lava Flux
-    this.renderer.setRenderTarget(this.targetLavaFlux_write);
-    this.renderer.clearColor();
-    this.renderer.clear();
+    this.renderer.setClearColor(currentClearColor, currentClearAlpha);
 
     this.renderer.setRenderTarget(currentRenderTarget);
   }

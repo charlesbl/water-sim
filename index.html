@@ -175,6 +175,14 @@
           <div class="hud-section-content-inner">
             <div class="control-group">
               <div class="label-row">
+                <label for="sim-speed">Vitesse de simulation (ticks/frame)</label>
+                <span id="sim-speed-val" class="value-display">1.0</span>
+              </div>
+              <input type="range" id="sim-speed" min="0.1" max="10.0" value="1.0" step="0.1" />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
                 <label for="water-gravity">Gravité de l'eau (Vagues)</label>
                 <span id="water-gravity-val" class="value-display">9.81</span>
               </div>
@@ -464,6 +472,7 @@
           <button id="btn-pause" class="btn-action">⏸️ Pause</button>
           <button id="btn-clear" class="btn-action danger">🧹 Vider Fluides</button>
           <button id="btn-reset" class="btn-action danger">⛰️ Reset Terrain</button>
+          <button id="btn-new-terrain" class="btn-action danger">🏔️ Nouveau Terrain</button>
         </div>
       </section>
 
