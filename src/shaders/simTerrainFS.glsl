@@ -25,6 +25,7 @@ uniform float u_deposition_rate;
 uniform float u_min_erosion_speed;
 uniform float u_initialized;
 uniform float u_seed;
+uniform float u_border_behavior;
 
 // Terrain parameters
 uniform float u_terrain_scale;
@@ -270,11 +271,13 @@ void main() {
     }
   }
 
-  // Boundary condition: Sand falls off the map (infinite drain to prevent stacking)
-  if (v_uv.x <= texel.x || v_uv.x >= 1.0 - texel.x || v_uv.y <= texel.y || v_uv.y >= 1.0 - texel.y) {
-    sand_in = 0.0;
-    susp_in = 0.0;
-    local_susp = 0.0;
+  // Boundary condition: Sand falls off the map (infinite drain to prevent stacking) under behavior 1 (pass all)
+  if (u_border_behavior == 1.0) {
+    if (v_uv.x <= texel.x || v_uv.x >= 1.0 - texel.x || v_uv.y <= texel.y || v_uv.y >= 1.0 - texel.y) {
+      sand_in = 0.0;
+      susp_in = 0.0;
+      local_susp = 0.0;
+    }
   }
 
   suspended_sand = max(0.0, local_susp - susp_out + susp_in);

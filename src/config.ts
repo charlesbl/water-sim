@@ -38,6 +38,10 @@ export interface Config {
   rainActive: boolean;
   rainQuantity: number;
   rainSize: number;
+
+  // Map border settings
+  borderBehavior: number; // 0: block all, 1: pass all, 2: pass water but not sand
+  borderWaterHeight: number; // Height of water maintained at the border (relative to ground height)
 }
 
 export const config: Config = {
@@ -73,4 +77,6 @@ export const config: Config = {
   rainActive: false,
   rainQuantity: 0.0005,
   rainSize: 0.005,
+  borderBehavior: 1,
+  borderWaterHeight: 0.0,
 };

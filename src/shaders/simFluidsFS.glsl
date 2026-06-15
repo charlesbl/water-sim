@@ -20,6 +20,8 @@ uniform float u_brush_strength;
 uniform float u_grid_size;
 uniform float u_evaporation;
 uniform float u_initialized;
+uniform float u_border_behavior;
+uniform float u_border_water_height;
 
 // Rain settings
 uniform float u_rain_active;
@@ -138,10 +140,12 @@ void main() {
     }
   }
 
-  // Boundary condition: Destroy liquids at bounds (infinite drain)
-  if (v_uv.x <= texel.x || v_uv.x >= 1.0 - texel.x || v_uv.y <= texel.y || v_uv.y >= 1.0 - texel.y) {
-    water = 0.0;
-    lava = 0.0;
+  // Boundary condition: Destroy liquids at bounds (infinite drain) under behaviors 1 (pass all) and 2 (pass water but not sand)
+  if (u_border_behavior > 0.5) {
+    if (v_uv.x <= texel.x || v_uv.x >= 1.0 - texel.x || v_uv.y <= texel.y || v_uv.y >= 1.0 - texel.y) {
+      water = max(0.0, u_border_water_height - ground);
+      lava = 0.0;
+    }
   }
 
   water = clamp(water, 0.0, 10.0);

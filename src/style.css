@@ -400,7 +400,8 @@ input[type='range']#evaporation::-webkit-slider-thumb {
   box-shadow: 0 0 8px rgba(45, 156, 219, 0.5);
 }
 input[type='range']#rain-quantity::-webkit-slider-thumb,
-input[type='range']#rain-size::-webkit-slider-thumb {
+input[type='range']#rain-size::-webkit-slider-thumb,
+input[type='range']#border-water-height::-webkit-slider-thumb {
   background: #4a90e2;
   box-shadow: 0 0 8px rgba(74, 144, 226, 0.5);
 }

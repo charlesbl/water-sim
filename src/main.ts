@@ -96,6 +96,8 @@ function init() {
       u_local_camera_pos: { value: new THREE.Vector3() },
       u_layer: { value: 0.0 },
       u_smooth: { value: config.smoothRendering ? 1.0 : 0.0 },
+      u_border_behavior: { value: config.borderBehavior },
+      u_border_water_height: { value: config.borderWaterHeight },
     },
     depthWrite: true,
     depthTest: true,
@@ -124,6 +126,8 @@ function init() {
       u_local_camera_pos: { value: new THREE.Vector3() },
       u_layer: { value: 1.0 },
       u_smooth: { value: config.smoothRendering ? 1.0 : 0.0 },
+      u_border_behavior: { value: config.borderBehavior },
+      u_border_water_height: { value: config.borderWaterHeight },
     },
     transparent: true,
     depthWrite: false,
@@ -141,7 +145,7 @@ function init() {
     format: THREE.RGBAFormat,
     minFilter: THREE.NearestFilter,
     magFilter: THREE.NearestFilter,
-    generateMipmaps: false
+    generateMipmaps: false,
   });
 
   pickingMaterial = new THREE.ShaderMaterial({
@@ -179,7 +183,7 @@ function init() {
     },
     depthWrite: true,
     depthTest: true,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
   });
 
   pickingMesh = new THREE.Mesh(geometry, pickingMaterial);
@@ -191,28 +195,50 @@ function init() {
 
   window.addEventListener('keydown', (e) => {
     switch (e.code) {
-      case 'KeyW': keys.w = true; break;
-      case 'KeyA': keys.a = true; break;
-      case 'KeyS': keys.s = true; break;
-      case 'KeyD': keys.d = true; break;
+      case 'KeyW':
+        keys.w = true;
+        break;
+      case 'KeyA':
+        keys.a = true;
+        break;
+      case 'KeyS':
+        keys.s = true;
+        break;
+      case 'KeyD':
+        keys.d = true;
+        break;
       case 'Space':
         keys.space = true;
         if (e.target === document.body) e.preventDefault();
         break;
       case 'ShiftLeft':
-      case 'ShiftRight': keys.shift = true; break;
+      case 'ShiftRight':
+        keys.shift = true;
+        break;
     }
   });
 
   window.addEventListener('keyup', (e) => {
     switch (e.code) {
-      case 'KeyW': keys.w = false; break;
-      case 'KeyA': keys.a = false; break;
-      case 'KeyS': keys.s = false; break;
-      case 'KeyD': keys.d = false; break;
-      case 'Space': keys.space = false; break;
+      case 'KeyW':
+        keys.w = false;
+        break;
+      case 'KeyA':
+        keys.a = false;
+        break;
+      case 'KeyS':
+        keys.s = false;
+        break;
+      case 'KeyD':
+        keys.d = false;
+        break;
+      case 'Space':
+        keys.space = false;
+        break;
       case 'ShiftLeft':
-      case 'ShiftRight': keys.shift = false; break;
+      case 'ShiftRight':
+        keys.shift = false;
+        break;
     }
   });
 
@@ -251,14 +277,7 @@ function updatePointerUV(e: PointerEvent) {
   const x = Math.floor(e.clientX);
   const y = Math.floor(e.clientY);
 
-  camera.setViewOffset(
-    window.innerWidth,
-    window.innerHeight,
-    x,
-    y,
-    1,
-    1
-  );
+  camera.setViewOffset(window.innerWidth, window.innerHeight, x, y, 1, 1);
 
   const currentRenderTarget = renderer.getRenderTarget();
   const currentClearColor = renderer.getClearColor(new THREE.Color());
@@ -330,13 +349,13 @@ function onPointerMove(e: PointerEvent) {
     const sensitivity = 0.003;
     const euler = new THREE.Euler(0, 0, 0, 'YXZ');
     euler.setFromQuaternion(camera.quaternion);
-    
+
     euler.y -= deltaX * sensitivity;
     euler.x -= deltaY * sensitivity;
-    
+
     const PI_2 = Math.PI / 2 - 0.01;
     euler.x = Math.max(-PI_2, Math.min(PI_2, euler.x));
-    
+
     camera.quaternion.setFromEuler(euler);
     return;
   }
@@ -348,11 +367,11 @@ function onPointerMove(e: PointerEvent) {
 function onPointerUp(_e: PointerEvent) {
   if (isFPSLooking) {
     isFPSLooking = false;
-    
+
     const dist = Math.max(15, camera.position.distanceTo(controls.target));
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
     controls.target.copy(camera.position).add(forward.multiplyScalar(dist));
-    
+
     controls.enabled = true;
   }
 
@@ -415,7 +434,8 @@ function setupUI() {
       | 'fbmOctaves'
       | 'fbmPersistence'
       | 'rainQuantity'
-      | 'rainSize',
+      | 'rainSize'
+      | 'borderWaterHeight',
     displayId?: string
   ) => {
     const slider = document.getElementById(id) as HTMLInputElement;
@@ -435,7 +455,13 @@ function setupUI() {
 
       // Automatically regenerate terrain when changing noise parameters, keeping seed
       if (
-        ['terrainScale', 'terrainSharpness', 'terrainTilt', 'fbmOctaves', 'fbmPersistence'].includes(configKey)
+        [
+          'terrainScale',
+          'terrainSharpness',
+          'terrainTilt',
+          'fbmOctaves',
+          'fbmPersistence',
+        ].includes(configKey)
       ) {
         gpgpu.resetTerrain(false);
       }
@@ -462,6 +488,7 @@ function setupUI() {
   bindSlider('fbm-persistence', 'fbmPersistence', 'fbm-persistence-val');
   bindSlider('rain-quantity', 'rainQuantity', 'rain-quantity-val');
   bindSlider('rain-size', 'rainSize', 'rain-size-val');
+  bindSlider('border-water-height', 'borderWaterHeight', 'border-water-height-val');
 
   // 3. Pause / Play button
   const pauseBtn = document.getElementById('btn-pause') as HTMLButtonElement;
@@ -506,6 +533,28 @@ function setupUI() {
     });
   }
 
+  // 6.5. Border Behavior Dropdown Select
+  const borderSelect = document.getElementById('border-behavior') as HTMLSelectElement;
+  const borderHeightGroup = document.getElementById('border-water-height-group');
+  const updateBorderHeightVisibility = () => {
+    if (borderHeightGroup) {
+      if (config.borderBehavior > 0.5) {
+        borderHeightGroup.style.display = 'block';
+      } else {
+        borderHeightGroup.style.display = 'none';
+      }
+    }
+  };
+
+  if (borderSelect) {
+    borderSelect.value = config.borderBehavior.toString();
+    updateBorderHeightVisibility();
+    borderSelect.addEventListener('change', () => {
+      config.borderBehavior = parseInt(borderSelect.value);
+      updateBorderHeightVisibility();
+    });
+  }
+
   // 7. Auto Rotate Camera checkbox
   const rotateCheck = document.getElementById('auto-rotate') as HTMLInputElement;
   if (rotateCheck) {
@@ -545,21 +594,21 @@ function animate() {
   const moveSpeed = 1.0 / 3.0;
   const moveVec = new THREE.Vector3();
   const localMove = new THREE.Vector3();
-  
+
   if (keys.w) localMove.z -= 1;
   if (keys.s) localMove.z += 1;
   if (keys.a) localMove.x -= 1;
   if (keys.d) localMove.x += 1;
-  
+
   if (localMove.lengthSq() > 0) {
     localMove.normalize();
     localMove.applyQuaternion(camera.quaternion);
     moveVec.add(localMove);
   }
-  
+
   if (keys.space) moveVec.y += 1;
   if (keys.shift) moveVec.y -= 1;
-  
+
   if (moveVec.lengthSq() > 0) {
     moveVec.normalize().multiplyScalar(moveSpeed);
     camera.position.add(moveVec);
@@ -630,6 +679,8 @@ function animate() {
   terrainMaterial.uniforms.u_height_scale.value = config.heightScale;
   terrainMaterial.uniforms.u_time.value = now * 0.001;
   terrainMaterial.uniforms.u_smooth.value = config.smoothRendering ? 1.0 : 0.0;
+  terrainMaterial.uniforms.u_border_behavior.value = config.borderBehavior;
+  terrainMaterial.uniforms.u_border_water_height.value = config.borderWaterHeight;
 
   fluidMaterial.uniforms.u_texA.value = gpgpu.targetA_read.texture;
   fluidMaterial.uniforms.u_texB.value = gpgpu.targetB_read.texture;
@@ -638,12 +689,14 @@ function animate() {
   fluidMaterial.uniforms.u_height_scale.value = config.heightScale;
   fluidMaterial.uniforms.u_time.value = now * 0.001;
   fluidMaterial.uniforms.u_smooth.value = config.smoothRendering ? 1.0 : 0.0;
+  fluidMaterial.uniforms.u_border_behavior.value = config.borderBehavior;
+  fluidMaterial.uniforms.u_border_water_height.value = config.borderWaterHeight;
 
   // Pass local light directions and camera position vectors to ShaderMaterial
   const localSun = terrainMesh.worldToLocal(sunLight.position.clone()).normalize();
   terrainMaterial.uniforms.u_sun_dir.value.copy(localSun);
   terrainMaterial.uniforms.u_sun_color.value.copy(sunColor);
-  
+
   fluidMaterial.uniforms.u_sun_dir.value.copy(localSun);
   fluidMaterial.uniforms.u_sun_color.value.copy(sunColor);
 

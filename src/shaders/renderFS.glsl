@@ -20,6 +20,8 @@ uniform float u_view_mode; // 0: Realistic, 1: Heightmap, 2: Water Only, 3: Lava
 uniform float u_time;
 uniform float u_layer;
 uniform float u_smooth;
+uniform float u_border_behavior;
+uniform float u_border_water_height;
 
 uniform vec3 u_sun_dir;      // Light direction in local space
 uniform vec3 u_sun_color;    // Diffuse light color
@@ -317,5 +319,22 @@ void main() {
     }
 
     fragColor = finalColor;
+  }
+
+  // Apply map boundary glowing indicator to represent border water height source
+  if (u_border_behavior > 0.5 && u_border_water_height > 0.0) {
+    float b_dist = min(min(v_uv.x, 1.0 - v_uv.x), min(v_uv.y, 1.0 - v_uv.y));
+    float border_width = 2.5 / u_grid_size;
+    if (b_dist < border_width) {
+      float ground = get_ground_height(v_uv);
+      if (u_border_water_height > ground) {
+        float edge_factor = 1.0 - (b_dist / border_width);
+        edge_factor = pow(edge_factor, 1.5);
+        float pulse = 0.5 + 0.5 * sin(u_time * 5.0);
+        vec3 glow_color = vec3(0.0, 0.8, 1.0); // Neon cyan water glow
+        fragColor.rgb = mix(fragColor.rgb, glow_color, edge_factor * 0.8 * pulse);
+        fragColor.a = max(fragColor.a, edge_factor * 0.8);
+      }
+    }
   }
 }

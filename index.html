@@ -93,7 +93,14 @@
                 <label for="terrain-sharpness">Sharpness / Relief</label>
                 <span id="terrain-sharpness-val" class="value-display">1.4</span>
               </div>
-              <input type="range" id="terrain-sharpness" min="0.5" max="3.0" value="1.4" step="0.05" />
+              <input
+                type="range"
+                id="terrain-sharpness"
+                min="0.5"
+                max="3.0"
+                value="1.4"
+                step="0.05"
+              />
             </div>
 
             <div class="control-group">
@@ -117,7 +124,14 @@
                 <label for="fbm-persistence">Persistance</label>
                 <span id="fbm-persistence-val" class="value-display">0.44</span>
               </div>
-              <input type="range" id="fbm-persistence" min="0.10" max="0.90" value="0.44" step="0.01" />
+              <input
+                type="range"
+                id="fbm-persistence"
+                min="0.10"
+                max="0.90"
+                value="0.44"
+                step="0.01"
+              />
             </div>
           </div>
         </div>
@@ -144,7 +158,14 @@
                 <label for="water-damping">Friction de l'eau</label>
                 <span id="water-damping-val" class="value-display">0.998</span>
               </div>
-              <input type="range" id="water-damping" min="0.90" max="1.0" value="0.998" step="0.001" />
+              <input
+                type="range"
+                id="water-damping"
+                min="0.90"
+                max="1.0"
+                value="0.998"
+                step="0.001"
+              />
             </div>
 
             <div class="control-group">
@@ -152,7 +173,14 @@
                 <label for="evaporation">Évaporation de l'eau</label>
                 <span id="evaporation-val" class="value-display">0.0000</span>
               </div>
-              <input type="range" id="evaporation" min="0.0" max="0.003" value="0.0" step="0.0001" />
+              <input
+                type="range"
+                id="evaporation"
+                min="0.0"
+                max="0.003"
+                value="0.0"
+                step="0.0001"
+              />
             </div>
 
             <div class="control-group">
@@ -168,7 +196,40 @@
                 <label for="lava-damping">Friction de la lave</label>
                 <span id="lava-damping-val" class="value-display">0.950</span>
               </div>
-              <input type="range" id="lava-damping" min="0.50" max="1.0" value="0.95" step="0.001" />
+              <input
+                type="range"
+                id="lava-damping"
+                min="0.50"
+                max="1.0"
+                value="0.95"
+                step="0.001"
+              />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="border-behavior">Comportement du bord</label>
+              </div>
+              <select id="border-behavior" class="select-input">
+                <option value="0">Tout bloquer</option>
+                <option value="1" selected>Tout passer</option>
+                <option value="2">Passer l'eau mais pas le sable</option>
+              </select>
+            </div>
+
+            <div class="control-group" id="border-water-height-group">
+              <div class="label-row">
+                <label for="border-water-height">Hauteur d'eau du bord</label>
+                <span id="border-water-height-val" class="value-display">0.00</span>
+              </div>
+              <input
+                type="range"
+                id="border-water-height"
+                min="0.0"
+                max="3.0"
+                value="0.0"
+                step="0.05"
+              />
             </div>
           </div>
         </div>
@@ -187,7 +248,14 @@
                 <label for="erosion-rate">Vitesse d'érosion</label>
                 <span id="erosion-rate-val" class="value-display">0.005</span>
               </div>
-              <input type="range" id="erosion-rate" min="0.0" max="0.1" value="0.005" step="0.001" />
+              <input
+                type="range"
+                id="erosion-rate"
+                min="0.0"
+                max="0.1"
+                value="0.005"
+                step="0.001"
+              />
             </div>
 
             <div class="control-group">
@@ -195,7 +263,14 @@
                 <label for="capacity-factor">Capacité de transport</label>
                 <span id="capacity-factor-val" class="value-display">0.400</span>
               </div>
-              <input type="range" id="capacity-factor" min="0.0" max="0.5" value="0.4" step="0.005" />
+              <input
+                type="range"
+                id="capacity-factor"
+                min="0.0"
+                max="0.5"
+                value="0.4"
+                step="0.005"
+              />
             </div>
 
             <div class="control-group">
@@ -203,7 +278,14 @@
                 <label for="deposition-rate">Vitesse de dépôt</label>
                 <span id="deposition-rate-val" class="value-display">0.05</span>
               </div>
-              <input type="range" id="deposition-rate" min="0.0" max="1.0" value="0.05" step="0.01" />
+              <input
+                type="range"
+                id="deposition-rate"
+                min="0.0"
+                max="1.0"
+                value="0.05"
+                step="0.01"
+              />
             </div>
 
             <div class="control-group">
@@ -211,7 +293,14 @@
                 <label for="min-erosion-speed">Vitesse min. d'érosion</label>
                 <span id="min-erosion-speed-val" class="value-display">0.001</span>
               </div>
-              <input type="range" id="min-erosion-speed" min="0.0" max="0.05" value="0.001" step="0.001" />
+              <input
+                type="range"
+                id="min-erosion-speed"
+                min="0.0"
+                max="0.05"
+                value="0.001"
+                step="0.001"
+              />
             </div>
 
             <div class="control-group">
@@ -227,7 +316,14 @@
                 <label for="sand-repose-slope">Pente limite sable</label>
                 <span id="sand-repose-slope-val" class="value-display">0.0015</span>
               </div>
-              <input type="range" id="sand-repose-slope" min="0.0" max="0.04" value="0.0015" step="0.0005" />
+              <input
+                type="range"
+                id="sand-repose-slope"
+                min="0.0"
+                max="0.04"
+                value="0.0015"
+                step="0.0005"
+              />
             </div>
           </div>
         </div>
@@ -245,19 +341,33 @@
               <input type="checkbox" id="rain-active" />
               <label for="rain-active">⛈️ Activer la Pluie</label>
             </div>
-            <div class="control-group" style="margin-top: 12px;">
+            <div class="control-group" style="margin-top: 12px">
               <div class="label-row">
                 <label for="rain-quantity">Quantité de gouttes</label>
                 <span id="rain-quantity-val" class="value-display">0.0005</span>
               </div>
-              <input type="range" id="rain-quantity" min="0.0001" max="0.0010" value="0.0005" step="0.0001" />
+              <input
+                type="range"
+                id="rain-quantity"
+                min="0.0001"
+                max="0.0010"
+                value="0.0005"
+                step="0.0001"
+              />
             </div>
             <div class="control-group">
               <div class="label-row">
                 <label for="rain-size">Taille des gouttes</label>
                 <span id="rain-size-val" class="value-display">0.005</span>
               </div>
-              <input type="range" id="rain-size" min="0.001" max="0.010" value="0.005" step="0.001" />
+              <input
+                type="range"
+                id="rain-size"
+                min="0.001"
+                max="0.010"
+                value="0.005"
+                step="0.001"
+              />
             </div>
           </div>
         </div>
