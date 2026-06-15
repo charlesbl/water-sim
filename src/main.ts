@@ -89,7 +89,11 @@ function init() {
       u_texB: { value: null },
       u_height_scale: { value: config.heightScale },
       u_grid_size: { value: config.gridSize },
-      u_view_mode: { value: 0.0 },
+      u_show_rock: { value: config.showRock ? 1.0 : 0.0 },
+      u_show_sand: { value: config.showSand ? 1.0 : 0.0 },
+      u_show_water: { value: config.showWater ? 1.0 : 0.0 },
+      u_show_lava: { value: config.showLava ? 1.0 : 0.0 },
+      u_show_suspended: { value: config.showSuspendedSand ? 1.0 : 0.0 },
       u_time: { value: 0.0 },
       u_sun_dir: { value: new THREE.Vector3() },
       u_sun_color: { value: new THREE.Color() },
@@ -119,7 +123,11 @@ function init() {
       u_texLavaFlux: { value: null },
       u_height_scale: { value: config.heightScale },
       u_grid_size: { value: config.gridSize },
-      u_view_mode: { value: 0.0 },
+      u_show_rock: { value: config.showRock ? 1.0 : 0.0 },
+      u_show_sand: { value: config.showSand ? 1.0 : 0.0 },
+      u_show_water: { value: config.showWater ? 1.0 : 0.0 },
+      u_show_lava: { value: config.showLava ? 1.0 : 0.0 },
+      u_show_suspended: { value: config.showSuspendedSand ? 1.0 : 0.0 },
       u_time: { value: 0.0 },
       u_sun_dir: { value: new THREE.Vector3() },
       u_sun_color: { value: new THREE.Color() },
@@ -426,7 +434,6 @@ function setupUI() {
       | 'erosionRate'
       | 'capacityFactor'
       | 'depositionRate'
-      | 'minErosionSpeed'
       | 'evaporation'
       | 'terrainScale'
       | 'terrainSharpness'
@@ -435,7 +442,8 @@ function setupUI() {
       | 'fbmPersistence'
       | 'rainQuantity'
       | 'rainSize'
-      | 'borderWaterHeight',
+      | 'borderWaterHeight'
+      | 'minWaterDepth',
     displayId?: string
   ) => {
     const slider = document.getElementById(id) as HTMLInputElement;
@@ -479,7 +487,6 @@ function setupUI() {
   bindSlider('erosion-rate', 'erosionRate', 'erosion-rate-val');
   bindSlider('capacity-factor', 'capacityFactor', 'capacity-factor-val');
   bindSlider('deposition-rate', 'depositionRate', 'deposition-rate-val');
-  bindSlider('min-erosion-speed', 'minErosionSpeed', 'min-erosion-speed-val');
   bindSlider('evaporation', 'evaporation', 'evaporation-val');
   bindSlider('terrain-scale', 'terrainScale', 'terrain-scale-val');
   bindSlider('terrain-sharpness', 'terrainSharpness', 'terrain-sharpness-val');
@@ -489,6 +496,7 @@ function setupUI() {
   bindSlider('rain-quantity', 'rainQuantity', 'rain-quantity-val');
   bindSlider('rain-size', 'rainSize', 'rain-size-val');
   bindSlider('border-water-height', 'borderWaterHeight', 'border-water-height-val');
+  bindSlider('min-water-depth', 'minWaterDepth', 'min-water-depth-val');
 
   // 3. Pause / Play button
   const pauseBtn = document.getElementById('btn-pause') as HTMLButtonElement;
@@ -525,13 +533,21 @@ function setupUI() {
     });
   }
 
-  // 6. View Mode Dropdown Select
-  const viewSelect = document.getElementById('view-mode') as HTMLSelectElement;
-  if (viewSelect) {
-    viewSelect.addEventListener('change', () => {
-      config.viewMode = viewSelect.value as typeof config.viewMode;
+  // 6. Render Layer Checkboxes
+  const bindCheckbox = (id: string, configKey: 'showRock' | 'showSand' | 'showWater' | 'showLava' | 'showSuspendedSand') => {
+    const chk = document.getElementById(id) as HTMLInputElement;
+    if (!chk) return;
+    chk.checked = config[configKey];
+    chk.addEventListener('change', () => {
+      config[configKey] = chk.checked;
     });
-  }
+  };
+
+  bindCheckbox('chk-show-rock', 'showRock');
+  bindCheckbox('chk-show-sand', 'showSand');
+  bindCheckbox('chk-show-water', 'showWater');
+  bindCheckbox('chk-show-lava', 'showLava');
+  bindCheckbox('chk-show-suspended', 'showSuspendedSand');
 
   // 6.5. Border Behavior Dropdown Select
   const borderSelect = document.getElementById('border-behavior') as HTMLSelectElement;
@@ -704,14 +720,18 @@ function animate() {
   terrainMaterial.uniforms.u_local_camera_pos.value.copy(localCam);
   fluidMaterial.uniforms.u_local_camera_pos.value.copy(localCam);
 
-  // Set visual debug view modes
-  let modeVal = 0.0;
-  if (config.viewMode === 'heightmap') modeVal = 1.0;
-  else if (config.viewMode === 'water-only') modeVal = 2.0;
-  else if (config.viewMode === 'lava-only') modeVal = 3.0;
-  else if (config.viewMode === 'sand-only') modeVal = 4.0;
-  terrainMaterial.uniforms.u_view_mode.value = modeVal;
-  fluidMaterial.uniforms.u_view_mode.value = modeVal;
+  // Update rendering layer visibility uniforms
+  terrainMaterial.uniforms.u_show_rock.value = config.showRock ? 1.0 : 0.0;
+  terrainMaterial.uniforms.u_show_sand.value = config.showSand ? 1.0 : 0.0;
+  terrainMaterial.uniforms.u_show_water.value = config.showWater ? 1.0 : 0.0;
+  terrainMaterial.uniforms.u_show_lava.value = config.showLava ? 1.0 : 0.0;
+  terrainMaterial.uniforms.u_show_suspended.value = config.showSuspendedSand ? 1.0 : 0.0;
+
+  fluidMaterial.uniforms.u_show_rock.value = config.showRock ? 1.0 : 0.0;
+  fluidMaterial.uniforms.u_show_sand.value = config.showSand ? 1.0 : 0.0;
+  fluidMaterial.uniforms.u_show_water.value = config.showWater ? 1.0 : 0.0;
+  fluidMaterial.uniforms.u_show_lava.value = config.showLava ? 1.0 : 0.0;
+  fluidMaterial.uniforms.u_show_suspended.value = config.showSuspendedSand ? 1.0 : 0.0;
 
   // Render Scene
   renderer.render(scene, camera);

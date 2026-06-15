@@ -82,7 +82,7 @@ export class GPGPUSimulation {
         u_erosion_rate: { value: config.erosionRate },
         u_capacity_factor: { value: config.capacityFactor },
         u_deposition_rate: { value: config.depositionRate },
-        u_min_erosion_speed: { value: config.minErosionSpeed },
+        u_min_water_depth: { value: config.minWaterDepth },
         u_initialized: { value: 0.0 },
         u_seed: { value: this.seed },
         u_terrain_scale: { value: config.terrainScale },
@@ -200,7 +200,7 @@ export class GPGPUSimulation {
     this.simTerrainMaterial.uniforms.u_erosion_rate.value = config.erosionRate;
     this.simTerrainMaterial.uniforms.u_capacity_factor.value = config.capacityFactor;
     this.simTerrainMaterial.uniforms.u_deposition_rate.value = config.depositionRate;
-    this.simTerrainMaterial.uniforms.u_min_erosion_speed.value = config.minErosionSpeed;
+    this.simTerrainMaterial.uniforms.u_min_water_depth.value = config.minWaterDepth;
     this.simTerrainMaterial.uniforms.u_terrain_scale.value = config.terrainScale;
     this.simTerrainMaterial.uniforms.u_terrain_sharpness.value = config.terrainSharpness;
     this.simTerrainMaterial.uniforms.u_terrain_tilt.value = config.terrainTilt;

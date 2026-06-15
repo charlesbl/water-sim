@@ -288,18 +288,20 @@
               />
             </div>
 
+
+
             <div class="control-group">
               <div class="label-row">
-                <label for="min-erosion-speed">Vitesse min. d'érosion</label>
-                <span id="min-erosion-speed-val" class="value-display">0.001</span>
+                <label for="min-water-depth">Hauteur d'eau min. transport</label>
+                <span id="min-water-depth-val" class="value-display">0.00</span>
               </div>
               <input
                 type="range"
-                id="min-erosion-speed"
+                id="min-water-depth"
                 min="0.0"
-                max="0.05"
-                value="0.001"
-                step="0.001"
+                max="0.5"
+                value="0.0"
+                step="0.01"
               />
             </div>
 
@@ -383,15 +385,28 @@
           <div class="hud-section-content-inner">
             <div class="control-group">
               <div class="label-row">
-                <label for="view-mode">Mode de vue</label>
+                <label>Couches à afficher</label>
               </div>
-              <select id="view-mode" class="select-input">
-                <option value="realistic">Réaliste</option>
-                <option value="heightmap">Hauteur (Roche)</option>
-                <option value="water-only">Eau uniquement</option>
-                <option value="lava-only">Lave uniquement</option>
-                <option value="sand-only">Sable uniquement</option>
-              </select>
+              <div class="checkbox-row" style="margin-bottom: 6px;">
+                <input type="checkbox" id="chk-show-rock" checked />
+                <label for="chk-show-rock">⛰️ Rocher</label>
+              </div>
+              <div class="checkbox-row" style="margin-bottom: 6px;">
+                <input type="checkbox" id="chk-show-sand" checked />
+                <label for="chk-show-sand">⏳ Sable au sol</label>
+              </div>
+              <div class="checkbox-row" style="margin-bottom: 6px;">
+                <input type="checkbox" id="chk-show-water" checked />
+                <label for="chk-show-water">🌊 Eau</label>
+              </div>
+              <div class="checkbox-row" style="margin-bottom: 6px;">
+                <input type="checkbox" id="chk-show-lava" checked />
+                <label for="chk-show-lava">🌋 Lave</label>
+              </div>
+              <div class="checkbox-row">
+                <input type="checkbox" id="chk-show-suspended" checked />
+                <label for="chk-show-suspended">🟫 Sable suspendu (boue)</label>
+              </div>
             </div>
 
             <div class="checkbox-row">

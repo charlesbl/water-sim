@@ -2,6 +2,7 @@ out vec2 v_uv;
 out vec3 v_pos;
 out float v_rock;
 out float v_sand;
+out float v_suspended_sand;
 out float v_water;
 out float v_lava;
 
@@ -67,6 +68,7 @@ void main() {
 
   v_rock = cellA.r;
   v_sand = cellA.g;
+  v_suspended_sand = cellA.b;
   v_water = cellB.r;
   v_lava = cellB.g;
 

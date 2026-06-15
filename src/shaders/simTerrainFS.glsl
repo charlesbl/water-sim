@@ -22,7 +22,7 @@ uniform float u_sand_repose_slope;
 uniform float u_erosion_rate;
 uniform float u_capacity_factor;
 uniform float u_deposition_rate;
-uniform float u_min_erosion_speed;
+uniform float u_min_water_depth;
 uniform float u_initialized;
 uniform float u_seed;
 uniform float u_border_behavior;
@@ -143,16 +143,27 @@ float getNewSuspended(vec2 uv) {
   float total_flux = f.r + f.g + f.b + f.a;
   float velocity = total_flux / w;
   
-  // Smooth transition to prevent oscillation (jiggling) around the threshold
-  float erosion_multiplier = smoothstep(u_min_erosion_speed * 0.5, u_min_erosion_speed * 1.5, velocity);
-  // Capacity proportional to FLUX (water volume * velocity) to prevent tiny films from eroding mountains
-  float capacity = total_flux * u_capacity_factor * 2.0 * erosion_multiplier;
-  
-  if (capacity > susp) {
-    return susp + min(s, (capacity - susp) * u_erosion_rate);
-  } else {
-    return susp - (susp - capacity) * u_deposition_rate;
+  float depth_multiplier = 1.0;
+  if (u_min_water_depth > 0.0) {
+    depth_multiplier = smoothstep(u_min_water_depth * 0.5, u_min_water_depth * 1.5, w);
   }
+  
+  float capacity = (velocity * velocity * velocity) * w * u_capacity_factor * 2.0 * depth_multiplier;
+  
+  float diff = capacity - susp;
+  
+  // Settling velocity increases as speed goes to 0 (less turbulent)
+  float active_dep_rate = mix(1.0, u_deposition_rate, clamp(velocity * 5.0, 0.0, 1.0));
+  float active_rate = (diff > 0.0) ? u_erosion_rate : active_dep_rate;
+  
+  float change = diff * active_rate;
+  if (change > 0.0) {
+    change = min(s, change);
+  } else {
+    change = max(-susp, change);
+  }
+  
+  return susp + change;
 }
 
 void main() {
@@ -213,18 +224,28 @@ void main() {
     float total_flux = f.r + f.g + f.b + f.a;
     float velocity = total_flux / water;
     
-    float erosion_multiplier = smoothstep(u_min_erosion_speed * 0.5, u_min_erosion_speed * 1.5, velocity);
-    float capacity = total_flux * u_capacity_factor * 2.0 * erosion_multiplier;
-    
-    if (capacity > suspended_sand) {
-      float erode = min(sand, (capacity - suspended_sand) * u_erosion_rate);
-      ground_sand_change = -erode;
-      local_susp = suspended_sand + erode;
-    } else {
-      float deposit = (suspended_sand - capacity) * u_deposition_rate;
-      ground_sand_change = deposit;
-      local_susp = suspended_sand - deposit;
+    float depth_multiplier = 1.0;
+    if (u_min_water_depth > 0.0) {
+      depth_multiplier = smoothstep(u_min_water_depth * 0.5, u_min_water_depth * 1.5, water);
     }
+    
+    float capacity = (velocity * velocity * velocity) * water * u_capacity_factor * 2.0 * depth_multiplier;
+    
+    float diff = capacity - suspended_sand;
+    
+    // Settling velocity increases as speed goes to 0 (less turbulent)
+    float active_dep_rate = mix(1.0, u_deposition_rate, clamp(velocity * 5.0, 0.0, 1.0));
+    float active_rate = (diff > 0.0) ? u_erosion_rate : active_dep_rate;
+    
+    float change = diff * active_rate;
+    if (change > 0.0) {
+      change = min(sand, change);
+    } else {
+      change = max(-suspended_sand, change);
+    }
+    
+    ground_sand_change = -change;
+    local_susp = suspended_sand + change;
   }
   
   sand = max(0.0, sand - sand_out + sand_in + ground_sand_change);

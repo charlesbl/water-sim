@@ -5,6 +5,7 @@ in vec2 v_uv;
 in vec3 v_pos;
 in float v_rock;
 in float v_sand;
+in float v_suspended_sand;
 in float v_water;
 in float v_lava;
 
@@ -16,7 +17,11 @@ uniform sampler2D u_texFlux;
 uniform sampler2D u_texLavaFlux;
 uniform float u_height_scale;
 uniform float u_grid_size;
-uniform float u_view_mode; // 0: Realistic, 1: Heightmap, 2: Water Only, 3: Lava Only, 4: Sand Only
+uniform float u_show_rock;
+uniform float u_show_sand;
+uniform float u_show_water;
+uniform float u_show_lava;
+uniform float u_show_suspended;
 uniform float u_time;
 uniform float u_layer;
 uniform float u_smooth;
@@ -163,15 +168,10 @@ void main() {
     // -------------------------------------------------------------
     // TERRAIN LAYER
     // -------------------------------------------------------------
-    if (u_view_mode == 2.0 || u_view_mode == 3.0) discard;
+    if (u_show_rock < 0.5 && u_show_sand < 0.5) discard;
 
-    if (u_view_mode == 1.0) { // Heightmap (Rock)
-      fragColor = vec4(vec3(v_rock * 1.5), 1.0);
-      return;
-    } else if (u_view_mode == 4.0) { // Sand Only
-      fragColor = vec4(0.85, 0.75, 0.3, v_sand > 0.001 ? 1.0 : 0.0);
+    if (u_show_rock < 0.5 && u_show_sand > 0.5) {
       if (v_sand <= 0.001) discard;
-      return;
     }
 
     float hL = get_ground_height(v_uv - vec2(texel.x, 0.0));
@@ -196,9 +196,15 @@ void main() {
     float s_noise = noise(v_uv * 200.0) * 0.04;
     vec3 sand_color = sand_base + vec3(s_noise);
 
-    float slope = 1.0 - normal.z; 
-    float sand_mask = smoothstep(0.0001, 0.05, v_sand);
-    vec3 ground_color = mix(rock_color, sand_color, sand_mask);
+    vec3 ground_color;
+    if (u_show_rock > 0.5 && u_show_sand > 0.5) {
+      float sand_mask = smoothstep(0.0001, 0.05, v_sand);
+      ground_color = mix(rock_color, sand_color, sand_mask);
+    } else if (u_show_rock > 0.5) {
+      ground_color = rock_color;
+    } else {
+      ground_color = sand_color;
+    }
 
     vec3 terrain_lit = ground_color * (diff * u_sun_color + vec3(0.12));
     fragColor = vec4(terrain_lit, 1.0);
@@ -207,18 +213,11 @@ void main() {
     // -------------------------------------------------------------
     // FLUID LAYER
     // -------------------------------------------------------------
-    if (v_water <= 0.001 && v_lava <= 0.001) discard;
-    if (u_view_mode == 1.0 || u_view_mode == 4.0) discard;
+    bool has_water = (v_water > 0.001 && u_show_water > 0.5);
+    bool has_lava = (v_lava > 0.001 && u_show_lava > 0.5);
+    bool has_suspended = (v_suspended_sand > 0.0 && u_show_suspended > 0.5);
 
-    if (u_view_mode == 2.0) { // Water Only
-      fragColor = vec4(0.0, 0.4, 1.0, v_water > 0.01 ? 1.0 : 0.0);
-      if (v_water <= 0.01) discard;
-      return;
-    } else if (u_view_mode == 3.0) { // Lava Only
-      fragColor = vec4(1.0, 0.25, 0.0, v_lava > 0.01 ? 1.0 : 0.0);
-      if (v_lava <= 0.01) discard;
-      return;
-    }
+    if (!has_water && !has_lava && !has_suspended) discard;
 
     float hL = get_height(v_uv - vec2(texel.x, 0.0));
     float hR = get_height(v_uv + vec2(texel.x, 0.0));
@@ -235,9 +234,9 @@ void main() {
     float diff = max(0.05, dot(normal, u_sun_dir));
     vec4 finalColor = vec4(0.0);
 
-    // Lava
+    // Lava rendering
     float lava_mask = smoothstep(0.01, 0.1, v_lava);
-    if (lava_mask > 0.0) {
+    if (has_lava && lava_mask > 0.0) {
       vec3 shallow_lava_col = vec3(1.0, 0.8, 0.0); // Yellow/Orange for shallow
       vec3 deep_lava_col = vec3(0.6, 0.05, 0.0);    // Deep Red for thick lava
       
@@ -253,69 +252,98 @@ void main() {
       vec3 sky_refl = vec3(0.65, 0.8, 1.0) * (u_sun_color + vec3(0.1));
       vec3 lava_shaded = mix(lava_body_col, sky_refl + vec3(spec_lava), fresnel);
       
-      // Lava is mostly opaque, but we can add a tiny bit of transparency for very shallow parts
       float base_alpha = mix(1.0, 0.85, transmission);
       float lava_alpha = mix(base_alpha, 1.0, fresnel);
 
-      finalColor = mix(finalColor, vec4(lava_shaded, lava_alpha), lava_mask);
+      finalColor = vec4(lava_shaded, lava_alpha * lava_mask);
     }
 
-    // Water
-    float water_mask = smoothstep(0.001, 0.005, v_water);
-    if (water_mask > 0.0) {
-      // Read flux to compute flow velocity with bilinear smoothing
-      vec4 flux = get_smooth_flux(v_uv, u_texFlux);
-      vec2 flowDir = vec2(flux.g - flux.r, flux.a - flux.b);
-      float speed = length(flowDir);
+    // Water & Suspended Sand rendering
+    if (has_water) {
+      float water_mask = smoothstep(0.001, 0.005, v_water);
+      if (water_mask > 0.0) {
+        // Read flux to compute flow velocity with bilinear smoothing
+        vec4 flux = get_smooth_flux(v_uv, u_texFlux);
+        vec2 flowDir = vec2(flux.g - flux.r, flux.a - flux.b);
+        float speed = length(flowDir);
 
-      vec3 r_water = reflect(-u_sun_dir, normal);
-      float spec_water = pow(max(0.0, dot(r_water, view_dir)), 80.0) * 0.8;
+        vec3 r_water = reflect(-u_sun_dir, normal);
+        float spec_water = pow(max(0.0, dot(r_water, view_dir)), 80.0) * 0.8;
 
-      float fresnel = 0.02 + 0.98 * pow(1.0 - max(0.0, dot(normal, view_dir)), 5.0);
+        float fresnel = 0.02 + 0.98 * pow(1.0 - max(0.0, dot(normal, view_dir)), 5.0);
 
-      vec3 shallow_water_col = vec3(0.0, 0.9, 0.8);
-      vec3 deep_water_col = vec3(0.0, 0.1, 0.45);
-      
-      float depth = v_water * 15.0;
-      float transmission = exp(-depth);
-      vec3 water_body_col = mix(deep_water_col, shallow_water_col, transmission);
+        vec3 shallow_water_col = vec3(0.0, 0.9, 0.8);
+        vec3 deep_water_col = vec3(0.0, 0.1, 0.45);
+        
+        float depth = v_water * 15.0;
+        float transmission = exp(-depth);
+        vec3 water_body_col = mix(deep_water_col, shallow_water_col, transmission);
 
-      // Use a logarithmic response to balance small and large flows visually
-      float visual_speed = log(1.0 + speed * 50.0);
-      float foam_mask = smoothstep(0.1, 1.5, visual_speed);
-      
-      vec2 dir = normalize(flowDir + vec2(0.0001));
-      
-      // Flow map time cycles
-      float flow_time = u_time * visual_speed * 1.5;
-      float cycle1 = fract(flow_time);
-      float cycle2 = fract(flow_time + 0.5);
-      
-      float weight1 = 1.0 - abs(cycle1 - 0.5) * 2.0;
-      float weight2 = 1.0 - abs(cycle2 - 0.5) * 2.0;
-      
-      // Advect UVs without rotating space, preventing circular Moire
-      vec2 uv1 = v_uv - dir * (cycle1 * 0.03);
-      vec2 uv2 = v_uv - dir * (cycle2 * 0.03);
-      
-      float n_scale = 1000.0;
-      float streak1 = get_streak(uv1, dir, n_scale);
-      float streak2 = get_streak(uv2, dir, n_scale);
-      
-      float streak = streak1 * weight1 + streak2 * weight2;
-      
-      float current_foam = foam_mask * smoothstep(0.55, 0.70, streak);
-      
-      water_body_col = mix(water_body_col, vec3(1.0), current_foam * 0.7);
+        // Mix muddy sand color into water body color if u_show_suspended is active
+        if (has_suspended) {
+          vec3 mud_color = vec3(0.55, 0.43, 0.28); // Sandy/muddy brown
+          float mud_factor = clamp(v_suspended_sand * 250.0, 0.0, 1.0);
+          water_body_col = mix(water_body_col, mud_color, mud_factor);
+        }
 
-      vec3 sky_refl = vec3(0.65, 0.8, 1.0) * (u_sun_color + vec3(0.1));
-      vec3 water_shaded = mix(water_body_col, sky_refl + vec3(spec_water), fresnel);
-      
-      // Base transparency (slightly more transparent than before)
-      float base_alpha = mix(0.85, 0.65, transmission);
-      float water_alpha = mix(base_alpha, 1.0, fresnel);
+        // Use a logarithmic response to balance small and large flows visually
+        float visual_speed = log(1.0 + speed * 50.0);
+        float foam_mask = smoothstep(0.1, 1.5, visual_speed);
+        
+        vec2 dir = normalize(flowDir + vec2(0.0001));
+        
+        // Flow map time cycles
+        float flow_time = u_time * visual_speed * 1.5;
+        float cycle1 = fract(flow_time);
+        float cycle2 = fract(flow_time + 0.5);
+        
+        float weight1 = 1.0 - abs(cycle1 - 0.5) * 2.0;
+        float weight2 = 1.0 - abs(cycle2 - 0.5) * 2.0;
+        
+        // Advect UVs without rotating space, preventing circular Moire
+        vec2 uv1 = v_uv - dir * (cycle1 * 0.03);
+        vec2 uv2 = v_uv - dir * (cycle2 * 0.03);
+        
+        float n_scale = 1000.0;
+        float streak1 = get_streak(uv1, dir, n_scale);
+        float streak2 = get_streak(uv2, dir, n_scale);
+        
+        float streak = streak1 * weight1 + streak2 * weight2;
+        
+        float current_foam = foam_mask * smoothstep(0.55, 0.70, streak);
+        
+        water_body_col = mix(water_body_col, vec3(1.0), current_foam * 0.7);
 
-      finalColor = mix(finalColor, vec4(water_shaded, water_alpha), water_mask);
+        vec3 sky_refl = vec3(0.65, 0.8, 1.0) * (u_sun_color + vec3(0.1));
+        vec3 water_shaded = mix(water_body_col, sky_refl + vec3(spec_water), fresnel);
+        
+        // Base transparency (slightly more transparent than before)
+        float base_alpha = mix(0.85, 0.65, transmission);
+        float water_alpha = mix(base_alpha, 1.0, fresnel);
+
+        vec4 waterColor = vec4(water_shaded, water_alpha * water_mask);
+        
+        if (has_lava) {
+          finalColor = mix(waterColor, finalColor, lava_mask);
+        } else {
+          finalColor = waterColor;
+        }
+      }
+    } else if (has_suspended) {
+      // If we only show suspended sand (no water, no lava)
+      float density = v_suspended_sand;
+      float alpha = clamp(density * 250.0, 0.0, 1.0);
+      vec3 mud_color = mix(vec3(0.3, 0.25, 0.2), vec3(0.65, 0.53, 0.35), clamp(density * 10.0, 0.0, 1.0));
+      
+      // Shading for cloud depth
+      vec3 mud_shaded = mud_color * (diff * u_sun_color + vec3(0.15));
+      vec4 suspColor = vec4(mud_shaded, alpha * 0.85);
+      
+      if (has_lava) {
+        finalColor = mix(suspColor, finalColor, lava_mask);
+      } else {
+        finalColor = suspColor;
+      }
     }
 
     fragColor = finalColor;

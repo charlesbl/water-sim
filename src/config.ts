@@ -12,7 +12,6 @@ export interface Config {
   erosionRate: number; // Rate at which water flow erodes sand
   capacityFactor: number; // Multiplier for sediment carrying capacity
   depositionRate: number; // Rate at which suspended sand deposits
-  minErosionSpeed: number; // Minimum water speed to pick up sand
   evaporation: number; // Water evaporation rate per step
   paused: boolean; // Is the simulation paused?
 
@@ -22,10 +21,15 @@ export interface Config {
   brushStrength: number; // Strength/rate of drawing
 
   // Visual settings
-  viewMode: 'realistic' | 'heightmap' | 'water-only' | 'lava-only' | 'sand-only';
+  showRock: boolean;
+  showSand: boolean;
+  showWater: boolean;
+  showLava: boolean;
+  showSuspendedSand: boolean;
   autoRotate: boolean; // Auto-rotation of OrbitControls
   smoothRendering: boolean;
   heightScale: number; // Scaling of Z-height displacement for mesh
+  minWaterDepth: number; // Minimum water depth/volume to transport sand
 
   // Terrain generation settings
   terrainScale: number; // Frequency/zoom of terrain noise
@@ -55,7 +59,6 @@ export const config: Config = {
   erosionRate: 0.005,
   capacityFactor: 0.4,
   depositionRate: 0.05,
-  minErosionSpeed: 0.001,
   evaporation: 0.0,
   paused: false,
 
@@ -63,10 +66,15 @@ export const config: Config = {
   brushRadius: 15,
   brushStrength: 1.0,
 
-  viewMode: 'realistic',
+  showRock: true,
+  showSand: true,
+  showWater: true,
+  showLava: true,
+  showSuspendedSand: true,
   autoRotate: false,
   smoothRendering: true,
   heightScale: 18.0,
+  minWaterDepth: 0.0,
 
   terrainScale: 4.0,
   terrainSharpness: 1.4,
