@@ -79,7 +79,7 @@ export const config: Config = {
   showSuspendedSand: true,
   autoRotate: false,
   smoothRendering: true,
-  renderResolution: 0.25,
+  renderResolution: 0.5,
   heightScale: 18.0,
   minWaterDepth: 0.0,
 
