@@ -150,14 +150,11 @@ vec4 get_smooth_flux(vec2 uv, sampler2D tex) {
 float get_streak(vec2 uv, vec2 dir, float n_scale) {
   float step_size = 0.4 / n_scale; 
   float acc = 0.0;
-  acc += snoise((uv - dir * step_size * 3.0) * n_scale);
+  // Reduced from 7 to 3 samples to optimize fragment shader performance
   acc += snoise((uv - dir * step_size * 2.0) * n_scale);
-  acc += snoise((uv - dir * step_size * 1.0) * n_scale);
   acc += snoise(uv * n_scale);
-  acc += snoise((uv + dir * step_size * 1.0) * n_scale);
   acc += snoise((uv + dir * step_size * 2.0) * n_scale);
-  acc += snoise((uv + dir * step_size * 3.0) * n_scale);
-  return acc * 0.1428 * 1.5 + 0.5; // average and map to roughly 0-1
+  return acc * 0.3333 * 1.5 + 0.5; // average and map to roughly 0-1
 }
 
 void main() {

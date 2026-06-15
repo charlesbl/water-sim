@@ -28,6 +28,7 @@ export interface Config {
   showSuspendedSand: boolean;
   autoRotate: boolean; // Auto-rotation of OrbitControls
   smoothRendering: boolean;
+  renderResolution: number; // Multiplier for rendering mesh resolution
   heightScale: number; // Scaling of Z-height displacement for mesh
   minWaterDepth: number; // Minimum water depth/volume to transport sand
 
@@ -76,6 +77,7 @@ export const config: Config = {
   showSuspendedSand: true,
   autoRotate: false,
   smoothRendering: true,
+  renderResolution: 0.25,
   heightScale: 18.0,
   minWaterDepth: 0.0,
 

@@ -77,7 +77,10 @@ function init() {
 
   // 7. Terrain Mesh Construction
   // Create flat plane which we will displace on the GPU
-  const geometry = new THREE.PlaneGeometry(200, 200, config.gridSize - 1, config.gridSize - 1);
+  // Optimization: use a lower resolution for the rendering mesh to save vertex shader load.
+  // The fragment shader will still compute lighting at full simulation resolution!
+  const renderSegments = Math.max(1, Math.floor(config.gridSize * config.renderResolution) - 1);
+  const geometry = new THREE.PlaneGeometry(200, 200, renderSegments, renderSegments);
 
   // Custom Material for Height displacement and realistic visual rendering
   terrainMaterial = new THREE.ShaderMaterial({
@@ -445,7 +448,8 @@ function setupUI() {
       | 'rainQuantity'
       | 'rainSize'
       | 'borderWaterHeight'
-      | 'minWaterDepth',
+      | 'minWaterDepth'
+      | 'renderResolution',
     displayId?: string
   ) => {
     const slider = document.getElementById(id) as HTMLInputElement;
@@ -477,6 +481,15 @@ function setupUI() {
       ) {
         gpgpu.resetTerrain(false);
       }
+
+      if (configKey === 'renderResolution') {
+        const newSegments = Math.max(1, Math.floor(config.gridSize * config.renderResolution) - 1);
+        const newGeo = new THREE.PlaneGeometry(200, 200, newSegments, newSegments);
+        terrainMesh.geometry.dispose();
+        terrainMesh.geometry = newGeo;
+        fluidMesh.geometry = newGeo;
+        pickingMesh.geometry = newGeo;
+      }
     });
   };
 
@@ -503,6 +516,7 @@ function setupUI() {
   bindSlider('rain-size', 'rainSize', 'rain-size-val');
   bindSlider('border-water-height', 'borderWaterHeight', 'border-water-height-val');
   bindSlider('min-water-depth', 'minWaterDepth', 'min-water-depth-val');
+  bindSlider('render-resolution', 'renderResolution', 'render-resolution-val');
 
   // 3. Pause / Play button
   const pauseBtn = document.getElementById('btn-pause') as HTMLButtonElement;
