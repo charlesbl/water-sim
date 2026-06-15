@@ -379,7 +379,8 @@ footer {
 }
 
 /* Selection and visual aesthetics tweaks */
-input[type='range']#brush-radius::-webkit-slider-thumb {
+input[type='range']#brush-radius::-webkit-slider-thumb,
+input[type='range']#flat-rock-height::-webkit-slider-thumb {
   background: #a4a4b5;
   box-shadow: 0 0 8px rgba(164, 164, 181, 0.5);
 }
@@ -391,7 +392,8 @@ input[type='range']#lava-viscosity::-webkit-slider-thumb {
   background: #eb5757;
   box-shadow: 0 0 8px rgba(235, 87, 87, 0.5);
 }
-input[type='range']#sand-slide::-webkit-slider-thumb {
+input[type='range']#sand-slide::-webkit-slider-thumb,
+input[type='range']#terrain-sand-height::-webkit-slider-thumb {
   background: #f2c94c;
   box-shadow: 0 0 8px rgba(242, 201, 76, 0.5);
 }

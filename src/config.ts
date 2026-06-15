@@ -32,6 +32,9 @@ export interface Config {
   minWaterDepth: number; // Minimum water depth/volume to transport sand
 
   // Terrain generation settings
+  terrainType: number; // 0: realistic (noise), 1: flat
+  terrainSandHeight: number; // Initial sand thickness/height on the map
+  flatRockHeight: number; // Initial rock thickness/height in flat mode
   terrainScale: number; // Frequency/zoom of terrain noise
   terrainSharpness: number; // Exponent for peak sharpness
   fbmOctaves: number; // Number of noise detail layers
@@ -76,6 +79,9 @@ export const config: Config = {
   heightScale: 18.0,
   minWaterDepth: 0.0,
 
+  terrainType: 0,
+  terrainSandHeight: 0.05,
+  flatRockHeight: 0.05,
   terrainScale: 4.0,
   terrainSharpness: 1.4,
   fbmOctaves: 4,

@@ -85,6 +85,9 @@ export class GPGPUSimulation {
         u_min_water_depth: { value: config.minWaterDepth },
         u_initialized: { value: 0.0 },
         u_seed: { value: this.seed },
+        u_terrain_type: { value: config.terrainType },
+        u_terrain_sand_height: { value: config.terrainSandHeight },
+        u_flat_rock_height: { value: config.flatRockHeight },
         u_terrain_scale: { value: config.terrainScale },
         u_terrain_sharpness: { value: config.terrainSharpness },
         u_terrain_tilt: { value: config.terrainTilt },
@@ -201,6 +204,9 @@ export class GPGPUSimulation {
     this.simTerrainMaterial.uniforms.u_capacity_factor.value = config.capacityFactor;
     this.simTerrainMaterial.uniforms.u_deposition_rate.value = config.depositionRate;
     this.simTerrainMaterial.uniforms.u_min_water_depth.value = config.minWaterDepth;
+    this.simTerrainMaterial.uniforms.u_terrain_type.value = config.terrainType;
+    this.simTerrainMaterial.uniforms.u_terrain_sand_height.value = config.terrainSandHeight;
+    this.simTerrainMaterial.uniforms.u_flat_rock_height.value = config.flatRockHeight;
     this.simTerrainMaterial.uniforms.u_terrain_scale.value = config.terrainScale;
     this.simTerrainMaterial.uniforms.u_terrain_sharpness.value = config.terrainSharpness;
     this.simTerrainMaterial.uniforms.u_terrain_tilt.value = config.terrainTilt;

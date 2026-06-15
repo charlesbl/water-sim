@@ -438,6 +438,8 @@ function setupUI() {
       | 'terrainScale'
       | 'terrainSharpness'
       | 'terrainTilt'
+      | 'terrainSandHeight'
+      | 'flatRockHeight'
       | 'fbmOctaves'
       | 'fbmPersistence'
       | 'rainQuantity'
@@ -461,12 +463,14 @@ function setupUI() {
         );
       }
 
-      // Automatically regenerate terrain when changing noise parameters, keeping seed
+      // Automatically regenerate terrain when changing noise or parameters, keeping seed
       if (
         [
           'terrainScale',
           'terrainSharpness',
           'terrainTilt',
+          'terrainSandHeight',
+          'flatRockHeight',
           'fbmOctaves',
           'fbmPersistence',
         ].includes(configKey)
@@ -489,6 +493,8 @@ function setupUI() {
   bindSlider('deposition-rate', 'depositionRate', 'deposition-rate-val');
   bindSlider('evaporation', 'evaporation', 'evaporation-val');
   bindSlider('terrain-scale', 'terrainScale', 'terrain-scale-val');
+  bindSlider('terrain-sand-height', 'terrainSandHeight', 'terrain-sand-height-val');
+  bindSlider('flat-rock-height', 'flatRockHeight', 'flat-rock-height-val');
   bindSlider('terrain-sharpness', 'terrainSharpness', 'terrain-sharpness-val');
   bindSlider('terrain-tilt', 'terrainTilt', 'terrain-tilt-val');
   bindSlider('fbm-octaves', 'fbmOctaves', 'fbm-octaves-val');
@@ -568,6 +574,30 @@ function setupUI() {
     borderSelect.addEventListener('change', () => {
       config.borderBehavior = parseInt(borderSelect.value);
       updateBorderHeightVisibility();
+    });
+  }
+
+  // 6.6. Terrain Generation Dropdown Select
+  const terrainGenSelect = document.getElementById('terrain-generation') as HTMLSelectElement;
+  const terrainNoiseSettings = document.getElementById('terrain-noise-settings');
+  const flatRockHeightGroup = document.getElementById('flat-rock-height-group');
+  const updateTerrainSettingsVisibility = () => {
+    if (config.terrainType === 0) {
+      if (terrainNoiseSettings) terrainNoiseSettings.style.display = 'block';
+      if (flatRockHeightGroup) flatRockHeightGroup.style.display = 'none';
+    } else {
+      if (terrainNoiseSettings) terrainNoiseSettings.style.display = 'none';
+      if (flatRockHeightGroup) flatRockHeightGroup.style.display = 'block';
+    }
+  };
+
+  if (terrainGenSelect) {
+    terrainGenSelect.value = config.terrainType === 0 ? 'realiste' : 'plat';
+    updateTerrainSettingsVisibility();
+    terrainGenSelect.addEventListener('change', () => {
+      config.terrainType = terrainGenSelect.value === 'realiste' ? 0 : 1;
+      updateTerrainSettingsVisibility();
+      gpgpu.resetTerrain(config.terrainType === 0);
     });
   }
 

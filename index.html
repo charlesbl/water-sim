@@ -82,25 +82,28 @@
           <div class="hud-section-content-inner">
             <div class="control-group">
               <div class="label-row">
-                <label for="terrain-scale">Échelle (Zoom)</label>
-                <span id="terrain-scale-val" class="value-display">4.0</span>
+                <label for="terrain-generation">Type de génération</label>
               </div>
-              <input type="range" id="terrain-scale" min="1.0" max="10.0" value="4.0" step="0.1" />
+              <select id="terrain-generation" class="select-input">
+                <option value="realiste" selected>Réaliste</option>
+                <option value="plat">Plat</option>
+              </select>
+            </div>
+
+            <div class="control-group" id="flat-rock-height-group">
+              <div class="label-row">
+                <label for="flat-rock-height">Hauteur de la roche</label>
+                <span id="flat-rock-height-val" class="value-display">0.05</span>
+              </div>
+              <input type="range" id="flat-rock-height" min="0.0" max="0.5" value="0.05" step="0.01" />
             </div>
 
             <div class="control-group">
               <div class="label-row">
-                <label for="terrain-sharpness">Sharpness / Relief</label>
-                <span id="terrain-sharpness-val" class="value-display">1.4</span>
+                <label for="terrain-sand-height">Hauteur du sable</label>
+                <span id="terrain-sand-height-val" class="value-display">0.05</span>
               </div>
-              <input
-                type="range"
-                id="terrain-sharpness"
-                min="0.5"
-                max="3.0"
-                value="1.4"
-                step="0.05"
-              />
+              <input type="range" id="terrain-sand-height" min="0.0" max="0.5" value="0.05" step="0.01" />
             </div>
 
             <div class="control-group">
@@ -111,27 +114,52 @@
               <input type="range" id="terrain-tilt" min="-5.0" max="5.0" value="0.0" step="0.1" />
             </div>
 
-            <div class="control-group">
-              <div class="label-row">
-                <label for="fbm-octaves">Détails (Octaves)</label>
-                <span id="fbm-octaves-val" class="value-display">4</span>
+            <div id="terrain-noise-settings">
+              <div class="control-group">
+                <div class="label-row">
+                  <label for="terrain-scale">Échelle (Zoom)</label>
+                  <span id="terrain-scale-val" class="value-display">4.0</span>
+                </div>
+                <input type="range" id="terrain-scale" min="1.0" max="10.0" value="4.0" step="0.1" />
               </div>
-              <input type="range" id="fbm-octaves" min="1" max="8" value="4" step="1" />
-            </div>
 
-            <div class="control-group">
-              <div class="label-row">
-                <label for="fbm-persistence">Persistance</label>
-                <span id="fbm-persistence-val" class="value-display">0.44</span>
+              <div class="control-group">
+                <div class="label-row">
+                  <label for="terrain-sharpness">Sharpness / Relief</label>
+                  <span id="terrain-sharpness-val" class="value-display">1.4</span>
+                </div>
+                <input
+                  type="range"
+                  id="terrain-sharpness"
+                  min="0.5"
+                  max="3.0"
+                  value="1.4"
+                  step="0.05"
+                />
               </div>
-              <input
-                type="range"
-                id="fbm-persistence"
-                min="0.10"
-                max="0.90"
-                value="0.44"
-                step="0.01"
-              />
+
+              <div class="control-group">
+                <div class="label-row">
+                  <label for="fbm-octaves">Détails (Octaves)</label>
+                  <span id="fbm-octaves-val" class="value-display">4</span>
+                </div>
+                <input type="range" id="fbm-octaves" min="1" max="8" value="4" step="1" />
+              </div>
+
+              <div class="control-group">
+                <div class="label-row">
+                  <label for="fbm-persistence">Persistance</label>
+                  <span id="fbm-persistence-val" class="value-display">0.44</span>
+                </div>
+                <input
+                  type="range"
+                  id="fbm-persistence"
+                  min="0.10"
+                  max="0.90"
+                  value="0.44"
+                  step="0.01"
+                />
+              </div>
             </div>
           </div>
         </div>

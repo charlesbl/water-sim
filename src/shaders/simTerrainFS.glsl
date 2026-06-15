@@ -28,6 +28,9 @@ uniform float u_seed;
 uniform float u_border_behavior;
 
 // Terrain parameters
+uniform float u_terrain_type; // 0: realistic, 1: flat
+uniform float u_terrain_sand_height;
+uniform float u_flat_rock_height;
 uniform float u_terrain_scale;
 uniform float u_terrain_sharpness;
 uniform float u_terrain_tilt;
@@ -169,18 +172,33 @@ float getNewSuspended(vec2 uv) {
 void main() {
   // Initial procedural terrain generation on first pass
   if (u_initialized < 0.5) {
-    vec2 p = v_uv * u_terrain_scale + vec2(u_seed);
-    float rock = fbm(p);
-    rock = pow(rock, u_terrain_sharpness) * 2.1;
-    
-    // Add tilt based on X axis
-    rock += (v_uv.x - 0.5) * u_terrain_tilt;
-    
-    // Ensure rock doesn't go negative before sand calculation
-    rock = max(0.0, rock);
-    
-    // Place initial sand in valleys and add a uniform layer everywhere
-    float sand = max(0.0, 0.16 - rock) * 1.5 + 0.0375;
+    float rock = 0.0;
+    float sand = 0.0;
+
+    if (u_terrain_type < 0.5) {
+      // Realistic terrain (FBM noise)
+      vec2 p = v_uv * u_terrain_scale + vec2(u_seed);
+      rock = fbm(p);
+      rock = pow(rock, u_terrain_sharpness) * 2.1;
+      
+      // Add tilt based on X axis
+      rock += (v_uv.x - 0.5) * u_terrain_tilt;
+      
+      // Ensure rock doesn't go negative before sand calculation
+      rock = max(0.0, rock);
+      
+      // Place initial sand in valleys and add a uniform layer everywhere
+      sand = max(0.0, 0.16 - rock) * 1.5 + u_terrain_sand_height;
+    } else {
+      // Flat terrain
+      rock = u_flat_rock_height;
+      
+      // Keep support for tilt even for flat terrain (useful for physics testing)
+      rock += (v_uv.x - 0.5) * u_terrain_tilt;
+      rock = max(0.0, rock);
+      
+      sand = u_terrain_sand_height;
+    }
     
     fragColor = vec4(rock, sand, 0.0, 1.0);
     return;
