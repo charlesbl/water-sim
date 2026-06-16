@@ -11,7 +11,7 @@ A high-performance interactive 2.5D fluid and terrain simulation running entirel
 - **Interactive Brushes:**
   - **Water & Lava:** Paint dynamic, physics-based fluids.
   - **Sand:** Deposit sand that interacts with fluid flows.
-  - **Terrain Editing:** Dynamically raise (`Monter`) or dig (`Creuser`) the terrain.
+  - **Terrain Editing:** Dynamically raise or dig the terrain.
   - **Eraser:** Clear fluids instantly.
 - **Fluid & Erosion Simulation:**
   - Dynamic shallow water equation solver.

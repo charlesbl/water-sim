@@ -540,7 +540,7 @@ function setupUI() {
   if (pauseBtn) {
     pauseBtn.addEventListener('click', () => {
       config.paused = !config.paused;
-      pauseBtn.textContent = config.paused ? '▶️ Relancer' : '⏸️ Pause';
+      pauseBtn.textContent = config.paused ? '▶️ Resume' : '⏸️ Pause';
       if (config.paused) {
         pauseBtn.classList.add('active');
       } else {
@@ -570,7 +570,7 @@ function setupUI() {
     });
   }
 
-  // 5.5 Nouveau Terrain
+  // 5.5 New Terrain
   const newTerrainBtn = document.getElementById('btn-new-terrain');
   if (newTerrainBtn) {
     newTerrainBtn.addEventListener('click', () => {
@@ -631,10 +631,10 @@ function setupUI() {
   };
 
   if (terrainGenSelect) {
-    terrainGenSelect.value = config.terrainType === 0 ? 'realiste' : 'plat';
+    terrainGenSelect.value = config.terrainType === 0 ? 'realistic' : 'flat';
     updateTerrainSettingsVisibility();
     terrainGenSelect.addEventListener('change', () => {
-      config.terrainType = terrainGenSelect.value === 'realiste' ? 0 : 1;
+      config.terrainType = terrainGenSelect.value === 'realistic' ? 0 : 1;
       updateTerrainSettingsVisibility();
       gpgpu.resetTerrain(config.terrainType === 0);
     });
