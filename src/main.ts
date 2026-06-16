@@ -35,7 +35,7 @@ let lastFpsUpdate = 0;
 let simTicksAccumulator = 0.0;
 
 // Free camera keyboard state
-const keys = { w: false, a: false, s: false, d: false, space: false, shift: false };
+const keys = { w: false, a: false, s: false, d: false, q: false, e: false, shift: false, space: false };
 
 /**
  * Initialize application lifecycle
@@ -219,6 +219,12 @@ function init() {
       case 'KeyD':
         keys.d = true;
         break;
+      case 'KeyQ':
+        keys.q = true;
+        break;
+      case 'KeyE':
+        keys.e = true;
+        break;
       case 'Space':
         keys.space = true;
         if (e.target === document.body) e.preventDefault();
@@ -243,6 +249,12 @@ function init() {
         break;
       case 'KeyD':
         keys.d = false;
+        break;
+      case 'KeyQ':
+        keys.q = false;
+        break;
+      case 'KeyE':
+        keys.e = false;
         break;
       case 'Space':
         keys.space = false;
@@ -664,7 +676,13 @@ function animate() {
   const now = performance.now();
 
   // Free camera movement
-  const moveSpeed = 1.0 / 3.0;
+  let speedMultiplier = 1.0;
+  if (keys.space) {
+    speedMultiplier = 3.0;
+  } else if (keys.shift) {
+    speedMultiplier = 0.3;
+  }
+  const moveSpeed = (1.0 / 3.0) * speedMultiplier;
   const moveVec = new THREE.Vector3();
   const localMove = new THREE.Vector3();
 
@@ -679,8 +697,8 @@ function animate() {
     moveVec.add(localMove);
   }
 
-  if (keys.space) moveVec.y += 1;
-  if (keys.shift) moveVec.y -= 1;
+  if (keys.q) moveVec.y -= 1;
+  if (keys.e) moveVec.y += 1;
 
   if (moveVec.lengthSq() > 0) {
     moveVec.normalize().multiplyScalar(moveSpeed);
