@@ -96,6 +96,7 @@ export class GPGPUSimulation {
         u_fbm_octaves: { value: config.fbmOctaves },
         u_fbm_persistence: { value: config.fbmPersistence },
         u_border_behavior: { value: config.borderBehavior },
+        u_paused: { value: 0.0 },
       },
       depthWrite: false,
       depthTest: false,
@@ -115,6 +116,7 @@ export class GPGPUSimulation {
         u_damping: { value: config.waterDamping },
         u_initialized: { value: 0.0 },
         u_is_lava: { value: 0.0 },
+        u_paused: { value: 0.0 },
       },
       depthWrite: false,
       depthTest: false,
@@ -134,6 +136,7 @@ export class GPGPUSimulation {
         u_damping: { value: config.lavaDamping },
         u_initialized: { value: 0.0 },
         u_is_lava: { value: 1.0 },
+        u_paused: { value: 0.0 },
       },
       depthWrite: false,
       depthTest: false,
@@ -163,6 +166,7 @@ export class GPGPUSimulation {
         u_time: { value: 0.0 },
         u_border_behavior: { value: config.borderBehavior },
         u_border_water_height: { value: config.borderWaterHeight },
+        u_paused: { value: 0.0 },
       },
       depthWrite: false,
       depthTest: false,
@@ -226,6 +230,12 @@ export class GPGPUSimulation {
     this.simTerrainMaterial.uniforms.u_border_behavior.value = config.borderBehavior;
     this.simFluidsMaterial.uniforms.u_border_behavior.value = config.borderBehavior;
     this.simFluidsMaterial.uniforms.u_border_water_height.value = config.borderWaterHeight;
+
+    const pausedVal = config.paused ? 1.0 : 0.0;
+    this.simTerrainMaterial.uniforms.u_paused.value = pausedVal;
+    this.simFluxMaterial.uniforms.u_paused.value = pausedVal;
+    this.simLavaFluxMaterial.uniforms.u_paused.value = pausedVal;
+    this.simFluidsMaterial.uniforms.u_paused.value = pausedVal;
   }
 
   /**

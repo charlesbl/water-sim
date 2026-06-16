@@ -28,6 +28,7 @@ uniform float u_min_water_depth;
 uniform float u_initialized;
 uniform float u_seed;
 uniform float u_border_behavior;
+uniform float u_paused;
 
 // Terrain parameters
 uniform float u_terrain_type; // 0: realistic, 1: flat
@@ -79,9 +80,11 @@ void getCellData(vec2 uv, out float rock, out float sand, out float suspended_sa
   lava = b.g;
 
   // Water/Lava interaction: convert lava to rock gradually
-  if (water > 0.01 && lava > 0.01) {
-    float react = min(0.002, lava);
-    rock += react;
+  if (u_paused < 0.5) {
+    if (water > 0.01 && lava > 0.01) {
+      float react = min(0.002, lava);
+      rock += react;
+    }
   }
 }
 
@@ -226,134 +229,136 @@ void main() {
   float rock, sand, suspended_sand, water, lava, avalanche;
   getCellData(v_uv, rock, sand, suspended_sand, water, lava, avalanche);
 
-  // Compute sand sliding changes (cellular automata)
-  vec2 texel = 1.0 / vec2(u_grid_size);
-  vec2 dirs[8] = vec2[](
-    vec2(-1.0, 0.0), vec2(1.0, 0.0),
-    vec2(0.0, -1.0), vec2(0.0, 1.0),
-    vec2(-1.0, -1.0), vec2(1.0, -1.0),
-    vec2(-1.0, 1.0), vec2(1.0, 1.0)
-  );
-  float dists[8] = float[](
-    1.0, 1.0, 1.0, 1.0,
-    1.414, 1.414, 1.414, 1.414
-  );
+  if (u_paused < 0.5) {
+    // Compute sand sliding changes (cellular automata)
+    vec2 texel = 1.0 / vec2(u_grid_size);
+    vec2 dirs[8] = vec2[](
+      vec2(-1.0, 0.0), vec2(1.0, 0.0),
+      vec2(0.0, -1.0), vec2(0.0, 1.0),
+      vec2(-1.0, -1.0), vec2(1.0, -1.0),
+      vec2(-1.0, 1.0), vec2(1.0, 1.0)
+    );
+    float dists[8] = float[](
+      1.0, 1.0, 1.0, 1.0,
+      1.414, 1.414, 1.414, 1.414
+    );
 
-  float sand_in = 0.0;
-  float sand_out = 0.0;
-  
-  float h_center = rock + sand;
-  float max_slope = 0.0;
+    float sand_in = 0.0;
+    float sand_out = 0.0;
+    
+    float h_center = rock + sand;
+    float max_slope = 0.0;
 
-  for (int i = 0; i < 8; i++) {
-    vec2 n_uv = clamp(v_uv + dirs[i] * texel, 0.0, 1.0);
-    sand_in += computeSandFlow(n_uv, v_uv, dists[i]);
-    sand_out += computeSandFlow(v_uv, n_uv, dists[i]);
+    for (int i = 0; i < 8; i++) {
+      vec2 n_uv = clamp(v_uv + dirs[i] * texel, 0.0, 1.0);
+      sand_in += computeSandFlow(n_uv, v_uv, dists[i]);
+      sand_out += computeSandFlow(v_uv, n_uv, dists[i]);
+      
+      float n_rock, n_sand, n_susp, n_water, n_lava, n_avalanche;
+      getCellData(n_uv, n_rock, n_sand, n_susp, n_water, n_lava, n_avalanche);
+      float h_n = n_rock + n_sand;
+      max_slope = max(max_slope, (h_center - h_n) / dists[i]);
+    }
     
-    float n_rock, n_sand, n_susp, n_water, n_lava, n_avalanche;
-    getCellData(n_uv, n_rock, n_sand, n_susp, n_water, n_lava, n_avalanche);
-    float h_n = n_rock + n_sand;
-    max_slope = max(max_slope, (h_center - h_n) / dists[i]);
-  }
-  
-  // Hysteresis calculation for avalanche state
-  float local_static = u_sand_static_repose_slope + (noise(v_uv * u_grid_size + u_time * 0.1) - 0.5) * 0.0005;
-  if (max_slope > local_static) {
-    avalanche = 1.0;
-  } else if (max_slope < u_sand_dynamic_repose_slope) {
-    avalanche = 0.0;
-  }
+    // Hysteresis calculation for avalanche state
+    float local_static = u_sand_static_repose_slope + (noise(v_uv * u_grid_size + u_time * 0.1) - 0.5) * 0.0005;
+    if (max_slope > local_static) {
+      avalanche = 1.0;
+    } else if (max_slope < u_sand_dynamic_repose_slope) {
+      avalanche = 0.0;
+    }
 
-  // Reaction: Erosion / Deposition based on Carrying Capacity
-  float ground_sand_change = 0.0;
-  float local_susp = suspended_sand;
-  
-  if (water <= 0.001) {
-    ground_sand_change = suspended_sand; // water evaporated, drop all sand
-    local_susp = 0.0;
-  } else {
-    vec4 f = texture(u_texFlux, v_uv);
-    float total_flux = f.r + f.g + f.b + f.a;
-    float velocity = total_flux / water;
+    // Reaction: Erosion / Deposition based on Carrying Capacity
+    float ground_sand_change = 0.0;
+    float local_susp = suspended_sand;
     
-    float depth_multiplier = 1.0;
-    if (u_min_water_depth > 0.0) {
-      depth_multiplier = smoothstep(u_min_water_depth * 0.5, u_min_water_depth * 1.5, water);
-    }
-    
-    float capacity = (velocity * velocity * velocity) * water * u_capacity_factor * 2.0 * depth_multiplier;
-    
-    float diff = capacity - suspended_sand;
-    
-    // Settling velocity increases as speed goes to 0 (less turbulent)
-    float active_dep_rate = mix(1.0, u_deposition_rate, clamp(velocity * 5.0, 0.0, 1.0));
-    float active_rate = (diff > 0.0) ? u_erosion_rate : active_dep_rate;
-    
-    float change = diff * active_rate;
-    if (change > 0.0) {
-      change = min(sand, change);
-    } else {
-      change = max(-suspended_sand, change);
-    }
-    
-    ground_sand_change = -change;
-    local_susp = suspended_sand + change;
-  }
-  
-  sand = max(0.0, sand - sand_out + sand_in + ground_sand_change);
-  
-  // Advection: Transport of suspended sand
-  float susp_out = 0.0;
-  if (water > 0.001) {
-    vec4 f = texture(u_texFlux, v_uv);
-    float total_flux = f.r + f.g + f.b + f.a;
-    susp_out = local_susp * min(1.0, total_flux / water);
-  }
-
-  float susp_in = 0.0;
-  // Left neighbor flows Right (g)
-  if (v_uv.x > texel.x) {
-    vec2 n_uv = v_uv + vec2(-1.0, 0.0) * texel;
-    float n_w = texture(u_texB, n_uv).r;
-    if (n_w > 0.001) {
-      susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).g / n_w);
-    }
-  }
-  // Right neighbor flows Left (r)
-  if (v_uv.x < 1.0 - texel.x) {
-    vec2 n_uv = v_uv + vec2(1.0, 0.0) * texel;
-    float n_w = texture(u_texB, n_uv).r;
-    if (n_w > 0.001) {
-      susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).r / n_w);
-    }
-  }
-  // Bottom neighbor flows Top (a)
-  if (v_uv.y > texel.y) {
-    vec2 n_uv = v_uv + vec2(0.0, -1.0) * texel;
-    float n_w = texture(u_texB, n_uv).r;
-    if (n_w > 0.001) {
-      susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).a / n_w);
-    }
-  }
-  // Top neighbor flows Bottom (b)
-  if (v_uv.y < 1.0 - texel.y) {
-    vec2 n_uv = v_uv + vec2(0.0, 1.0) * texel;
-    float n_w = texture(u_texB, n_uv).r;
-    if (n_w > 0.001) {
-      susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).b / n_w);
-    }
-  }
-
-  // Boundary condition: Sand falls off the map (infinite drain to prevent stacking) under behavior 1 (pass all)
-  if (u_border_behavior == 1.0) {
-    if (v_uv.x <= texel.x || v_uv.x >= 1.0 - texel.x || v_uv.y <= texel.y || v_uv.y >= 1.0 - texel.y) {
-      sand_in = 0.0;
-      susp_in = 0.0;
+    if (water <= 0.001) {
+      ground_sand_change = suspended_sand; // water evaporated, drop all sand
       local_susp = 0.0;
+    } else {
+      vec4 f = texture(u_texFlux, v_uv);
+      float total_flux = f.r + f.g + f.b + f.a;
+      float velocity = total_flux / water;
+      
+      float depth_multiplier = 1.0;
+      if (u_min_water_depth > 0.0) {
+        depth_multiplier = smoothstep(u_min_water_depth * 0.5, u_min_water_depth * 1.5, water);
+      }
+      
+      float capacity = (velocity * velocity * velocity) * water * u_capacity_factor * 2.0 * depth_multiplier;
+      
+      float diff = capacity - suspended_sand;
+      
+      // Settling velocity increases as speed goes to 0 (less turbulent)
+      float active_dep_rate = mix(1.0, u_deposition_rate, clamp(velocity * 5.0, 0.0, 1.0));
+      float active_rate = (diff > 0.0) ? u_erosion_rate : active_dep_rate;
+      
+      float change = diff * active_rate;
+      if (change > 0.0) {
+        change = min(sand, change);
+      } else {
+        change = max(-suspended_sand, change);
+      }
+      
+      ground_sand_change = -change;
+      local_susp = suspended_sand + change;
     }
-  }
+    
+    sand = max(0.0, sand - sand_out + sand_in + ground_sand_change);
+    
+    // Advection: Transport of suspended sand
+    float susp_out = 0.0;
+    if (water > 0.001) {
+      vec4 f = texture(u_texFlux, v_uv);
+      float total_flux = f.r + f.g + f.b + f.a;
+      susp_out = local_susp * min(1.0, total_flux / water);
+    }
 
-  suspended_sand = max(0.0, local_susp - susp_out + susp_in);
+    float susp_in = 0.0;
+    // Left neighbor flows Right (g)
+    if (v_uv.x > texel.x) {
+      vec2 n_uv = v_uv + vec2(-1.0, 0.0) * texel;
+      float n_w = texture(u_texB, n_uv).r;
+      if (n_w > 0.001) {
+        susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).g / n_w);
+      }
+    }
+    // Right neighbor flows Left (r)
+    if (v_uv.x < 1.0 - texel.x) {
+      vec2 n_uv = v_uv + vec2(1.0, 0.0) * texel;
+      float n_w = texture(u_texB, n_uv).r;
+      if (n_w > 0.001) {
+        susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).r / n_w);
+      }
+    }
+    // Bottom neighbor flows Top (a)
+    if (v_uv.y > texel.y) {
+      vec2 n_uv = v_uv + vec2(0.0, -1.0) * texel;
+      float n_w = texture(u_texB, n_uv).r;
+      if (n_w > 0.001) {
+        susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).a / n_w);
+      }
+    }
+    // Top neighbor flows Bottom (b)
+    if (v_uv.y < 1.0 - texel.y) {
+      vec2 n_uv = v_uv + vec2(0.0, 1.0) * texel;
+      float n_w = texture(u_texB, n_uv).r;
+      if (n_w > 0.001) {
+        susp_in += getNewSuspended(n_uv) * min(1.0, texture(u_texFlux, n_uv).b / n_w);
+      }
+    }
+
+    // Boundary condition: Sand falls off the map (infinite drain to prevent stacking) under behavior 1 (pass all)
+    if (u_border_behavior == 1.0) {
+      if (v_uv.x <= texel.x || v_uv.x >= 1.0 - texel.x || v_uv.y <= texel.y || v_uv.y >= 1.0 - texel.y) {
+        sand_in = 0.0;
+        susp_in = 0.0;
+        local_susp = 0.0;
+      }
+    }
+
+    suspended_sand = max(0.0, local_susp - susp_out + susp_in);
+  }
 
   // Brush painting interface
   if (u_brush_active > 0.5) {

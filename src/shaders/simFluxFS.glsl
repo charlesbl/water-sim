@@ -13,6 +13,7 @@ uniform float u_gravity;
 uniform float u_damping;
 uniform float u_initialized;
 uniform float u_is_lava;
+uniform float u_paused;
 
 void getCellData(vec2 uv, out float solid, out float fluid) {
   vec4 a = texture(u_texA, uv);
@@ -30,6 +31,11 @@ void getCellData(vec2 uv, out float solid, out float fluid) {
 void main() {
   if (u_initialized < 0.5) {
     fragColor = vec4(0.0);
+    return;
+  }
+
+  if (u_paused > 0.5) {
+    fragColor = texture(u_texFlux, v_uv);
     return;
   }
 

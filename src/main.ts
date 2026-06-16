@@ -738,37 +738,9 @@ function animate() {
       config.brushRadius,
       config.brushStrength
     );
-    // When paused we do a dry simulation step so the brush stroke shows up immediately
-    const tempWaterGravity = config.waterGravity;
-    const tempWaterDamping = config.waterDamping;
-    const tempLavaGravity = config.lavaGravity;
-    const tempLavaDamping = config.lavaDamping;
-    const tempSand = config.sandSlideRate;
-    const tempErosion = config.erosionRate;
-    const tempDeposition = config.depositionRate;
-    const tempEvap = config.evaporation;
-    const tempRain = config.rainActive;
-
-    config.waterGravity = 0.0;
-    config.waterDamping = 0.0;
-    config.lavaGravity = 0.0;
-    config.lavaDamping = 0.0;
-    config.sandSlideRate = 0.0;
-    config.erosionRate = 0.0;
-    config.depositionRate = 0.0;
-    config.evaporation = 0.0;
-    config.rainActive = false;
+    // When paused we do a simulation step (which respects the paused state internally)
+    // so the brush stroke shows up immediately
     gpgpu.step();
-
-    config.waterGravity = tempWaterGravity;
-    config.waterDamping = tempWaterDamping;
-    config.lavaGravity = tempLavaGravity;
-    config.lavaDamping = tempLavaDamping;
-    config.sandSlideRate = tempSand;
-    config.erosionRate = tempErosion;
-    config.depositionRate = tempDeposition;
-    config.evaporation = tempEvap;
-    config.rainActive = tempRain;
   }
 
   // Fixed Noon Sun Direction & Lighting
