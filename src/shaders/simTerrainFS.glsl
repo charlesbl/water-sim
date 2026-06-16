@@ -17,8 +17,10 @@ uniform float u_brush_strength;
 
 // Parameters
 uniform float u_grid_size;
+uniform float u_time;
 uniform float u_sand_slide_rate;
-uniform float u_sand_repose_slope;
+uniform float u_sand_static_repose_slope;
+uniform float u_sand_dynamic_repose_slope;
 uniform float u_erosion_rate;
 uniform float u_capacity_factor;
 uniform float u_deposition_rate;
@@ -66,12 +68,13 @@ float fbm(vec2 p) {
 }
 
 // Access cellular data at a given UV
-void getCellData(vec2 uv, out float rock, out float sand, out float suspended_sand, out float water, out float lava) {
+void getCellData(vec2 uv, out float rock, out float sand, out float suspended_sand, out float water, out float lava, out float avalanche) {
   vec4 a = texture(u_texA, uv);
   vec4 b = texture(u_texB, uv);
   rock = a.r;
   sand = a.g;
   suspended_sand = a.b;
+  avalanche = a.a;
   water = b.r;
   lava = b.g;
 
@@ -84,18 +87,19 @@ void getCellData(vec2 uv, out float rock, out float sand, out float suspended_sa
 
 // Calculate sliding sand flow from src to dst
 float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
-  float src_rock, src_sand, src_susp, src_water, src_lava;
-  getCellData(src_uv, src_rock, src_sand, src_susp, src_water, src_lava);
+  float src_rock, src_sand, src_susp, src_water, src_lava, src_avalanche;
+  getCellData(src_uv, src_rock, src_sand, src_susp, src_water, src_lava, src_avalanche);
   if (src_sand <= 0.0001) return 0.0;
 
   float h_src = src_rock + src_sand;
 
-  float dst_rock, dst_sand, dst_susp, dst_water, dst_lava;
-  getCellData(dst_uv, dst_rock, dst_sand, dst_susp, dst_water, dst_lava);
+  float dst_rock, dst_sand, dst_susp, dst_water, dst_lava, dst_avalanche;
+  getCellData(dst_uv, dst_rock, dst_sand, dst_susp, dst_water, dst_lava, dst_avalanche);
   float h_dst = dst_rock + dst_sand;
 
   float diff = h_src - h_dst;
-  float threshold = u_sand_repose_slope * dist; // Angle of repose threshold, adjusted for distance
+  float current_repose = mix(u_sand_static_repose_slope, u_sand_dynamic_repose_slope, src_avalanche);
+  float threshold = current_repose * dist; // Angle of repose threshold, adjusted for distance
   if (diff > threshold) {
     float sum_excess = 0.0;
     float excess_dst = diff - threshold;
@@ -114,11 +118,11 @@ float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
 
     for (int i = 0; i < 8; i++) {
       vec2 n_uv = clamp(src_uv + dirs[i] * texel, 0.0, 1.0);
-      float n_rock, n_sand, n_susp, n_water, n_lava;
-      getCellData(n_uv, n_rock, n_sand, n_susp, n_water, n_lava);
+      float n_rock, n_sand, n_susp, n_water, n_lava, n_avalanche;
+      getCellData(n_uv, n_rock, n_sand, n_susp, n_water, n_lava, n_avalanche);
       float h_n = n_rock + n_sand;
       float n_diff = h_src - h_n;
-      float n_thresh = u_sand_repose_slope * dists[i];
+      float n_thresh = current_repose * dists[i];
       if (n_diff > n_thresh) {
         sum_excess += (n_diff - n_thresh);
       }
@@ -138,8 +142,8 @@ float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
 
 // Compute local suspended sand after erosion/deposition reaction
 float getNewSuspended(vec2 uv) {
-  float r, s, susp, w, l;
-  getCellData(uv, r, s, susp, w, l);
+  float r, s, susp, w, l, a;
+  getCellData(uv, r, s, susp, w, l, a);
   if (w <= 0.001) return 0.0;
   
   vec4 f = texture(u_texFlux, uv);
@@ -200,13 +204,13 @@ void main() {
       sand = u_terrain_sand_height;
     }
     
-    fragColor = vec4(rock, sand, 0.0, 1.0);
+    fragColor = vec4(rock, sand, 0.0, 0.0);
     return;
   }
 
   // Read current state
-  float rock, sand, suspended_sand, water, lava;
-  getCellData(v_uv, rock, sand, suspended_sand, water, lava);
+  float rock, sand, suspended_sand, water, lava, avalanche;
+  getCellData(v_uv, rock, sand, suspended_sand, water, lava, avalanche);
 
   // Compute sand sliding changes (cellular automata)
   vec2 texel = 1.0 / vec2(u_grid_size);
@@ -223,11 +227,29 @@ void main() {
 
   float sand_in = 0.0;
   float sand_out = 0.0;
+  
+  float h_center = rock + sand;
+  float max_slope = 0.0;
 
   for (int i = 0; i < 8; i++) {
     vec2 n_uv = clamp(v_uv + dirs[i] * texel, 0.0, 1.0);
     sand_in += computeSandFlow(n_uv, v_uv, dists[i]);
     sand_out += computeSandFlow(v_uv, n_uv, dists[i]);
+    
+    float n_rock, n_sand, n_susp, n_water, n_lava, n_avalanche;
+    getCellData(n_uv, n_rock, n_sand, n_susp, n_water, n_lava, n_avalanche);
+    float h_n = n_rock + n_sand;
+    max_slope = max(max_slope, (h_center - h_n) / dists[i]);
+  }
+  
+  // Hysteresis calculation for avalanche state
+  float local_static = u_sand_static_repose_slope + (noise(v_uv * u_grid_size + u_time * 0.1) - 0.5) * 0.0005;
+  if (max_slope > local_static) {
+    avalanche = 1.0;
+  } else if (max_slope < u_sand_dynamic_repose_slope) {
+    avalanche = 0.0;
+  } else {
+    avalanche = max(0.0, avalanche - 0.05); // slight decay
   }
 
   // Reaction: Erosion / Deposition based on Carrying Capacity
@@ -344,6 +366,7 @@ void main() {
   rock = clamp(rock, 0.0, 10.0);
   sand = clamp(sand, 0.0, 10.0);
   suspended_sand = clamp(suspended_sand, 0.0, 10.0);
+  avalanche = clamp(avalanche, 0.0, 1.0);
 
-  fragColor = vec4(rock, sand, suspended_sand, 1.0);
+  fragColor = vec4(rock, sand, suspended_sand, avalanche);
 }

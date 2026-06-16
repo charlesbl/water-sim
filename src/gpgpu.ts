@@ -78,7 +78,9 @@ export class GPGPUSimulation {
         u_brush_strength: { value: 1.0 },
         u_grid_size: { value: this.size },
         u_sand_slide_rate: { value: config.sandSlideRate },
-        u_sand_repose_slope: { value: config.sandReposeSlope },
+        u_sand_static_repose_slope: { value: config.sandStaticReposeSlope },
+        u_sand_dynamic_repose_slope: { value: config.sandDynamicReposeSlope },
+        u_time: { value: 0.0 },
         u_erosion_rate: { value: config.erosionRate },
         u_capacity_factor: { value: config.capacityFactor },
         u_deposition_rate: { value: config.depositionRate },
@@ -199,7 +201,8 @@ export class GPGPUSimulation {
    */
   public updateParameters() {
     this.simTerrainMaterial.uniforms.u_sand_slide_rate.value = config.sandSlideRate;
-    this.simTerrainMaterial.uniforms.u_sand_repose_slope.value = config.sandReposeSlope;
+    this.simTerrainMaterial.uniforms.u_sand_static_repose_slope.value = config.sandStaticReposeSlope;
+    this.simTerrainMaterial.uniforms.u_sand_dynamic_repose_slope.value = config.sandDynamicReposeSlope;
     this.simTerrainMaterial.uniforms.u_erosion_rate.value = config.erosionRate;
     this.simTerrainMaterial.uniforms.u_capacity_factor.value = config.capacityFactor;
     this.simTerrainMaterial.uniforms.u_deposition_rate.value = config.depositionRate;
@@ -278,7 +281,10 @@ export class GPGPUSimulation {
     const initVal = this.initialized ? 1.0 : 0.0;
     this.simTerrainMaterial.uniforms.u_initialized.value = initVal;
     this.simFluidsMaterial.uniforms.u_initialized.value = initVal;
-    this.simFluidsMaterial.uniforms.u_time.value = performance.now() * 0.001;
+    
+    const timeNow = performance.now() * 0.001;
+    this.simFluidsMaterial.uniforms.u_time.value = timeNow;
+    this.simTerrainMaterial.uniforms.u_time.value = timeNow;
 
     // --- PASS B1: Simulate Water Flux ---
     this.simFluxMaterial.uniforms.u_texA.value = this.targetA_read.texture;

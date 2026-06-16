@@ -434,7 +434,8 @@ function setupUI() {
       | 'lavaGravity'
       | 'lavaDamping'
       | 'sandSlideRate'
-      | 'sandReposeSlope'
+      | 'sandStaticReposeSlope'
+      | 'sandDynamicReposeSlope'
       | 'erosionRate'
       | 'capacityFactor'
       | 'depositionRate'
@@ -502,7 +503,8 @@ function setupUI() {
   bindSlider('lava-gravity', 'lavaGravity', 'lava-gravity-val');
   bindSlider('lava-damping', 'lavaDamping', 'lava-damping-val');
   bindSlider('sand-slide', 'sandSlideRate', 'sand-slide-val');
-  bindSlider('sand-repose-slope', 'sandReposeSlope', 'sand-repose-slope-val');
+  bindSlider('sand-static-repose-slope', 'sandStaticReposeSlope', 'sand-static-repose-slope-val');
+  bindSlider('sand-dynamic-repose-slope', 'sandDynamicReposeSlope', 'sand-dynamic-repose-slope-val');
   bindSlider('erosion-rate', 'erosionRate', 'erosion-rate-val');
   bindSlider('capacity-factor', 'capacityFactor', 'capacity-factor-val');
   bindSlider('deposition-rate', 'depositionRate', 'deposition-rate-val');

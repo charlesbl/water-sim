@@ -8,7 +8,8 @@ export interface Config {
   lavaGravity: number; // Gravity acceleration for lava
   lavaDamping: number; // Friction / damping for lava
   sandSlideRate: number; // Rate at which sand collapses beyond angle of repose
-  sandReposeSlope: number; // Slope threshold below which sand does not flow at all
+  sandStaticReposeSlope: number; // Slope threshold needed to start an avalanche
+  sandDynamicReposeSlope: number; // Slope threshold below which an avalanche stops
   erosionRate: number; // Rate at which water flow erodes sand
   capacityFactor: number; // Multiplier for sediment carrying capacity
   depositionRate: number; // Rate at which suspended sand deposits
@@ -60,7 +61,8 @@ export const config: Config = {
   lavaGravity: 6.0,
   lavaDamping: 0.95,
   sandSlideRate: 0.05,
-  sandReposeSlope: 0.0015,
+  sandStaticReposeSlope: 0.003,
+  sandDynamicReposeSlope: 0.0015,
   erosionRate: 0.005,
   capacityFactor: 0.4,
   depositionRate: 0.05,
