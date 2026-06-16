@@ -100,6 +100,7 @@ float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
   float diff = h_src - h_dst;
   float current_repose = mix(u_sand_static_repose_slope, u_sand_dynamic_repose_slope, src_avalanche);
   float threshold = current_repose * dist; // Angle of repose threshold, adjusted for distance
+
   if (diff > threshold) {
     float sum_excess = 0.0;
     float excess_dst = diff - threshold;
@@ -129,11 +130,24 @@ float computeSandFlow(vec2 src_uv, vec2 dst_uv, float dist) {
     }
 
     if (sum_excess > 0.0) {
-      // The absolute mathematical stability limit for 8 neighbors is 1/9 (approx 0.111).
-      // We clamp the rate to 0.11 to guarantee it never explodes (checkerboard pattern),
-      // regardless of how high the user sets the slider.
-      float effective_rate = min(0.11, u_sand_slide_rate);
-      float total_slide = min(src_sand * 0.25, sum_excess * effective_rate);
+      float total_slide = 0.0;
+      
+      if (src_avalanche > 0.5) {
+          // AVALANCHE RUPTURE
+          // 0.008 height * 18m = ~15cm per frame (9 m/s). Realistic flow for 1m scale.
+          // By allowing a higher cap (0.25 instead of 0.11), the sand flows at constant velocity
+          // until the absolute last moment, creating a "sudden stop" effect rather than an asymptotic crawl.
+          float rupture_speed = 0.008; 
+          total_slide = min(rupture_speed, sum_excess * 0.25);
+      } else {
+          // CREEPING
+          float effective_rate = min(0.11, u_sand_slide_rate);
+          total_slide = sum_excess * effective_rate;
+      }
+      
+      total_slide = min(src_sand * 0.25, total_slide);
+      
+      // Proportional isotropic distribution completely prevents the "comb" or "striation" grid artifacts
       return total_slide * (excess_dst / sum_excess);
     }
   }
@@ -248,8 +262,6 @@ void main() {
     avalanche = 1.0;
   } else if (max_slope < u_sand_dynamic_repose_slope) {
     avalanche = 0.0;
-  } else {
-    avalanche = max(0.0, avalanche - 0.05); // slight decay
   }
 
   // Reaction: Erosion / Deposition based on Carrying Capacity
