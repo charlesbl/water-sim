@@ -58,7 +58,7 @@ export const config: Config = {
   gridSize: 2048,
   waterGravity: 9.81,
   waterDamping: 0.998,
-  lavaGravity: 6.0,
+  lavaGravity: 6.01,
   lavaDamping: 0.95,
   sandSlideRate: 0.11,
   sandStaticReposeSlope: 0.003,
@@ -81,7 +81,7 @@ export const config: Config = {
   showSuspendedSand: true,
   autoRotate: false,
   smoothRendering: true,
-  renderResolution: 0.5,
+  renderResolution: 1.0,
   heightScale: 18.0,
   minWaterDepth: 0.0,
 
