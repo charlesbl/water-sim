@@ -16,7 +16,16 @@ let lastFpsUpdate = 0;
 let simTicksAccumulator = 0.0;
 
 // Free camera keyboard state
-const keys = { w: false, a: false, s: false, d: false, q: false, e: false, shift: false, space: false };
+const keys = {
+  w: false,
+  a: false,
+  s: false,
+  d: false,
+  q: false,
+  e: false,
+  shift: false,
+  space: false,
+};
 
 /**
  * Initialize application lifecycle
@@ -37,8 +46,6 @@ function init() {
   // 2. Perspective Camera
   camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 100, 150);
-
-
 
   // 4. WebGPU Simulation & Rendering Engine
   gpgpu = new GPGPUSimulation(canvas, config.gridSize);
@@ -327,7 +334,11 @@ function setupUI() {
   bindSlider('lava-damping', 'lavaDamping', 'lava-damping-val');
   bindSlider('sand-slide', 'sandSlideRate', 'sand-slide-val');
   bindSlider('sand-static-repose-slope', 'sandStaticReposeSlope', 'sand-static-repose-slope-val');
-  bindSlider('sand-dynamic-repose-slope', 'sandDynamicReposeSlope', 'sand-dynamic-repose-slope-val');
+  bindSlider(
+    'sand-dynamic-repose-slope',
+    'sandDynamicReposeSlope',
+    'sand-dynamic-repose-slope-val'
+  );
   bindSlider('erosion-rate', 'erosionRate', 'erosion-rate-val');
   bindSlider('capacity-factor', 'capacityFactor', 'capacity-factor-val');
   bindSlider('deposition-rate', 'depositionRate', 'deposition-rate-val');
@@ -390,7 +401,10 @@ function setupUI() {
   }
 
   // 6. Render Layer Checkboxes
-  const bindCheckbox = (id: string, configKey: 'showRock' | 'showSand' | 'showWater' | 'showLava' | 'showSuspendedSand') => {
+  const bindCheckbox = (
+    id: string,
+    configKey: 'showRock' | 'showSand' | 'showWater' | 'showLava' | 'showSuspendedSand'
+  ) => {
     const chk = document.getElementById(id) as HTMLInputElement;
     if (!chk) return;
     chk.checked = config[configKey];
@@ -494,26 +508,19 @@ function animate() {
     speedMultiplier = 0.3;
   }
   const moveSpeed = (1.0 / 3.0) * speedMultiplier;
-  const moveVec = new THREE.Vector3();
   const localMove = new THREE.Vector3();
 
   if (keys.w) localMove.z -= 1;
   if (keys.s) localMove.z += 1;
   if (keys.a) localMove.x -= 1;
   if (keys.d) localMove.x += 1;
+  if (keys.q) localMove.y -= 1;
+  if (keys.e) localMove.y += 1;
 
   if (localMove.lengthSq() > 0) {
-    localMove.normalize();
+    localMove.normalize().multiplyScalar(moveSpeed);
     localMove.applyQuaternion(camera.quaternion);
-    moveVec.add(localMove);
-  }
-
-  if (keys.q) moveVec.y -= 1;
-  if (keys.e) moveVec.y += 1;
-
-  if (moveVec.lengthSq() > 0) {
-    moveVec.normalize().multiplyScalar(moveSpeed);
-    camera.position.add(moveVec);
+    camera.position.add(localMove);
   }
 
   if (config.autoRotate && !isFPSLooking) {

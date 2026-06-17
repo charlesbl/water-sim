@@ -2,7 +2,7 @@
 
 🚀 **Live Demo:** [https://charlesbl.github.io/water-sim/](https://charlesbl.github.io/water-sim/)
 
-A high-performance interactive 2.5D fluid and terrain simulation running entirely on the GPU, inspired by the mechanics of the game *From Dust*.
+A high-performance interactive 2.5D fluid and terrain simulation running entirely on the GPU, inspired by the mechanics of the game _From Dust_.
 
 ---
 
@@ -37,6 +37,7 @@ You will need [Node.js](https://nodejs.org/) installed on your machine.
 ### Installation
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/charlesbl/water-sim.git
    cd water-sim
@@ -50,17 +51,21 @@ You will need [Node.js](https://nodejs.org/) installed on your machine.
 ### Local Development
 
 Run the Vite development server locally:
+
 ```bash
 npm run dev
 ```
+
 Open the local URL (usually `http://localhost:5173`) in your web browser.
 
 ### Production Build
 
 To build the application for production:
+
 ```bash
 npm run build
 ```
+
 This generates optimized static files inside the `dist/` directory.
 
 ---

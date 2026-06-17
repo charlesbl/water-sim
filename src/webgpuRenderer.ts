@@ -9,7 +9,7 @@ import renderWGSL from './shaders/render.wgsl?raw';
 export class GPGPUSimulation {
   private size: number;
   private canvas: HTMLCanvasElement;
-  
+
   private adapter: GPUAdapter | null = null;
   private device: GPUDevice | null = null;
   private context: GPUCanvasContext | null = null;
@@ -265,15 +265,31 @@ export class GPGPUSimulation {
     // Create explicit layout for all render pipelines to share bind groups
     const renderBindGroupLayout = this.device.createBindGroupLayout({
       entries: [
-        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-        { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-        { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-        { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
-      ]
+        {
+          binding: 0,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'uniform' },
+        },
+        {
+          binding: 1,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'read-only-storage' },
+        },
+        {
+          binding: 2,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'read-only-storage' },
+        },
+        {
+          binding: 3,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'read-only-storage' },
+        },
+      ],
     });
 
     const renderPipelineLayout = this.device.createPipelineLayout({
-      bindGroupLayouts: [renderBindGroupLayout]
+      bindGroupLayouts: [renderBindGroupLayout],
     });
 
     // Render Pipelines (Terrain is opaque, Fluids has transparent blending)
@@ -282,13 +298,15 @@ export class GPGPUSimulation {
       vertex: {
         module: renderModule,
         entryPoint: 'vs_main',
-        buffers: [{
-          arrayStride: 20, // 5 floats * 4 bytes
-          attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x3' }, // position
-            { shaderLocation: 1, offset: 12, format: 'float32x2' }, // uv
-          ],
-        }],
+        buffers: [
+          {
+            arrayStride: 20, // 5 floats * 4 bytes
+            attributes: [
+              { shaderLocation: 0, offset: 0, format: 'float32x3' }, // position
+              { shaderLocation: 1, offset: 12, format: 'float32x2' }, // uv
+            ],
+          },
+        ],
       },
       fragment: {
         module: renderModule,
@@ -304,24 +322,28 @@ export class GPGPUSimulation {
       vertex: {
         module: renderModule,
         entryPoint: 'vs_main',
-        buffers: [{
-          arrayStride: 20,
-          attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x3' },
-            { shaderLocation: 1, offset: 12, format: 'float32x2' },
-          ],
-        }],
+        buffers: [
+          {
+            arrayStride: 20,
+            attributes: [
+              { shaderLocation: 0, offset: 0, format: 'float32x3' },
+              { shaderLocation: 1, offset: 12, format: 'float32x2' },
+            ],
+          },
+        ],
       },
       fragment: {
         module: renderModule,
         entryPoint: 'fs_main',
-        targets: [{
-          format: this.format,
-          blend: {
-            color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-            alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+        targets: [
+          {
+            format: this.format,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
           },
-        }],
+        ],
       },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: { depthWriteEnabled: false, depthCompare: 'less', format: 'depth24plus' },
@@ -333,13 +355,15 @@ export class GPGPUSimulation {
       vertex: {
         module: renderModule,
         entryPoint: 'vs_main',
-        buffers: [{
-          arrayStride: 20,
-          attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x3' },
-            { shaderLocation: 1, offset: 12, format: 'float32x2' },
-          ],
-        }],
+        buffers: [
+          {
+            arrayStride: 20,
+            attributes: [
+              { shaderLocation: 0, offset: 0, format: 'float32x3' },
+              { shaderLocation: 1, offset: 12, format: 'float32x2' },
+            ],
+          },
+        ],
       },
       fragment: {
         module: renderModule,
@@ -372,7 +396,15 @@ export class GPGPUSimulation {
   }
 
   private createBindGroups() {
-    if (!this.device || !this.simFluxPipeline || !this.simFluidsPipeline || !this.simTerrainPipeline || !this.renderTerrainPipeline || !this.renderPickingPipeline) return;
+    if (
+      !this.device ||
+      !this.simFluxPipeline ||
+      !this.simFluidsPipeline ||
+      !this.simTerrainPipeline ||
+      !this.renderTerrainPipeline ||
+      !this.renderPickingPipeline
+    )
+      return;
 
     // A/B Ping Pong mappings
     // Group A uses Buffer A as Read (Input) and Buffer B as Write (Output)
@@ -543,7 +575,7 @@ export class GPGPUSimulation {
     if (!this.device) return;
     const numCells = this.size * this.size;
     const zeroData = new Float32Array(numCells * 4); // 4 floats per struct cell (FluidCell, FluxCell)
-    
+
     this.device.queue.writeBuffer(this.fluidsBufferA!, 0, zeroData);
     this.device.queue.writeBuffer(this.fluidsBufferB!, 0, zeroData);
     this.device.queue.writeBuffer(this.waterFluxBufferA!, 0, zeroData);
@@ -617,8 +649,12 @@ export class GPGPUSimulation {
 
     // Toggle ping pong bind group
     const activeBindGroup = this.pingPongToggle ? this.computeBindGroupB! : this.computeBindGroupA!;
-    const activeTerrainBindGroup = this.pingPongToggle ? this.terrainBindGroupB! : this.terrainBindGroupA!;
-    const activeFluidsBindGroup = this.pingPongToggle ? this.fluidsBindGroupB! : this.fluidsBindGroupA!;
+    const activeTerrainBindGroup = this.pingPongToggle
+      ? this.terrainBindGroupB!
+      : this.terrainBindGroupA!;
+    const activeFluidsBindGroup = this.pingPongToggle
+      ? this.fluidsBindGroupB!
+      : this.fluidsBindGroupA!;
 
     const workgroupCount = Math.ceil(this.size / 16);
 
@@ -666,16 +702,15 @@ export class GPGPUSimulation {
     camera.updateProjectionMatrix();
 
     // WebGPU NDC Z correction matrix: maps Z from [-1, 1] to [0, 1]
-    const webgpuProj = new THREE.Matrix4().set(
-      1, 0, 0, 0,
-      0, 1, 0, 0,
-      0, 0, 0.5, 0.5,
-      0, 0, 0, 1
-    ).multiply(camera.projectionMatrix);
+    const webgpuProj = new THREE.Matrix4()
+      .set(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
+      .multiply(camera.projectionMatrix);
 
     // Apply the X-axis -90 degree rotation matrix (model matrix) matching the grid orientation
     const modelMatrix = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-    const mvp = new THREE.Matrix4().multiplyMatrices(webgpuProj, camera.matrixWorldInverse).multiply(modelMatrix);
+    const mvp = new THREE.Matrix4()
+      .multiplyMatrices(webgpuProj, camera.matrixWorldInverse)
+      .multiply(modelMatrix);
 
     // Transform camera and light coordinates to local space
     const invModel = new THREE.Matrix4().copy(modelMatrix).invert();
@@ -709,12 +744,14 @@ export class GPGPUSimulation {
     const commandEncoder = this.device.createCommandEncoder();
 
     const passEncoder = commandEncoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.pickingTexture!.createView(),
-        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: this.pickingTexture!.createView(),
+          clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
       depthStencilAttachment: {
         view: this.pickingDepthTexture!.createView(),
         depthClearValue: 1.0,
@@ -724,7 +761,10 @@ export class GPGPUSimulation {
     });
 
     passEncoder.setPipeline(this.renderPickingPipeline!);
-    passEncoder.setBindGroup(0, this.pingPongToggle ? this.pickingBindGroupB! : this.pickingBindGroupA!);
+    passEncoder.setBindGroup(
+      0,
+      this.pingPongToggle ? this.pickingBindGroupB! : this.pickingBindGroupA!
+    );
     passEncoder.setVertexBuffer(0, this.vertexBuffer!);
     passEncoder.setIndexBuffer(this.indexBuffer!, 'uint32');
     passEncoder.drawIndexed(this.indexCount, 1, 0, 0, 0);
@@ -748,7 +788,7 @@ export class GPGPUSimulation {
       await this.pickingReadbackBuffer!.mapAsync(GPUMapMode.READ);
       const arrayBuffer = this.pickingReadbackBuffer!.getMappedRange();
       const floats = new Float32Array(arrayBuffer);
-      
+
       if (floats[3] > 0.0) {
         if (!this.pointerUV) this.pointerUV = new THREE.Vector2();
         this.pointerUV.set(floats[0], floats[1]);
@@ -773,21 +813,24 @@ export class GPGPUSimulation {
     // Recreate depth texture if canvas dimensions changed
     const currentWidth = Math.max(1, this.canvas.width);
     const currentHeight = Math.max(1, this.canvas.height);
-    if (!this.depthTexture || this.depthTexture.width !== currentWidth || this.depthTexture.height !== currentHeight) {
+    if (
+      !this.depthTexture ||
+      this.depthTexture.width !== currentWidth ||
+      this.depthTexture.height !== currentHeight
+    ) {
       this.resizeDepthTexture();
     }
 
     // WebGPU NDC Z correction matrix: maps Z from [-1, 1] to [0, 1]
-    const webgpuProj = new THREE.Matrix4().set(
-      1, 0, 0, 0,
-      0, 1, 0, 0,
-      0, 0, 0.5, 0.5,
-      0, 0, 0, 1
-    ).multiply(camera.projectionMatrix);
+    const webgpuProj = new THREE.Matrix4()
+      .set(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
+      .multiply(camera.projectionMatrix);
 
     // Apply the X-axis -90 degree rotation matrix (model matrix) matching the grid orientation
     const modelMatrix = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
-    const mvp = new THREE.Matrix4().multiplyMatrices(webgpuProj, camera.matrixWorldInverse).multiply(modelMatrix);
+    const mvp = new THREE.Matrix4()
+      .multiplyMatrices(webgpuProj, camera.matrixWorldInverse)
+      .multiply(modelMatrix);
 
     // Transform camera and light coordinates to local space
     const invModel = new THREE.Matrix4().copy(modelMatrix).invert();
@@ -795,15 +838,19 @@ export class GPGPUSimulation {
     const localCameraPos = new THREE.Vector3().copy(camera.position).applyMatrix4(invModel);
 
     // Render active bind group selection
-    const activeRenderTerrainBindGroup = this.pingPongToggle ? this.renderTerrainBindGroupB! : this.renderTerrainBindGroupA!;
-    const activeRenderFluidsBindGroup = this.pingPongToggle ? this.renderFluidsBindGroupB! : this.renderFluidsBindGroupA!;
+    const activeRenderTerrainBindGroup = this.pingPongToggle
+      ? this.renderTerrainBindGroupB!
+      : this.renderTerrainBindGroupA!;
+    const activeRenderFluidsBindGroup = this.pingPongToggle
+      ? this.renderFluidsBindGroupB!
+      : this.renderFluidsBindGroupA!;
 
     const commandEncoder = this.device.createCommandEncoder();
 
     // --- PASS 1: Render Opaque Terrain ---
     // Clear to noon sky color (matching Three.js clear)
     const skyColor = { r: 0.2, g: 0.45, b: 0.75, a: 1.0 };
-    
+
     // Write Render Uniforms for Terrain layer
     const renderUniforms = new Float32Array(40);
     renderUniforms.set(mvp.elements, 0); // 0-15
@@ -833,12 +880,14 @@ export class GPGPUSimulation {
     const canvasTextureView = this.context!.getCurrentTexture().createView();
 
     const passTerrain = commandEncoder.beginRenderPass({
-      colorAttachments: [{
-        view: canvasTextureView,
-        clearValue: skyColor,
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: canvasTextureView,
+          clearValue: skyColor,
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
       depthStencilAttachment: {
         view: this.depthTexture!.createView(),
         depthClearValue: 1.0,
@@ -856,11 +905,13 @@ export class GPGPUSimulation {
 
     // --- PASS 2: Render Blended Fluids (Water/Lava) ---
     const passFluids = commandEncoder.beginRenderPass({
-      colorAttachments: [{
-        view: canvasTextureView,
-        loadOp: 'load', // Load previously rendered terrain
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: canvasTextureView,
+          loadOp: 'load', // Load previously rendered terrain
+          storeOp: 'store',
+        },
+      ],
       depthStencilAttachment: {
         view: this.depthTexture!.createView(),
         depthLoadOp: 'load', // Keep depth buffer for occlusion
