@@ -230,7 +230,7 @@ function setupUI() {
   // Update footer text dynamically with actual grid size
   const perfDisplay = document.getElementById('perf-display');
   if (perfDisplay) {
-    perfDisplay.innerHTML = `FPS: <span id="fps-val">60</span> | Grid: ${config.gridSize}x${config.gridSize}`;
+    perfDisplay.innerHTML = `Grid: ${config.gridSize}x${config.gridSize}`;
   }
 
   // 0. Collapsible HUD Sections Toggle
