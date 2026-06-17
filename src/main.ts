@@ -1,30 +1,11 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { config } from './config';
-import { GPGPUSimulation } from './gpgpu';
-import { renderVS, renderFS } from './shaders';
+import { GPGPUSimulation } from './webgpuRenderer';
 
-// Core Three.js variables
-let renderer: THREE.WebGLRenderer;
-let scene: THREE.Scene;
+// Core variables
+let canvas: HTMLCanvasElement;
 let camera: THREE.PerspectiveCamera;
-let controls: OrbitControls;
-let terrainMesh: THREE.Mesh;
-let terrainMaterial: THREE.ShaderMaterial;
-let fluidMesh: THREE.Mesh;
-let fluidMaterial: THREE.ShaderMaterial;
 let gpgpu: GPGPUSimulation;
-
-let pickingScene: THREE.Scene;
-let pickingMaterial: THREE.ShaderMaterial;
-let pickingMesh: THREE.Mesh;
-let pickingRenderTarget: THREE.WebGLRenderTarget;
-
-// Lighting representation
-let sunLight: THREE.DirectionalLight;
-let ambientLight: THREE.AmbientLight;
-
-// Raycasting and painting interaction state
 let isPointerDown = false;
 let pointerUV: THREE.Vector2 | null = null;
 let activeBrushType: number = 0;
@@ -44,165 +25,40 @@ function init() {
   const container = document.getElementById('canvas-container');
   if (!container) return;
 
-  // 1. WebGL Renderer configuration
-  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  container.appendChild(renderer.domElement);
+  // 1. Create native HTMLCanvasElement for WebGPU
+  canvas = document.createElement('canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.style.display = 'block';
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  container.appendChild(canvas);
 
-  // 2. Main Scene setup
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0.5, 0.7, 0.9); // Noon sky background
-
-  // 3. Perspective Camera
+  // 2. Perspective Camera
   camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 100, 150);
 
-  // 4. OrbitControls navigation
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.05;
-  controls.maxPolarAngle = Math.PI / 2 - 0.05; // Lock camera from going below terrain
-  controls.minDistance = 15;
-  controls.maxDistance = 500;
 
-  // 5. Ambient & Sun directional light sources (fallback/standard rendering helpers)
-  ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
-  scene.add(ambientLight);
 
-  sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
-  scene.add(sunLight);
+  // 4. WebGPU Simulation & Rendering Engine
+  gpgpu = new GPGPUSimulation(canvas, config.gridSize);
+  gpgpu.initWebGPU().then((success) => {
+    if (!success) {
+      alert("Ce navigateur ne supporte pas WebGPU ou WebGPU n'est pas activé.");
+      return;
+    }
 
-  // 6. GPGPU Simulation Engine
-  gpgpu = new GPGPUSimulation(renderer, config.gridSize);
+    // Bind HUD UI controls to script logic
+    setupUI();
 
-  // 7. Terrain Mesh Construction
-  // Create flat plane which we will displace on the GPU
-  // Optimization: use a lower resolution for the rendering mesh to save vertex shader load.
-  // The fragment shader will still compute lighting at full simulation resolution!
-  const renderSegments = Math.max(1, Math.floor(config.gridSize * config.renderResolution) - 1);
-  const geometry = new THREE.PlaneGeometry(200, 200, renderSegments, renderSegments);
+    // Run initial terrain generation
+    gpgpu.resetTerrain();
 
-  // Custom Material for Height displacement and realistic visual rendering
-  terrainMaterial = new THREE.ShaderMaterial({
-    glslVersion: THREE.GLSL3,
-    vertexShader: renderVS,
-    fragmentShader: renderFS,
-    uniforms: {
-      u_texA: { value: null },
-      u_texB: { value: null },
-      u_height_scale: { value: config.heightScale },
-      u_grid_size: { value: config.gridSize },
-      u_show_rock: { value: config.showRock ? 1.0 : 0.0 },
-      u_show_sand: { value: config.showSand ? 1.0 : 0.0 },
-      u_show_water: { value: config.showWater ? 1.0 : 0.0 },
-      u_show_lava: { value: config.showLava ? 1.0 : 0.0 },
-      u_show_suspended: { value: config.showSuspendedSand ? 1.0 : 0.0 },
-      u_time: { value: 0.0 },
-      u_sun_dir: { value: new THREE.Vector3() },
-      u_sun_color: { value: new THREE.Color() },
-      u_local_camera_pos: { value: new THREE.Vector3() },
-      u_layer: { value: 0.0 },
-      u_smooth: { value: config.smoothRendering ? 1.0 : 0.0 },
-      u_border_behavior: { value: config.borderBehavior },
-      u_border_water_height: { value: config.borderWaterHeight },
-    },
-    depthWrite: true,
-    depthTest: true,
+    // Begin frame loops
+    animate();
   });
 
-  terrainMesh = new THREE.Mesh(geometry, terrainMaterial);
-  // Rotate horizontal plane in world space (XZ plane)
-  terrainMesh.rotation.x = -Math.PI / 2;
-  scene.add(terrainMesh);
-
-  fluidMaterial = new THREE.ShaderMaterial({
-    glslVersion: THREE.GLSL3,
-    vertexShader: renderVS,
-    fragmentShader: renderFS,
-    uniforms: {
-      u_texA: { value: null },
-      u_texB: { value: null },
-      u_texFlux: { value: null },
-      u_texLavaFlux: { value: null },
-      u_height_scale: { value: config.heightScale },
-      u_grid_size: { value: config.gridSize },
-      u_show_rock: { value: config.showRock ? 1.0 : 0.0 },
-      u_show_sand: { value: config.showSand ? 1.0 : 0.0 },
-      u_show_water: { value: config.showWater ? 1.0 : 0.0 },
-      u_show_lava: { value: config.showLava ? 1.0 : 0.0 },
-      u_show_suspended: { value: config.showSuspendedSand ? 1.0 : 0.0 },
-      u_time: { value: 0.0 },
-      u_sun_dir: { value: new THREE.Vector3() },
-      u_sun_color: { value: new THREE.Color() },
-      u_local_camera_pos: { value: new THREE.Vector3() },
-      u_layer: { value: 1.0 },
-      u_smooth: { value: config.smoothRendering ? 1.0 : 0.0 },
-      u_border_behavior: { value: config.borderBehavior },
-      u_border_water_height: { value: config.borderWaterHeight },
-    },
-    transparent: true,
-    depthWrite: false,
-    depthTest: true,
-  });
-
-  fluidMesh = new THREE.Mesh(geometry, fluidMaterial);
-  fluidMesh.rotation.x = -Math.PI / 2;
-  scene.add(fluidMesh);
-
-  // 7.5. GPU Picking for precise raycasting against displaced terrain mesh
-  pickingScene = new THREE.Scene();
-  pickingRenderTarget = new THREE.WebGLRenderTarget(1, 1, {
-    type: THREE.FloatType,
-    format: THREE.RGBAFormat,
-    minFilter: THREE.NearestFilter,
-    magFilter: THREE.NearestFilter,
-    generateMipmaps: false,
-  });
-
-  pickingMaterial = new THREE.ShaderMaterial({
-    glslVersion: THREE.GLSL3,
-    vertexShader: `
-      out vec2 v_uv;
-      uniform sampler2D u_texA;
-      uniform sampler2D u_texB;
-      uniform float u_height_scale;
-
-      void main() {
-        v_uv = uv;
-        vec4 cellA = texture(u_texA, uv);
-        
-        // Only use rock and sand height for cursor collision, ignoring water and lava
-        float h = cellA.r + cellA.g;
-
-        vec3 displaced = position;
-        displaced.z = h * u_height_scale;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
-      }
-    `,
-    fragmentShader: `
-      precision highp float;
-      in vec2 v_uv;
-      out vec4 fragColor;
-      void main() {
-        fragColor = vec4(v_uv, 0.0, 1.0);
-      }
-    `,
-    uniforms: {
-      u_texA: { value: null },
-      u_texB: { value: null },
-      u_height_scale: { value: config.heightScale },
-    },
-    depthWrite: true,
-    depthTest: true,
-    side: THREE.DoubleSide,
-  });
-
-  pickingMesh = new THREE.Mesh(geometry, pickingMaterial);
-  pickingMesh.rotation.x = -Math.PI / 2;
-  pickingScene.add(pickingMesh);
-
-  // 8. Event Listeners
+  // 5. Event Listeners
   window.addEventListener('resize', onWindowResize);
 
   window.addEventListener('keydown', (e) => {
@@ -274,15 +130,6 @@ function init() {
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);
   window.addEventListener('pointerleave', onPointerUp);
-
-  // Bind HUD UI controls to script logic
-  setupUI();
-
-  // Run initial terrain generation
-  gpgpu.resetTerrain();
-
-  // Begin frame loops
-  animate();
 }
 
 /**
@@ -291,46 +138,20 @@ function init() {
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 }
 
 /**
- * Pointer raycast calculation using GPU picking against displaced terrain
+ * Pointer raycast calculation using WebGPU GPU picking
  */
 function updatePointerUV(e: PointerEvent) {
   const x = Math.floor(e.clientX);
   const y = Math.floor(e.clientY);
 
-  camera.setViewOffset(window.innerWidth, window.innerHeight, x, y, 1, 1);
-
-  const currentRenderTarget = renderer.getRenderTarget();
-  const currentClearColor = renderer.getClearColor(new THREE.Color());
-  const currentClearAlpha = renderer.getClearAlpha();
-
-  renderer.setRenderTarget(pickingRenderTarget);
-  renderer.setClearColor(0x000000, 0);
-  renderer.clear();
-
   if (gpgpu) {
-    pickingMaterial.uniforms.u_texA.value = gpgpu.targetA_read.texture;
-    pickingMaterial.uniforms.u_texB.value = gpgpu.targetB_read.texture;
-    pickingMaterial.uniforms.u_height_scale.value = config.heightScale;
-  }
-
-  renderer.render(pickingScene, camera);
-
-  const pixelBuffer = new Float32Array(4);
-  renderer.readRenderTargetPixels(pickingRenderTarget, 0, 0, 1, 1, pixelBuffer);
-
-  renderer.setRenderTarget(currentRenderTarget);
-  renderer.setClearColor(currentClearColor, currentClearAlpha);
-  camera.clearViewOffset();
-
-  if (pixelBuffer[3] > 0.0) {
-    if (!pointerUV) pointerUV = new THREE.Vector2();
-    pointerUV.set(pixelBuffer[0], pixelBuffer[1]);
-  } else {
-    pointerUV = null;
+    gpgpu.performPicking(camera, x, y);
+    pointerUV = gpgpu.pointerUV;
   }
 }
 
@@ -344,7 +165,6 @@ function onPointerDown(e: PointerEvent) {
   if (e.button === 1) {
     isFPSLooking = true;
     previousMousePosition = { x: e.clientX, y: e.clientY };
-    controls.enabled = false;
     e.preventDefault();
     return;
   }
@@ -359,9 +179,6 @@ function onPointerDown(e: PointerEvent) {
 
   isPointerDown = true;
   updatePointerUV(e);
-
-  // Disable OrbitControls to allow smooth brushing
-  controls.enabled = false;
 }
 
 function onPointerMove(e: PointerEvent) {
@@ -391,18 +208,11 @@ function onPointerMove(e: PointerEvent) {
 function onPointerUp(_e: PointerEvent) {
   if (isFPSLooking) {
     isFPSLooking = false;
-
-    const dist = Math.max(15, camera.position.distanceTo(controls.target));
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    controls.target.copy(camera.position).add(forward.multiplyScalar(dist));
-
-    controls.enabled = true;
   }
 
   if (isPointerDown) {
     isPointerDown = false;
     pointerUV = null;
-    controls.enabled = true;
   }
 }
 
@@ -410,6 +220,12 @@ function onPointerUp(_e: PointerEvent) {
  * Setup and bind interactive HUD buttons & sliders
  */
 function setupUI() {
+  // Update footer text dynamically with actual grid size
+  const perfDisplay = document.getElementById('perf-display');
+  if (perfDisplay) {
+    perfDisplay.innerHTML = `FPS: <span id="fps-val">60</span> | Grid: ${config.gridSize}x${config.gridSize}`;
+  }
+
   // 0. Collapsible HUD Sections Toggle
   const headers = document.querySelectorAll('.hud-section-header');
   headers.forEach((header) => {
@@ -498,12 +314,7 @@ function setupUI() {
       }
 
       if (configKey === 'renderResolution') {
-        const newSegments = Math.max(1, Math.floor(config.gridSize * config.renderResolution) - 1);
-        const newGeo = new THREE.PlaneGeometry(200, 200, newSegments, newSegments);
-        terrainMesh.geometry.dispose();
-        terrainMesh.geometry = newGeo;
-        fluidMesh.geometry = newGeo;
-        pickingMesh.geometry = newGeo;
+        gpgpu.initWebGPU();
       }
     });
   };
@@ -703,22 +514,23 @@ function animate() {
   if (moveVec.lengthSq() > 0) {
     moveVec.normalize().multiplyScalar(moveSpeed);
     camera.position.add(moveVec);
-    controls.target.add(moveVec);
   }
 
-  // OrbitControls damping update
-  controls.autoRotate = config.autoRotate;
-  controls.autoRotateSpeed = 1.2;
-  if (!isFPSLooking) {
-    controls.update();
+  if (config.autoRotate && !isFPSLooking) {
+    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    euler.setFromQuaternion(camera.quaternion);
+    euler.y -= 0.005;
+    camera.quaternion.setFromEuler(euler);
   }
+
+  // Ensure camera matrices are updated for WebGPU
+  camera.updateMatrixWorld();
 
   // Run GPGPU physical simulation ticks
   if (!config.paused) {
     simTicksAccumulator += config.simSpeed;
 
     while (simTicksAccumulator >= 1.0) {
-      // Sync current pointer coordinates onto the simulation pass
       gpgpu.setBrush(
         isPointerDown,
         pointerUV,
@@ -730,7 +542,6 @@ function animate() {
       simTicksAccumulator -= 1.0;
     }
   } else {
-    // If paused, we still allow drawing terrain & painting, just not fluid flows
     gpgpu.setBrush(
       isPointerDown,
       pointerUV,
@@ -738,67 +549,11 @@ function animate() {
       config.brushRadius,
       config.brushStrength
     );
-    // When paused we do a simulation step (which respects the paused state internally)
-    // so the brush stroke shows up immediately
     gpgpu.step();
   }
 
-  // Fixed Noon Sun Direction & Lighting
-  const sunPos = new THREE.Vector3(0.0, 1.0, 0.5).normalize();
-  sunLight.position.copy(sunPos);
-
-  const sunColor = new THREE.Color(1.0, 0.95, 0.85);
-  sunLight.color.copy(sunColor);
-
-  const skyColor = new THREE.Color(0.2, 0.45, 0.75);
-  renderer.setClearColor(skyColor);
-  scene.background = skyColor;
-
-  terrainMaterial.uniforms.u_texA.value = gpgpu.targetA_read.texture;
-  terrainMaterial.uniforms.u_texB.value = gpgpu.targetB_read.texture;
-  terrainMaterial.uniforms.u_height_scale.value = config.heightScale;
-  terrainMaterial.uniforms.u_time.value = now * 0.001;
-  terrainMaterial.uniforms.u_smooth.value = config.smoothRendering ? 1.0 : 0.0;
-  terrainMaterial.uniforms.u_border_behavior.value = config.borderBehavior;
-  terrainMaterial.uniforms.u_border_water_height.value = config.borderWaterHeight;
-
-  fluidMaterial.uniforms.u_texA.value = gpgpu.targetA_read.texture;
-  fluidMaterial.uniforms.u_texB.value = gpgpu.targetB_read.texture;
-  fluidMaterial.uniforms.u_texFlux.value = gpgpu.targetFlux_read.texture;
-  fluidMaterial.uniforms.u_texLavaFlux.value = gpgpu.targetLavaFlux_read.texture;
-  fluidMaterial.uniforms.u_height_scale.value = config.heightScale;
-  fluidMaterial.uniforms.u_time.value = now * 0.001;
-  fluidMaterial.uniforms.u_smooth.value = config.smoothRendering ? 1.0 : 0.0;
-  fluidMaterial.uniforms.u_border_behavior.value = config.borderBehavior;
-  fluidMaterial.uniforms.u_border_water_height.value = config.borderWaterHeight;
-
-  // Pass local light directions and camera position vectors to ShaderMaterial
-  const localSun = terrainMesh.worldToLocal(sunLight.position.clone()).normalize();
-  terrainMaterial.uniforms.u_sun_dir.value.copy(localSun);
-  terrainMaterial.uniforms.u_sun_color.value.copy(sunColor);
-
-  fluidMaterial.uniforms.u_sun_dir.value.copy(localSun);
-  fluidMaterial.uniforms.u_sun_color.value.copy(sunColor);
-
-  const localCam = terrainMesh.worldToLocal(camera.position.clone());
-  terrainMaterial.uniforms.u_local_camera_pos.value.copy(localCam);
-  fluidMaterial.uniforms.u_local_camera_pos.value.copy(localCam);
-
-  // Update rendering layer visibility uniforms
-  terrainMaterial.uniforms.u_show_rock.value = config.showRock ? 1.0 : 0.0;
-  terrainMaterial.uniforms.u_show_sand.value = config.showSand ? 1.0 : 0.0;
-  terrainMaterial.uniforms.u_show_water.value = config.showWater ? 1.0 : 0.0;
-  terrainMaterial.uniforms.u_show_lava.value = config.showLava ? 1.0 : 0.0;
-  terrainMaterial.uniforms.u_show_suspended.value = config.showSuspendedSand ? 1.0 : 0.0;
-
-  fluidMaterial.uniforms.u_show_rock.value = config.showRock ? 1.0 : 0.0;
-  fluidMaterial.uniforms.u_show_sand.value = config.showSand ? 1.0 : 0.0;
-  fluidMaterial.uniforms.u_show_water.value = config.showWater ? 1.0 : 0.0;
-  fluidMaterial.uniforms.u_show_lava.value = config.showLava ? 1.0 : 0.0;
-  fluidMaterial.uniforms.u_show_suspended.value = config.showSuspendedSand ? 1.0 : 0.0;
-
-  // Render Scene
-  renderer.render(scene, camera);
+  // Render Scene using WebGPU
+  gpgpu.render(camera);
 
   // FPS Stats Monitoring
   frameCount++;
@@ -813,7 +568,7 @@ function animate() {
   }
 }
 
-// Start Three.js initialization
+// Start WebGPU initialization
 window.addEventListener('DOMContentLoaded', () => {
   init();
 });
