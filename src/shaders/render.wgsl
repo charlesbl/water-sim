@@ -9,7 +9,7 @@ struct FluidCell {
     water: f32,
     lava: f32,
     temp: f32,
-    padding: f32,
+    steam: f32,
 };
 
 struct FluxCell {
@@ -60,6 +60,8 @@ struct VertexOutput {
     @location(4) suspended_sand: f32,
     @location(5) water: f32,
     @location(6) lava: f32,
+    @location(7) temp: f32,
+    @location(8) steam: f32,
 };
 
 // --- HEIGHT RETRIEVAL HELPERS ---
@@ -126,6 +128,8 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     output.suspended_sand = cell_a.suspended_sand;
     output.water = cell_b.water;
     output.lava = cell_b.lava;
+    output.temp = cell_b.temp;
+    output.steam = cell_b.steam;
 
     var h = 0.0;
     if (uniforms.layer > 0.5) {
@@ -283,8 +287,10 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         let diff = max(0.05, dot(normal, uniforms.sun_dir));
 
         let rock_base = vec3<f32>(0.32, 0.29, 0.27);
+        let obsidian_base = vec3<f32>(0.08, 0.07, 0.08); // Dark cooling rock
+        let active_rock_base = mix(rock_base, obsidian_base, clamp(input.temp * 1.5, 0.0, 1.0));
         let r_noise = noise2D(input.uv * 180.0) * 0.08;
-        let rock_color = rock_base + vec3<f32>(r_noise);
+        let rock_color = active_rock_base + vec3<f32>(r_noise);
 
         let sand_base = vec3<f32>(0.88, 0.72, 0.42);
         let s_noise = noise2D(input.uv * 200.0) * 0.04;
@@ -300,7 +306,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             ground_color = sand_color;
         }
 
-        let terrain_lit = ground_color * (diff * uniforms.sun_color + vec3<f32>(0.12));
+        var terrain_lit = ground_color * (diff * uniforms.sun_color + vec3<f32>(0.12));
+        
+        // Add glowing red/orange emission for hot rock (only where sand is not covering it)
+        let rock_glow = vec3<f32>(1.0, 0.25, 0.0) * input.temp * 0.8;
+        terrain_lit += rock_glow * (1.0 - smoothstep(0.0001, 0.05, input.sand));
+
         return vec4<f32>(terrain_lit, 1.0);
 
     } else {
@@ -308,8 +319,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         let has_water = (input.water > 0.001 && uniforms.show_water > 0.5);
         let has_lava = (input.lava > 0.001 && uniforms.show_lava > 0.5);
         let has_suspended = (input.suspended_sand > 0.0 && uniforms.show_suspended > 0.5);
+        let has_steam = (input.steam > 0.001);
 
-        if (!has_water && !has_lava && !has_suspended) {
+        if (!has_water && !has_lava && !has_suspended && !has_steam) {
             discard;
         }
 
@@ -339,7 +351,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         var finalColor = vec4<f32>(0.0);
 
         // 1. Lava Rendering
-        let lava_mask = smoothstep(0.001, 0.005, input.lava);
+        let lava_mask = smoothstep(0.0001, 0.001, input.lava); // Sharper mask to prevent muddy mix
         if (has_lava && lava_mask > 0.0) {
             let shallow_lava_col = vec3<f32>(1.0, 0.38, 0.0);
             let deep_lava_col = vec3<f32>(0.55, 0.03, 0.0);
@@ -448,7 +460,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
                 let waterColor = vec4<f32>(water_shaded, water_alpha * water_mask);
                 
                 if (has_lava) {
-                    finalColor = mix(waterColor, finalColor, lava_mask);
+                    // Blend water OVER lava. Lava is physically under the water.
+                    finalColor = vec4<f32>(mix(finalColor.rgb, waterColor.rgb, waterColor.a), max(finalColor.a, waterColor.a));
                 } else {
                     finalColor = waterColor;
                 }
@@ -461,13 +474,27 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             let suspColor = vec4<f32>(mud_shaded, alpha * 0.85);
             
             if (has_lava) {
-                finalColor = mix(suspColor, finalColor, lava_mask);
+                // Suspended sand floats over lava
+                finalColor = vec4<f32>(mix(finalColor.rgb, suspColor.rgb, suspColor.a), max(finalColor.a, suspColor.a));
             } else {
                 finalColor = suspColor;
             }
         }
 
-        // 3. Map border glowing indicator
+        // 3. Steam Rendering
+        if (has_steam) {
+            let steam_color = vec3<f32>(0.92, 0.92, 0.95);
+            let noise_uv = input.uv * 120.0;
+            let t = uniforms.time * 1.5;
+            let n1 = snoise(noise_uv + vec2<f32>(t, -t * 0.5));
+            let n2 = snoise(noise_uv * 2.0 - vec2<f32>(-t * 0.8, t * 1.2));
+            let steam_noise = clamp(n1 * 0.6 + n2 * 0.4 + 0.3, 0.0, 1.0);
+            let steam_alpha = clamp(input.steam * steam_noise * 1.5, 0.0, 1.0);
+            
+            finalColor = vec4<f32>(mix(finalColor.rgb, steam_color, steam_alpha), max(finalColor.a, steam_alpha));
+        }
+
+        // 4. Map border glowing indicator
         if (uniforms.border_behavior > 0.5 && uniforms.border_water_height > 0.0) {
             let b_dist = min(min(input.uv.x, 1.0 - input.uv.x), min(input.uv.y, 1.0 - input.uv.y));
             let border_width = 2.5 / uniforms.grid_size;

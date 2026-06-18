@@ -9,7 +9,7 @@ struct FluidCell {
     water: f32,
     lava: f32,
     temp: f32,
-    padding: f32,
+    steam: f32,
 };
 
 struct FluxCell {
@@ -100,12 +100,18 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     var water = cell_b.water;
     var lava = cell_b.lava;
 
+    var steam = cell_b.steam;
+    var temp = cell_b.temp;
+    var steam_gen = 0.0;
+
     // React lava + water to form rock (processed dynamically in fluids state update)
     if (uniforms.paused < 0.5) {
-        if (water > 0.01 && lava > 0.01) {
-            let react = min(0.002, lava);
+        if (water > 0.0001 && lava > 0.0001) {
+            let react = min(water, lava);
             lava = max(0.0, lava - react);
-            water = max(0.0, water - react * 2.0); // Water evaporates faster from lava heat
+            water = max(0.0, water - react);
+            steam_gen = react * 25.0; // generate intense steam
+            temp = 1.0; // The new rock barrier is blazing hot
         }
     }
 
@@ -208,6 +214,39 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     water = clamp(water, 0.0, 10.0);
     lava = clamp(lava, 0.0, 10.0);
 
-    let temp = select(0.0, 1.0, lava > 0.01);
-    fluids_out[idx] = FluidCell(water, lava, temp, 0.0);
+    // Steam diffusion and dissipation
+    if (uniforms.paused < 0.5) {
+        var steam_neighbors = 0.0;
+        var count = 0.0;
+        if (x > 0u) { steam_neighbors += fluids_in[y * grid_size + (x - 1u)].steam; count += 1.0; }
+        if (x < grid_size - 1u) { steam_neighbors += fluids_in[y * grid_size + (x + 1u)].steam; count += 1.0; }
+        if (y > 0u) { steam_neighbors += fluids_in[(y - 1u) * grid_size + x].steam; count += 1.0; }
+        if (y < grid_size - 1u) { steam_neighbors += fluids_in[(y + 1u) * grid_size + x].steam; count += 1.0; }
+        
+        if (count > 0.0) {
+            steam = mix(steam, steam_neighbors / count, 0.3); // diffuse steam
+        }
+        
+        steam = max(0.0, steam - 0.04); // fade out steam
+        steam += steam_gen;
+        steam = clamp(steam, 0.0, 5.0);
+
+        // Temp cooling
+        if (lava > 0.01) {
+            temp = 1.0;
+        } else {
+            if (water > 0.01) {
+                temp = max(0.0, temp - 0.005); // fast cooling by water
+            } else {
+                temp = max(0.0, temp - 0.001); // slow natural cooling
+            }
+        }
+    }
+
+    // Zero-out Epsilon: completely destroy mathematically insignificant amounts
+    if (water < 0.0001) { water = 0.0; }
+    if (lava < 0.0001) { lava = 0.0; }
+    if (steam < 0.001) { steam = 0.0; }
+
+    fluids_out[idx] = FluidCell(water, lava, temp, steam);
 }

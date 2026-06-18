@@ -9,7 +9,7 @@ struct FluidCell {
     water: f32,
     lava: f32,
     temp: f32,
-    padding: f32,
+    steam: f32,
 };
 
 struct FluxCell {
@@ -122,9 +122,9 @@ fn get_full_cell_data(x: u32, y: u32, grid_size: u32) -> FullCellData {
 
     // React lava + water to form rock
     if (uniforms.paused < 0.5) {
-        if (water > 0.01 && lava > 0.01) {
-            let react = min(0.002, lava);
-            rock = rock + react;
+        if (water > 0.0001 && lava > 0.0001) {
+            let react = min(water, lava);
+            rock = rock + react * 2.0; // Perfect volume conservation prevents vacuum spikes!
         }
     }
 

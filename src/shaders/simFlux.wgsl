@@ -9,7 +9,7 @@ struct FluidCell {
     water: f32,
     lava: f32,
     temp: f32,
-    padding: f32,
+    steam: f32,
 };
 
 struct FluxCell {
