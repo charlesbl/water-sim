@@ -339,21 +339,51 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         var finalColor = vec4<f32>(0.0);
 
         // 1. Lava Rendering
-        let lava_mask = smoothstep(0.01, 0.1, input.lava);
+        let lava_mask = smoothstep(0.001, 0.005, input.lava);
         if (has_lava && lava_mask > 0.0) {
-            let shallow_lava_col = vec3<f32>(1.0, 0.8, 0.0);
-            let deep_lava_col = vec3<f32>(0.6, 0.05, 0.0);
+            let shallow_lava_col = vec3<f32>(1.0, 0.38, 0.0);
+            let deep_lava_col = vec3<f32>(0.55, 0.03, 0.0);
             
             let depth = input.lava * 15.0;
             let transmission = exp(-depth);
-            let lava_body_col = mix(deep_lava_col, shallow_lava_col, transmission);
+            
+            // Animated crust and glowing cracks
+            let noise_uv = input.uv * 80.0; // Restored to a higher detail scale, but with softer contrast
+            let t = uniforms.time * 0.04;   // Slower motion for high viscosity
+            let n1 = snoise(noise_uv + vec2<f32>(t, t * 0.5));
+            let n2 = snoise(noise_uv * 2.0 - vec2<f32>(t * 1.2, -t * 0.8));
+            let lava_noise = n1 * 0.65 + n2 * 0.35;
+            
+            // Cooled crust color (warm dark burgundy/brown instead of cold grey)
+            let crust_color = vec3<f32>(0.16, 0.04, 0.03);
+            
+            // Crust is more prominent in deep, slow-moving pools
+            let crust_factor = smoothstep(-0.2, 0.35, lava_noise) * (1.0 - transmission * 0.5);
+            
+            // Glowing cracks
+            let crack_dist = abs(lava_noise - 0.05);
+            let crack = smoothstep(0.07, 0.01, crack_dist);
+            let crack_glow = vec3<f32>(1.0, 0.45, 0.0) * crack * 1.8;
+            
+            // Base lava color gradient
+            let base_lava = mix(deep_lava_col, shallow_lava_col, transmission);
+            
+            // Combine crust, glowing base and bright cracks with lighter contrast (0.75 max crust)
+            var lava_body_col = mix(base_lava, crust_color, crust_factor * 0.75);
+            lava_body_col = lava_body_col + crack_glow * (1.0 - crust_factor * 0.65);
 
+            // Specular reflections (from sun)
             let r_lava = reflect(-uniforms.sun_dir, normal);
             let spec_lava = pow(max(0.0, dot(r_lava, view_dir)), 80.0) * 0.8;
 
+            // Fresnel and sky reflection
+            // Lava is mostly emissive, so we do NOT mix out the core lava color completely.
+            // Instead, we add a very subtle sky reflection on the edges and blend with specular.
             let fresnel = 0.02 + 0.98 * pow(1.0 - max(0.0, dot(normal, view_dir)), 5.0);
-            let sky_refl = vec3<f32>(0.65, 0.8, 1.0) * (uniforms.sun_color + vec3<f32>(0.1));
-            let lava_shaded = mix(lava_body_col, sky_refl + vec3<f32>(spec_lava), fresnel);
+            let sky_refl = vec3<f32>(0.65, 0.8, 1.0) * (uniforms.sun_color + vec3<f32>(0.1)) * 0.05;
+            
+            // We blend the specular reflection and a very faint sky reflection onto the emissive body
+            let lava_shaded = lava_body_col + (sky_refl + vec3<f32>(spec_lava)) * fresnel;
             
             let base_alpha = mix(1.0, 0.85, transmission);
             let lava_alpha = mix(base_alpha, 1.0, fresnel);
