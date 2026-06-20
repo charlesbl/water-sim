@@ -28,7 +28,6 @@ export interface Config {
   showWater: boolean;
   showLava: boolean;
   showSuspendedSand: boolean;
-  autoRotate: boolean; // Auto-rotation of OrbitControls
   smoothRendering: boolean;
   renderResolution: number; // Multiplier for rendering mesh resolution
   heightScale: number; // Scaling of Z-height displacement for mesh
@@ -60,11 +59,11 @@ export const config: Config = {
   waterDamping: 0.998,
   lavaGravity: 6.01,
   lavaDamping: 0.95,
-  sandSlideRate: 0.11,
-  sandStaticReposeSlope: 0.003,
-  sandDynamicReposeSlope: 0.0025,
+  sandSlideRate: 0.10,
+  sandStaticReposeSlope: 0.005,
+  sandDynamicReposeSlope: 0.002,
   erosionRate: 0.005,
-  capacityFactor: 0.4,
+  capacityFactor: 0.1,
   depositionRate: 0.05,
   evaporation: 0.0,
   paused: false,
@@ -79,7 +78,6 @@ export const config: Config = {
   showWater: true,
   showLava: true,
   showSuspendedSand: true,
-  autoRotate: false,
   smoothRendering: true,
   renderResolution: 1.0,
   heightScale: 18.0,

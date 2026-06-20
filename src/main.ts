@@ -294,6 +294,14 @@ function setupUI() {
     const valDisplay = displayId ? document.getElementById(displayId) : null;
     if (!slider) return;
 
+    // Sync initial state from config
+    slider.value = config[configKey].toString();
+    if (valDisplay) {
+      valDisplay.textContent = config[configKey].toFixed(
+        slider.step.includes('.') ? slider.step.split('.')[1].length : 0
+      );
+    }
+
     slider.addEventListener('input', () => {
       const val = parseFloat(slider.value);
       config[configKey] = val;
@@ -465,14 +473,6 @@ function setupUI() {
     });
   }
 
-  // 7. Auto Rotate Camera checkbox
-  const rotateCheck = document.getElementById('auto-rotate') as HTMLInputElement;
-  if (rotateCheck) {
-    rotateCheck.addEventListener('change', () => {
-      config.autoRotate = rotateCheck.checked;
-    });
-  }
-
   // 8. Rain Active checkbox
   const rainCheck = document.getElementById('rain-active') as HTMLInputElement;
   if (rainCheck) {
@@ -521,13 +521,6 @@ function animate() {
     localMove.normalize().multiplyScalar(moveSpeed);
     localMove.applyQuaternion(camera.quaternion);
     camera.position.add(localMove);
-  }
-
-  if (config.autoRotate && !isFPSLooking) {
-    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-    euler.setFromQuaternion(camera.quaternion);
-    euler.y -= 0.005;
-    camera.quaternion.setFromEuler(euler);
   }
 
   // Ensure camera matrices are updated for WebGPU
