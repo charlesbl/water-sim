@@ -48,6 +48,26 @@ export interface Config {
   rainQuantity: number;
   rainSize: number;
 
+  // Volumetric atmosphere (independent 48 x 48 x 32 GPU grid)
+  atmosphereEnabled: boolean;
+  closedWaterCycle: boolean; // Keep all water reservoirs internal; suspend manual sources and open surface edges
+  atmosphereBoundary: number; // 0: periodic horizontal boundaries, 1: closed walls
+  evaporationRate: number; // Solar-driven evaporation coefficient, 0..1
+  emergentWeather: boolean; // Initial air evolves freely; no temperature/humidity/wind thermostat
+  airTemperature: number; // Reference air temperature, degrees Celsius
+  relativeHumidity: number; // Reference humidity: 1 = 100%, may be supersaturated
+  windSpeed: number; // Horizontal wind forcing, simulation units per second
+  windDirection: number; // Direction of travel in the horizontal plane, degrees
+  solarHeating: number; // Relative solar heating strength
+  sunElevation: number; // Sun angle above horizon, degrees
+  sunAzimuth: number; // Sun direction in terrain coordinates, degrees
+  radiativeCooling: number; // Longwave heat loss multiplier
+  atmosphereTimeScale: number; // Weather time multiplier
+  showClouds: boolean;
+  showWind: boolean;
+  atmosphereView: number; // 0: volume, 1: temperature, 2: humidity, 3: wind
+  atmosphereSlice: number; // Normalized altitude of the diagnostic slice
+
   // Map border settings
   borderBehavior: number; // 0: block all, 1: pass all, 2: pass water but not sand
   borderWaterHeight: number; // Height of water maintained at the border (relative to ground height)
@@ -59,7 +79,7 @@ export const config: Config = {
   waterDamping: 0.998,
   lavaGravity: 6.01,
   lavaDamping: 0.95,
-  sandSlideRate: 0.10,
+  sandSlideRate: 0.1,
   sandStaticReposeSlope: 0.005,
   sandDynamicReposeSlope: 0.002,
   erosionRate: 0.005,
@@ -95,6 +115,26 @@ export const config: Config = {
   rainActive: false,
   rainQuantity: 0.0005,
   rainSize: 0.005,
+
+  atmosphereEnabled: true,
+  closedWaterCycle: true,
+  atmosphereBoundary: 0,
+  evaporationRate: 0.25,
+  emergentWeather: true,
+  airTemperature: 8,
+  relativeHumidity: 0.75,
+  windSpeed: 0,
+  windDirection: 45,
+  solarHeating: 1,
+  sunElevation: 40,
+  sunAzimuth: 135,
+  radiativeCooling: 1,
+  atmosphereTimeScale: 1,
+  showClouds: true,
+  showWind: false,
+  atmosphereView: 0,
+  atmosphereSlice: 0.5,
+
   borderBehavior: 1,
   borderWaterHeight: 0.0,
 };

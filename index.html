@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TerraGPU - 2.5D Fluid Simulation (From Dust Inspired)</title>
+    <title>TerraGPU - 3D Weather &amp; Terrain Simulation</title>
     <!-- Google Fonts: Outfit -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -21,11 +21,249 @@
     <div id="hud" class="glass-panel">
       <header>
         <h1>TERRA<span>GPU</span></h1>
-        <p class="subtitle">2.5D GPU Fluid Simulation</p>
+        <p class="subtitle">3D Atmosphere · GPU Terrain &amp; Fluids</p>
       </header>
 
+      <!-- Section: Volumetric Atmosphere -->
+      <section id="atmosphere-panel" class="hud-section">
+        <button class="hud-section-header" type="button">
+          <h2><span>🌤️</span> 3D Atmosphere</h2>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="hud-section-content">
+          <div class="hud-section-content-inner">
+            <div class="checkbox-row" style="margin-top: 0; margin-bottom: 12px">
+              <input type="checkbox" id="atmosphere-enabled" checked />
+              <label for="atmosphere-enabled">Simulate weather</label>
+            </div>
+            <div class="control-group">
+              <label for="weather-dynamics">Atmospheric dynamics</label>
+              <select id="weather-dynamics" class="select-input">
+                <option value="emergent" selected>Emergent · solar driven</option>
+                <option value="forced">Imposed weather conditions</option>
+              </select>
+              <p
+                id="weather-dynamics-help"
+                style="font-size: 11px; line-height: 1.5; color: var(--text-secondary)"
+              >
+                Air evolves freely from its initial state. Sunlight, cooling and terrain drive
+                circulation.
+              </p>
+            </div>
+            <div class="checkbox-row" style="margin-bottom: 8px">
+              <input type="checkbox" id="closed-water-cycle" checked />
+              <label for="closed-water-cycle">Closed water cycle</label>
+            </div>
+            <p
+              id="water-cycle-help"
+              style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-bottom: 12px"
+            >
+              Water circulates between air, clouds, precipitation, surface water, snow and ice.
+              Surface edges are sealed and manual rain is suspended.
+            </p>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="atmosphere-boundary">Atmosphere boundaries</label>
+              </div>
+              <select
+                id="atmosphere-boundary"
+                class="select-input"
+                aria-describedby="atmosphere-boundary-help"
+              >
+                <option value="0" selected>Periodic · wrap to opposite edge</option>
+                <option value="1">Closed walls · no flow through edges</option>
+              </select>
+              <p
+                id="atmosphere-boundary-help"
+                style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-top: 6px"
+              >
+                Air leaving one horizontal edge returns at the opposite edge. Ground and ceiling are
+                closed.
+              </p>
+            </div>
+            <div class="control-group">
+              <div class="label-row"><span>Water inventory</span></div>
+              <p
+                id="water-budget"
+                role="status"
+                style="font-size: 12px; line-height: 1.5; color: #bde7fa"
+              >
+                Measuring water inventory…
+              </p>
+              <p
+                id="water-budget-detail"
+                style="font-size: 11px; line-height: 1.5; color: #a4a4b5"
+              ></p>
+              <p style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-top: 6px">
+                Adding or erasing water, applying presets and resetting start a new water balance.
+              </p>
+            </div>
+            <div class="brush-grid" role="group" aria-label="Weather presets">
+              <button
+                type="button"
+                class="btn-action"
+                data-weather-preset="mild"
+                aria-pressed="false"
+              >
+                🌤️ Mild
+              </button>
+              <button
+                type="button"
+                class="btn-action"
+                data-weather-preset="snow"
+                aria-pressed="false"
+              >
+                ❄️ Snow
+              </button>
+              <button
+                type="button"
+                class="btn-action"
+                data-weather-preset="thaw"
+                aria-pressed="false"
+              >
+                ☀️ Thaw
+              </button>
+              <button
+                type="button"
+                class="btn-action"
+                data-weather-preset="storm"
+                aria-pressed="false"
+              >
+                ⛈️ Storm
+              </button>
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="air-temperature">Air temperature</label>
+                <span id="air-temperature-val" class="value-display">8 °C</span>
+              </div>
+              <input type="range" id="air-temperature" min="-25" max="35" value="8" step="1" />
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="relative-humidity">Relative humidity</label>
+                <span id="relative-humidity-val" class="value-display">75%</span>
+              </div>
+              <input type="range" id="relative-humidity" min="0" max="140" value="75" step="1" />
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="wind-speed">Wind speed</label>
+                <span id="wind-speed-val" class="value-display">0 u/s</span>
+              </div>
+              <input type="range" id="wind-speed" min="0" max="30" value="0" step="1" />
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="wind-direction">Wind heading</label>
+                <span id="wind-direction-val" class="value-display">45°</span>
+              </div>
+              <input type="range" id="wind-direction" min="0" max="360" value="45" step="5" />
+            </div>
+            <div class="btn-row" id="restart-air-group" style="margin-bottom: 14px">
+              <button id="btn-weather-restart-air" type="button" class="btn-action">
+                Restart air from these values
+              </button>
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="solar-heating">Solar heating</label>
+                <span id="solar-heating-val" class="value-display">1.0×</span>
+              </div>
+              <input type="range" id="solar-heating" min="0" max="3" value="1" step="0.1" />
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="evaporation-rate">Solar evaporation</label>
+                <span id="evaporation-rate-val" class="value-display">0.25×</span>
+              </div>
+              <input type="range" id="evaporation-rate" min="0" max="1" value="0.25" step="0.05" />
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="sun-elevation">Sun elevation</label
+                ><span id="sun-elevation-val" class="value-display">40°</span>
+              </div>
+              <input type="range" id="sun-elevation" min="0" max="90" value="40" step="1" />
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="sun-azimuth">Sun direction</label
+                ><span id="sun-azimuth-val" class="value-display">135°</span>
+              </div>
+              <input type="range" id="sun-azimuth" min="0" max="360" value="135" step="1" />
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="radiative-cooling">Radiative cooling</label
+                ><span id="radiative-cooling-val" class="value-display">1.0×</span>
+              </div>
+              <input type="range" id="radiative-cooling" min="0" max="3" value="1" step="0.1" />
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="atmosphere-time-scale">Weather speed</label>
+                <span id="atmosphere-time-scale-val" class="value-display">1.00×</span>
+              </div>
+              <input
+                type="range"
+                id="atmosphere-time-scale"
+                min="0.25"
+                max="4"
+                value="1"
+                step="0.25"
+              />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row"><label for="atmosphere-view">Explore atmosphere</label></div>
+              <select id="atmosphere-view" class="select-input">
+                <option value="0" selected>3D cloud volume</option>
+                <option value="1">Temperature slice</option>
+                <option value="2">Humidity slice</option>
+                <option value="3">Wind speed slice</option>
+              </select>
+            </div>
+            <div class="control-group" id="atmosphere-slice-group" hidden>
+              <div class="label-row">
+                <label for="atmosphere-slice">Slice altitude</label>
+                <span id="atmosphere-slice-val" class="value-display">50%</span>
+              </div>
+              <input type="range" id="atmosphere-slice" min="0" max="100" value="50" step="1" />
+              <p
+                id="atmosphere-legend"
+                class="subtitle"
+                style="line-height: 1.5; letter-spacing: 0; text-transform: none"
+              ></p>
+            </div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="show-clouds" checked />
+              <label for="show-clouds">Show volumetric clouds</label>
+            </div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="show-wind" />
+              <label for="show-wind">Show 3D wind vectors</label>
+            </div>
+            <div class="btn-row" style="margin-top: 14px">
+              <button id="btn-weather-reset" type="button" class="btn-action">
+                ↻ Reset Weather
+              </button>
+            </div>
+            <p
+              id="weather-status"
+              class="subtitle"
+              aria-live="polite"
+              style="line-height: 1.5; margin-top: 10px; letter-spacing: 0; text-transform: none"
+            >
+              48 × 48 × 32 cells · live GPU weather
+            </p>
+          </div>
+        </div>
+      </section>
+
       <!-- Section: Brushes -->
-      <section class="hud-section">
+      <section class="hud-section collapsed">
         <button class="hud-section-header">
           <h2><span>🖌️</span> Interactive Brush</h2>
           <span class="chevron">▼</span>
@@ -272,6 +510,12 @@
                 <option value="1" selected>Pass all</option>
                 <option value="2">Pass water but not sand</option>
               </select>
+              <p
+                id="surface-boundary-help"
+                style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-top: 6px"
+              >
+                Closed water cycle seals surface edges. Your open-mode settings are retained.
+              </p>
             </div>
 
             <div class="control-group" id="border-water-height-group">
@@ -401,18 +645,25 @@
         </div>
       </section>
 
-      <!-- Section: Climate & Weather -->
+      <!-- Section: Legacy Manual Rain -->
       <section class="hud-section collapsed">
         <button class="hud-section-header">
-          <h2><span>⛈️</span> Climate & Weather</h2>
+          <h2><span>⛈️</span> Manual Rain</h2>
           <span class="chevron">▼</span>
         </button>
         <div class="hud-section-content">
           <div class="hud-section-content-inner">
             <div class="checkbox-row">
               <input type="checkbox" id="rain-active" />
-              <label for="rain-active">⛈️ Enable Rain</label>
+              <label for="rain-active">⛈️ Add manual rain</label>
             </div>
+            <p
+              id="manual-rain-help"
+              style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-top: 6px"
+            >
+              Suspended while Closed water cycle is enabled. Rain forms from water already in the
+              atmosphere.
+            </p>
             <div class="control-group" style="margin-top: 12px">
               <div class="label-row">
                 <label for="rain-quantity">Raindrop Quantity</label>

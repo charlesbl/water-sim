@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { config } from './config';
 import { GPGPUSimulation } from './webgpuRenderer';
+import { setupWeatherControls } from './weatherControls';
 
 // Core variables
 let canvas: HTMLCanvasElement;
@@ -14,6 +15,19 @@ let activeBrushType: number = 0;
 let frameCount = 0;
 let lastFpsUpdate = 0;
 let simTicksAccumulator = 0.0;
+let weatherAccumulator = 0;
+let lastFrameTime = 0;
+let simulationFailed = false;
+
+function showSimulationError(message: string) {
+  simulationFailed = true;
+  const panel = document.getElementById('perf-display');
+  if (panel) {
+    panel.textContent = `WebGPU: ${message}`;
+    panel.setAttribute('role', 'alert');
+    panel.style.color = '#ffb4ab';
+  }
+}
 
 // Free camera keyboard state
 const keys = {
@@ -45,28 +59,44 @@ function init() {
 
   // 2. Perspective Camera
   camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 100, 150);
+  camera.position.set(185, 155, 215);
+  camera.lookAt(0, 35, 0);
 
   // 4. WebGPU Simulation & Rendering Engine
   gpgpu = new GPGPUSimulation(canvas, config.gridSize);
-  gpgpu.initWebGPU().then((success) => {
-    if (!success) {
-      alert("Ce navigateur ne supporte pas WebGPU ou WebGPU n'est pas activé.");
-      return;
-    }
+  gpgpu
+    .initWebGPU()
+    .then((success) => {
+      if (!success) {
+        showSimulationError(
+          "WebGPU indisponible. Ouvrez cette simulation dans Chrome ou Edge avec l'accélération graphique activée."
+        );
+        return;
+      }
 
-    // Bind HUD UI controls to script logic
-    setupUI();
+      // Bind HUD UI controls to script logic
+      setupUI();
+      setupWeatherControls((clearSurface = true) => {
+        weatherAccumulator = 0;
+        gpgpu.resetWeather(clearSurface);
+      });
 
-    // Run initial terrain generation
-    gpgpu.resetTerrain();
+      // Run initial terrain generation
+      gpgpu.resetTerrain();
 
-    // Begin frame loops
-    animate();
-  });
+      // Begin frame loops
+      animate();
+    })
+    .catch((error: unknown) => {
+      console.error(error);
+      showSimulationError(error instanceof Error ? error.message : String(error));
+    });
 
   // 5. Event Listeners
   window.addEventListener('resize', onWindowResize);
+  window.addEventListener('simulation-error', ((event: CustomEvent<string>) => {
+    showSimulationError(event.detail);
+  }) as EventListener);
 
   window.addEventListener('keydown', (e) => {
     switch (e.code) {
@@ -230,7 +260,7 @@ function setupUI() {
   // Update footer text dynamically with actual grid size
   const perfDisplay = document.getElementById('perf-display');
   if (perfDisplay) {
-    perfDisplay.innerHTML = `Grid: ${config.gridSize}x${config.gridSize}`;
+    perfDisplay.textContent = `Surface: ${config.gridSize}×${config.gridSize} · Atmosphere: 48×48×32`;
   }
 
   // 0. Collapsible HUD Sections Toggle
@@ -329,7 +359,7 @@ function setupUI() {
       }
 
       if (configKey === 'renderResolution') {
-        gpgpu.initWebGPU();
+        gpgpu.rebuildMesh();
       }
     });
   };
@@ -496,9 +526,12 @@ function setupUI() {
  * Main animation & execution frame loop
  */
 function animate() {
+  if (simulationFailed) return;
   requestAnimationFrame(animate);
 
   const now = performance.now();
+  const elapsed = lastFrameTime ? Math.min((now - lastFrameTime) / 1000, 0.1) : 1 / 60;
+  lastFrameTime = now;
 
   // Free camera movement
   let speedMultiplier = 1.0;
@@ -552,8 +585,28 @@ function animate() {
     gpgpu.step();
   }
 
+  // Fixed 30 Hz atmosphere; bounded catch-up avoids a backlog after inactive tabs.
+  if (!config.paused && config.atmosphereEnabled) {
+    const weatherDt = 1 / 30;
+    weatherAccumulator = Math.min(
+      weatherAccumulator + elapsed * config.simSpeed * config.atmosphereTimeScale,
+      weatherDt * 4
+    );
+    let weatherSteps = 0;
+    while (weatherAccumulator >= weatherDt) {
+      gpgpu.stepAtmosphere(weatherDt);
+      weatherAccumulator -= weatherDt;
+      weatherSteps++;
+    }
+    if (!weatherSteps) gpgpu.stepAtmosphere(0);
+  } else {
+    weatherAccumulator = 0;
+    gpgpu.stepAtmosphere(0);
+  }
+
   // Render Scene using WebGPU
   gpgpu.render(camera);
+  gpgpu.sampleWaterBudget();
 
   // FPS Stats Monitoring
   frameCount++;

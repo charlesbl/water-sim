@@ -45,6 +45,8 @@ struct RenderUniforms {
 @group(0) @binding(1) var<storage, read> terrain_in : array<TerrainCell>;
 @group(0) @binding(2) var<storage, read> fluids_in : array<FluidCell>;
 @group(0) @binding(3) var<storage, read> water_flux : array<FluxCell>;
+// Snow and ice are stored as water equivalent depths; z is surface temperature.
+@group(0) @binding(4) var<storage, read> weather_surface : array<vec4<f32>>;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -62,14 +64,35 @@ struct VertexOutput {
     @location(6) lava: f32,
     @location(7) temp: f32,
     @location(8) steam: f32,
+    @location(9) snow_ice: vec2<f32>,
 };
 
 // --- HEIGHT RETRIEVAL HELPERS ---
+fn frozen_depth(idx: i32) -> f32 {
+    let weather = max(weather_surface[idx].xy, vec2<f32>(0.0));
+    return weather.x * 5.0 + weather.y / 0.917;
+}
+
+fn get_weather_surface(uv: vec2<f32>, grid_size: i32) -> vec2<f32> {
+    let p = uv * f32(grid_size) - 0.5;
+    let lower = vec2<i32>(floor(p));
+    let a = clamp(lower, vec2<i32>(0), vec2<i32>(grid_size - 1));
+    let b = clamp(lower + vec2<i32>(1), vec2<i32>(0), vec2<i32>(grid_size - 1));
+    let f = fract(p);
+    return max(mix(
+        mix(weather_surface[a.y * grid_size + a.x].xy, weather_surface[a.y * grid_size + b.x].xy, f.x),
+        mix(weather_surface[b.y * grid_size + a.x].xy, weather_surface[b.y * grid_size + b.x].xy, f.x), f.y), vec2<f32>(0.0));
+}
+
 fn get_cell_ground_height(x: i32, y: i32, grid_size: i32) -> f32 {
     let cx = clamp(x, 0, grid_size - 1);
     let cy = clamp(y, 0, grid_size - 1);
     let idx = cy * grid_size + cx;
-    return terrain_in[idx].rock + terrain_in[idx].sand;
+    // An ice sheet floats over the remaining liquid. Keeping it in the opaque
+    // surface makes snow, normal reconstruction, picking and cloud occlusion
+    // agree even before all of the underlying water has frozen.
+    let under_ice = select(0.0, fluids_in[idx].water, weather_surface[idx].y > 0.00001);
+    return terrain_in[idx].rock + terrain_in[idx].sand + frozen_depth(idx) + under_ice;
 }
 
 fn get_ground_height_smooth(uv: vec2<f32>, grid_size: i32) -> f32 {
@@ -91,7 +114,7 @@ fn get_cell_total_height(x: i32, y: i32, grid_size: i32) -> f32 {
     let cx = clamp(x, 0, grid_size - 1);
     let cy = clamp(y, 0, grid_size - 1);
     let idx = cy * grid_size + cx;
-    return terrain_in[idx].rock + terrain_in[idx].sand + fluids_in[idx].water + fluids_in[idx].lava;
+    return terrain_in[idx].rock + terrain_in[idx].sand + fluids_in[idx].water + fluids_in[idx].lava + frozen_depth(idx);
 }
 
 fn get_total_height_smooth(uv: vec2<f32>, grid_size: i32) -> f32 {
@@ -129,20 +152,27 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     output.water = cell_b.water;
     output.lava = cell_b.lava;
     output.temp = cell_b.temp;
-    output.steam = cell_b.steam;
+    output.steam = cell_b.steam * 25.0; // Render density, separate from water-equivalent inventory.
+    output.snow_ice = max(weather_surface[idx].xy, vec2<f32>(0.0));
+    if (uniforms.smooth_rendering > 0.5) {
+        output.snow_ice = get_weather_surface(input.uv, grid_size);
+    }
 
     var h = 0.0;
     if (uniforms.layer > 0.5) {
         if (uniforms.smooth_rendering > 0.5) {
             h = get_total_height_smooth(input.uv, grid_size);
         } else {
-            h = cell_a.rock + cell_a.sand + cell_b.water + cell_b.lava;
+            h = get_cell_total_height(i32(cell_x), i32(cell_y), grid_size);
         }
+        // Steam can still render over a frozen surface. Liquid water is hidden
+        // by the ice in fs_main instead of relying on equal-depth rejection.
+        if (output.snow_ice.y > 0.00001) { h += 0.00005; }
     } else {
         if (uniforms.smooth_rendering > 0.5) {
             h = get_ground_height_smooth(input.uv, grid_size);
         } else {
-            h = cell_a.rock + cell_a.sand;
+            h = get_cell_ground_height(i32(cell_x), i32(cell_y), grid_size);
         }
     }
 
@@ -312,13 +342,39 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         let rock_glow = vec3<f32>(1.0, 0.25, 0.0) * input.temp * 0.8;
         terrain_lit += rock_glow * (1.0 - smoothstep(0.0001, 0.05, input.sand));
 
+        let ice_cover = smoothstep(0.00001, 0.004, input.snow_ice.y);
+        let snow_cover = smoothstep(0.00001, 0.008, input.snow_ice.x);
+        if (input.snow_ice.y > 0.00001 && input.water > 0.001) {
+            // A new, thin floating ice sheet reveals the blue water beneath,
+            // not the rock color from the submerged ground mesh.
+            let frozen_fresnel = 0.04 + 0.75 * pow(1.0 - max(dot(normal, view_dir), 0.0), 5.0);
+            let under_ice_water = mix(vec3<f32>(0.0, 0.18, 0.40), vec3<f32>(0.20, 0.63, 0.72), exp(-input.water * 15.0));
+            terrain_lit = mix(under_ice_water, vec3<f32>(0.65, 0.80, 0.95), frozen_fresnel);
+        }
+        if (ice_cover > 0.0) {
+            let ice_fresnel = pow(1.0 - max(dot(normal, view_dir), 0.0), 3.0);
+            let ice_specular = pow(max(0.0, dot(reflect(-uniforms.sun_dir, normal), view_dir)), 110.0);
+            let cracks = 1.0 - smoothstep(0.008, 0.035, abs(snoise(input.uv * 130.0)));
+            let ice_body = mix(vec3<f32>(0.22, 0.49, 0.62), vec3<f32>(0.69, 0.87, 0.94), ice_fresnel * 0.7 + cracks * 0.25);
+            let ice_lit = ice_body * (diff * uniforms.sun_color + vec3<f32>(0.24)) + vec3<f32>(ice_specular * 0.65);
+            terrain_lit = mix(terrain_lit, ice_lit, ice_cover);
+        }
+        if (snow_cover > 0.0) {
+            let grain = noise2D(input.uv * 1200.0);
+            let snow_base = mix(vec3<f32>(0.84, 0.91, 1.0), vec3<f32>(0.97, 0.99, 1.0), grain);
+            let snow_specular = pow(max(0.0, dot(reflect(-uniforms.sun_dir, normal), view_dir)), 42.0) * 0.14;
+            let snow_lit = snow_base * (diff * uniforms.sun_color * 0.78 + vec3<f32>(0.24)) + vec3<f32>(snow_specular);
+            terrain_lit = mix(terrain_lit, snow_lit, snow_cover);
+        }
+
         return vec4<f32>(terrain_lit, 1.0);
 
     } else {
         // --- FLUIDS SHADING ---
-        let has_water = (input.water > 0.001 && uniforms.show_water > 0.5);
+        let has_ice = input.snow_ice.y > 0.00001;
+        let has_water = (input.water > 0.001 && uniforms.show_water > 0.5 && !has_ice);
         let has_lava = (input.lava > 0.001 && uniforms.show_lava > 0.5);
-        let has_suspended = (input.suspended_sand > 0.0 && uniforms.show_suspended > 0.5);
+        let has_suspended = (input.suspended_sand > 0.0 && uniforms.show_suspended > 0.5 && !has_ice);
         let has_steam = (input.steam > 0.001);
 
         if (!has_water && !has_lava && !has_suspended && !has_steam) {

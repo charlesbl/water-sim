@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { config } from './config';
+import { AtmosphereSimulation } from './atmosphere';
+import { AtmosphereRenderer } from './atmosphereRenderer';
+import { WaterBudget } from './waterBudget';
 
 import simFluxWGSL from './shaders/simFlux.wgsl?raw';
 import simFluidsWGSL from './shaders/simFluids.wgsl?raw';
@@ -13,6 +16,10 @@ export class GPGPUSimulation {
   private adapter: GPUAdapter | null = null;
   private device: GPUDevice | null = null;
   private context: GPUCanvasContext | null = null;
+  private atmosphere: AtmosphereSimulation | null = null;
+  private atmosphereRenderer: AtmosphereRenderer | null = null;
+  private waterBudget: WaterBudget | null = null;
+  private budgetClosedMode = true;
   private format: GPUTextureFormat = 'rgba8unorm';
 
   // State
@@ -113,6 +120,17 @@ export class GPGPUSimulation {
       return false;
     }
 
+    this.device.addEventListener('uncapturederror', (event) => {
+      this.resourcesReady = false;
+      console.error('WebGPU:', event.error.message);
+      window.dispatchEvent(new CustomEvent('simulation-error', { detail: event.error.message }));
+    });
+    void this.device.lost.then((info) => {
+      if (info.reason === 'destroyed') return;
+      this.resourcesReady = false;
+      window.dispatchEvent(new CustomEvent('simulation-error', { detail: info.message }));
+    });
+
     this.context = this.canvas.getContext('webgpu');
     if (!this.context) {
       console.error('Failed to get WebGPU context.');
@@ -166,6 +184,18 @@ export class GPGPUSimulation {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
 
+    this.atmosphere = new AtmosphereSimulation(this.device, this.size);
+    await this.atmosphere.init();
+    this.atmosphereRenderer = new AtmosphereRenderer(this.device, this.format, this.atmosphere);
+    await this.atmosphereRenderer.init();
+    this.waterBudget = new WaterBudget(
+      this.device,
+      this.size,
+      this.atmosphere.dimensions,
+      this.atmosphere.domainHeight
+    );
+    await this.waterBudget.init();
+
     // 2. Create uniform buffers
     this.computeUniformBuffer = this.device.createBuffer({
       size: 144, // 36 floats * 4 bytes
@@ -182,46 +212,7 @@ export class GPGPUSimulation {
     });
 
     // 3. Create grid mesh buffers
-    const renderSegments = Math.max(1, Math.floor(this.size * config.renderResolution) - 1);
-    const vertices: number[] = [];
-    const indices: number[] = [];
-    const step = 200 / renderSegments;
-    for (let y = 0; y <= renderSegments; y++) {
-      for (let x = 0; x <= renderSegments; x++) {
-        const px = x * step - 100;
-        const py = y * step - 100;
-        const u = x / renderSegments;
-        const v = y / renderSegments;
-        vertices.push(px, py, 0, u, v);
-      }
-    }
-    for (let y = 0; y < renderSegments; y++) {
-      for (let x = 0; x < renderSegments; x++) {
-        const i0 = y * (renderSegments + 1) + x;
-        const i1 = i0 + 1;
-        const i2 = i0 + (renderSegments + 1);
-        const i3 = i2 + 1;
-        indices.push(i0, i2, i1);
-        indices.push(i1, i2, i3);
-      }
-    }
-    this.indexCount = indices.length;
-
-    this.vertexBuffer = this.device.createBuffer({
-      size: vertices.length * 4,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-      mappedAtCreation: true,
-    });
-    new Float32Array(this.vertexBuffer.getMappedRange()).set(vertices);
-    this.vertexBuffer.unmap();
-
-    this.indexBuffer = this.device.createBuffer({
-      size: indices.length * 4,
-      usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-      mappedAtCreation: true,
-    });
-    new Uint32Array(this.indexBuffer.getMappedRange()).set(indices);
-    this.indexBuffer.unmap();
+    this.rebuildMesh();
 
     // 4. Create depth texture
     this.resizeDepthTexture();
@@ -247,6 +238,20 @@ export class GPGPUSimulation {
     const simFluidsModule = this.device.createShaderModule({ code: simFluidsWGSL });
     const simTerrainModule = this.device.createShaderModule({ code: simTerrainWGSL });
     const renderModule = this.device.createShaderModule({ code: renderWGSL });
+    for (const [label, module] of [
+      ['flux', simFluxModule],
+      ['fluids', simFluidsModule],
+      ['terrain', simTerrainModule],
+      ['surface render', renderModule],
+    ] as const) {
+      const compilation = await module.getCompilationInfo();
+      const errors = compilation.messages.filter((message) => message.type === 'error');
+      if (errors.length) {
+        throw new Error(
+          `${label}: ${errors.map((message) => `${message.lineNum}: ${message.message}`).join('\n')}`
+        );
+      }
+    }
 
     // Compute Pipelines
     this.simFluxPipeline = this.device.createComputePipeline({
@@ -282,6 +287,11 @@ export class GPGPUSimulation {
         },
         {
           binding: 3,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: 'read-only-storage' },
+        },
+        {
+          binding: 4,
           visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
           buffer: { type: 'read-only-storage' },
         },
@@ -391,8 +401,49 @@ export class GPGPUSimulation {
     this.depthTexture = this.device.createTexture({
       size: [Math.max(1, this.canvas.width), Math.max(1, this.canvas.height)],
       format: 'depth24plus',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
+  }
+
+  /** Rebuild only geometry; keep the weather, terrain, and GPU device alive. */
+  public rebuildMesh() {
+    if (!this.device) return;
+    const segments = Math.max(1, Math.floor(this.size * config.renderResolution) - 1);
+    const stride = segments + 1;
+    this.vertexBuffer?.destroy();
+    this.indexBuffer?.destroy();
+    this.vertexBuffer = this.device.createBuffer({
+      size: stride * stride * 20,
+      usage: GPUBufferUsage.VERTEX,
+      mappedAtCreation: true,
+    });
+    const vertices = new Float32Array(this.vertexBuffer.getMappedRange());
+    for (let y = 0; y < stride; y++) {
+      for (let x = 0; x < stride; x++) {
+        const offset = (y * stride + x) * 5;
+        vertices[offset] = (x / segments) * 200 - 100;
+        vertices[offset + 1] = (y / segments) * 200 - 100;
+        vertices[offset + 3] = x / segments;
+        vertices[offset + 4] = y / segments;
+      }
+    }
+    this.vertexBuffer.unmap();
+    this.indexCount = segments * segments * 6;
+    this.indexBuffer = this.device.createBuffer({
+      size: this.indexCount * 4,
+      usage: GPUBufferUsage.INDEX,
+      mappedAtCreation: true,
+    });
+    const indices = new Uint32Array(this.indexBuffer.getMappedRange());
+    let offset = 0;
+    for (let y = 0; y < segments; y++) {
+      for (let x = 0; x < segments; x++) {
+        const i = y * stride + x;
+        indices.set([i, i + stride, i + 1, i + 1, i + stride, i + stride + 1], offset);
+        offset += 6;
+      }
+    }
+    this.indexBuffer.unmap();
   }
 
   private createBindGroups() {
@@ -420,6 +471,7 @@ export class GPGPUSimulation {
         { binding: 4, resource: { buffer: this.waterFluxBufferB! } },
         { binding: 5, resource: { buffer: this.lavaFluxBufferA! } },
         { binding: 6, resource: { buffer: this.lavaFluxBufferB! } },
+        { binding: 7, resource: { buffer: this.atmosphere!.surfaceBuffer } },
       ],
     });
 
@@ -433,6 +485,7 @@ export class GPGPUSimulation {
         { binding: 4, resource: { buffer: this.waterFluxBufferA! } },
         { binding: 5, resource: { buffer: this.lavaFluxBufferB! } },
         { binding: 6, resource: { buffer: this.lavaFluxBufferA! } },
+        { binding: 7, resource: { buffer: this.atmosphere!.surfaceBuffer } },
       ],
     });
 
@@ -490,6 +543,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferA! } },
         { binding: 2, resource: { buffer: this.fluidsBufferA! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferA! } },
+        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
       ],
     });
 
@@ -500,6 +554,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferB! } },
         { binding: 2, resource: { buffer: this.fluidsBufferB! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferB! } },
+        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
       ],
     });
 
@@ -511,6 +566,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferA! } },
         { binding: 2, resource: { buffer: this.fluidsBufferA! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferA! } },
+        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
       ],
     });
 
@@ -521,6 +577,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferB! } },
         { binding: 2, resource: { buffer: this.fluidsBufferB! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferB! } },
+        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
       ],
     });
 
@@ -532,6 +589,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferA! } },
         { binding: 2, resource: { buffer: this.fluidsBufferA! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferA! } },
+        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
       ],
     });
 
@@ -542,6 +600,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferB! } },
         { binding: 2, resource: { buffer: this.fluidsBufferB! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferB! } },
+        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
       ],
     });
   }
@@ -573,15 +632,20 @@ export class GPGPUSimulation {
    */
   public clearFluids() {
     if (!this.device) return;
-    const numCells = this.size * this.size;
-    const zeroData = new Float32Array(numCells * 4); // 4 floats per struct cell (FluidCell, FluxCell)
-
-    this.device.queue.writeBuffer(this.fluidsBufferA!, 0, zeroData);
-    this.device.queue.writeBuffer(this.fluidsBufferB!, 0, zeroData);
-    this.device.queue.writeBuffer(this.waterFluxBufferA!, 0, zeroData);
-    this.device.queue.writeBuffer(this.waterFluxBufferB!, 0, zeroData);
-    this.device.queue.writeBuffer(this.lavaFluxBufferA!, 0, zeroData);
-    this.device.queue.writeBuffer(this.lavaFluxBufferB!, 0, zeroData);
+    const encoder = this.device.createCommandEncoder();
+    for (const buffer of [
+      this.fluidsBufferA,
+      this.fluidsBufferB,
+      this.waterFluxBufferA,
+      this.waterFluxBufferB,
+      this.lavaFluxBufferA,
+      this.lavaFluxBufferB,
+    ]) {
+      if (buffer) encoder.clearBuffer(buffer);
+    }
+    this.device.queue.submit([encoder.finish()]);
+    this.atmosphere?.clearSurface();
+    this.waterBudget?.resetBaseline();
   }
 
   /**
@@ -593,6 +657,25 @@ export class GPGPUSimulation {
       this.seed = Math.random() * 1000.0;
     }
     this.clearFluids();
+    this.resetWeather();
+  }
+
+  public resetWeather(clearSurface = true) {
+    this.atmosphere?.reset(clearSurface);
+    this.waterBudget?.resetBaseline();
+  }
+
+  /** One fixed weather tick, after all surface work has been submitted. */
+  public stepAtmosphere(dt: number) {
+    if (!this.device || !this.resourcesReady || !this.initialized || !this.atmosphere) return;
+    const encoder = this.device.createCommandEncoder();
+    this.atmosphere.step(
+      encoder,
+      (this.pingPongToggle ? this.terrainBufferB : this.terrainBufferA)!,
+      (this.pingPongToggle ? this.fluidsBufferB : this.fluidsBufferA)!,
+      dt
+    );
+    this.device.queue.submit([encoder.finish()]);
   }
 
   /**
@@ -602,7 +685,7 @@ export class GPGPUSimulation {
     if (!this.device || !this.resourcesReady) return;
 
     this.updateParameters();
-    this.time = performance.now() * 0.001;
+    if (!config.paused) this.time += 1 / 60;
 
     // Write Compute Uniform Buffer
     const computeUniforms = new Float32Array(36);
@@ -627,10 +710,10 @@ export class GPGPUSimulation {
     computeUniforms[18] = this.brushX;
     computeUniforms[19] = this.brushY;
     computeUniforms[20] = this.time;
-    computeUniforms[21] = config.rainActive ? 1.0 : 0.0;
+    computeUniforms[21] = config.rainActive && !config.closedWaterCycle ? 1.0 : 0.0;
     computeUniforms[22] = config.rainQuantity;
     computeUniforms[23] = config.rainSize;
-    computeUniforms[24] = config.borderBehavior;
+    computeUniforms[24] = config.closedWaterCycle ? 0 : config.borderBehavior;
     computeUniforms[25] = config.borderWaterHeight;
     computeUniforms[26] = this.seed;
     computeUniforms[27] = config.terrainType;
@@ -642,6 +725,9 @@ export class GPGPUSimulation {
     computeUniforms[33] = config.fbmOctaves;
     computeUniforms[34] = config.fbmPersistence;
     computeUniforms[35] = config.minWaterDepth;
+    if (this.brushActive && (this.brushType === 0 || this.brushType === 5)) {
+      this.waterBudget?.resetBaseline();
+    }
 
     this.device.queue.writeBuffer(this.computeUniformBuffer!, 0, computeUniforms);
 
@@ -714,7 +800,13 @@ export class GPGPUSimulation {
 
     // Transform camera and light coordinates to local space
     const invModel = new THREE.Matrix4().copy(modelMatrix).invert();
-    const localSun = new THREE.Vector3(0.0, 1.0, 0.5).normalize().applyMatrix4(invModel);
+    const elevation = (config.sunElevation * Math.PI) / 180;
+    const azimuth = (config.sunAzimuth * Math.PI) / 180;
+    const localSun = new THREE.Vector3(
+      Math.cos(elevation) * Math.cos(azimuth),
+      Math.cos(elevation) * Math.sin(azimuth),
+      Math.sin(elevation)
+    );
     const localCameraPos = new THREE.Vector3().copy(camera.position).applyMatrix4(invModel);
 
     // Write Render Uniform buffer for picking
@@ -733,7 +825,7 @@ export class GPGPUSimulation {
     renderUniforms[32] = config.showSuspendedSand ? 1.0 : 0.0;
     renderUniforms[33] = this.time;
     renderUniforms[34] = config.smoothRendering ? 1.0 : 0.0;
-    renderUniforms[35] = config.borderBehavior;
+    renderUniforms[35] = config.closedWaterCycle ? 0 : config.borderBehavior;
     renderUniforms[36] = config.borderWaterHeight;
     renderUniforms[37] = 0; // padding 0
     renderUniforms[38] = 0; // padding 1
@@ -834,7 +926,13 @@ export class GPGPUSimulation {
 
     // Transform camera and light coordinates to local space
     const invModel = new THREE.Matrix4().copy(modelMatrix).invert();
-    const localSun = new THREE.Vector3(0.0, 1.0, 0.5).normalize().applyMatrix4(invModel);
+    const elevation = (config.sunElevation * Math.PI) / 180;
+    const azimuth = (config.sunAzimuth * Math.PI) / 180;
+    const localSun = new THREE.Vector3(
+      Math.cos(elevation) * Math.cos(azimuth),
+      Math.cos(elevation) * Math.sin(azimuth),
+      Math.sin(elevation)
+    );
     const localCameraPos = new THREE.Vector3().copy(camera.position).applyMatrix4(invModel);
 
     // Render active bind group selection
@@ -867,7 +965,7 @@ export class GPGPUSimulation {
     renderUniforms[32] = config.showSuspendedSand ? 1.0 : 0.0;
     renderUniforms[33] = this.time;
     renderUniforms[34] = config.smoothRendering ? 1.0 : 0.0;
-    renderUniforms[35] = config.borderBehavior;
+    renderUniforms[35] = config.closedWaterCycle ? 0 : config.borderBehavior;
     renderUniforms[36] = config.borderWaterHeight;
 
     this.device.queue.writeBuffer(this.renderUniformBufferTerrain!, 0, renderUniforms);
@@ -926,6 +1024,28 @@ export class GPGPUSimulation {
     passFluids.drawIndexed(this.indexCount, 1, 0, 0, 0);
     passFluids.end();
 
+    this.atmosphereRenderer?.render(
+      commandEncoder,
+      canvasTextureView,
+      this.depthTexture!.createView(),
+      mvp,
+      localCameraPos
+    );
+
     this.device.queue.submit([commandEncoder.finish()]);
+  }
+
+  public sampleWaterBudget() {
+    if (!this.resourcesReady || !this.initialized || !this.atmosphere || !this.waterBudget) return;
+    if (this.brushActive) return;
+    if (this.budgetClosedMode !== config.closedWaterCycle) {
+      this.budgetClosedMode = config.closedWaterCycle;
+      this.waterBudget.resetBaseline();
+    }
+    this.waterBudget.sample(
+      (this.pingPongToggle ? this.fluidsBufferB : this.fluidsBufferA)!,
+      this.atmosphere.surfaceBuffer,
+      this.atmosphere.volumeBuffer
+    );
   }
 }

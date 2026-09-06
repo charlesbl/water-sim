@@ -102,18 +102,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     var steam = cell_b.steam;
     var temp = cell_b.temp;
-    var steam_gen = 0.0;
-
-    // React lava + water to form rock (processed dynamically in fluids state update)
-    if (uniforms.paused < 0.5) {
-        if (water > 0.0001 && lava > 0.0001) {
-            let react = min(water, lava);
-            lava = max(0.0, lava - react);
-            water = max(0.0, water - react);
-            steam_gen = react * 25.0; // generate intense steam
-            temp = 1.0; // The new rock barrier is blazing hot
-        }
-    }
 
     if (uniforms.paused < 0.5) {
         // --- WATER UPDATE (Virtual Pipe Model) ---
@@ -175,9 +163,23 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
         lava = max(0.0, lava - l_out + l_in);
 
-        // Evaporate water slowly
+        // React AFTER transport: outgoing fluxes were limited against the old
+        // liquid inventory. Consuming water before those fluxes created mass
+        // when the source was clamped to zero but neighbors still received it.
+        let boiled = min(water, lava);
+        if (boiled > 0.0001) {
+            water -= boiled;
+            lava -= boiled;
+            steam += boiled; // Actual water-equivalent inventory, not opacity.
+            temp = 1.0;
+        }
+
+        // The legacy evaporation slider transfers water to a waiting vapor
+        // reservoir. The atmosphere consumes it; it never fades or vanishes.
         if (water > 0.0) {
-            water = max(0.0, water - uniforms.evaporation);
+            let evaporated = min(water, max(uniforms.evaporation, 0.0));
+            water -= evaporated;
+            steam += evaporated;
         }
     }
 
@@ -211,26 +213,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
     }
 
-    water = clamp(water, 0.0, 10.0);
+    water = max(water, 0.0);
     lava = clamp(lava, 0.0, 10.0);
 
-    // Steam diffusion and dissipation
+    // Steam is water waiting to join the atmosphere, including while weather
+    // is paused/disabled. Visual opacity is scaled separately in the renderer.
     if (uniforms.paused < 0.5) {
-        var steam_neighbors = 0.0;
-        var count = 0.0;
-        if (x > 0u) { steam_neighbors += fluids_in[y * grid_size + (x - 1u)].steam; count += 1.0; }
-        if (x < grid_size - 1u) { steam_neighbors += fluids_in[y * grid_size + (x + 1u)].steam; count += 1.0; }
-        if (y > 0u) { steam_neighbors += fluids_in[(y - 1u) * grid_size + x].steam; count += 1.0; }
-        if (y < grid_size - 1u) { steam_neighbors += fluids_in[(y + 1u) * grid_size + x].steam; count += 1.0; }
-        
-        if (count > 0.0) {
-            steam = mix(steam, steam_neighbors / count, 0.3); // diffuse steam
-        }
-        
-        steam = max(0.0, steam - 0.04); // fade out steam
-        steam += steam_gen;
-        steam = clamp(steam, 0.0, 5.0);
-
         // Temp cooling
         if (lava > 0.01) {
             temp = 1.0;
@@ -243,10 +231,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         }
     }
 
-    // Zero-out Epsilon: completely destroy mathematically insignificant amounts
-    if (water < 0.0001) { water = 0.0; }
+    // Water and vapor have no artificial deletion threshold.
     if (lava < 0.0001) { lava = 0.0; }
-    if (steam < 0.001) { steam = 0.0; }
 
     fluids_out[idx] = FluidCell(water, lava, temp, steam);
 }

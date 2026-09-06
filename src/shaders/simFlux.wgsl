@@ -65,17 +65,19 @@ struct SimUniforms {
 @group(0) @binding(4) var<storage, read_write> water_flux_out : array<FluxCell>;
 @group(0) @binding(5) var<storage, read> lava_flux_in : array<FluxCell>;
 @group(0) @binding(6) var<storage, read_write> lava_flux_out : array<FluxCell>;
+@group(0) @binding(7) var<storage, read> weather_surface : array<vec4<f32>>;
 
 fn get_cell_solid_fluid(x: u32, y: u32, grid_size: u32, is_lava: bool) -> vec2<f32> {
     let idx = y * grid_size + x;
     let cell_a = terrain_in[idx];
     let cell_b = fluids_in[idx];
+    let frozen_height = weather_surface[idx].x * 5.0 + weather_surface[idx].y / 0.917;
     if (is_lava) {
-        let solid = cell_a.rock + cell_a.sand;
+        let solid = cell_a.rock + cell_a.sand + frozen_height;
         let fluid = cell_b.lava;
         return vec2<f32>(solid, fluid);
     } else {
-        let solid = cell_a.rock + cell_a.sand + cell_b.lava;
+        let solid = cell_a.rock + cell_a.sand + cell_b.lava + frozen_height;
         let fluid = cell_b.water;
         return vec2<f32>(solid, fluid);
     }
@@ -117,7 +119,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     var w_flux = water_flux_in[idx];
 
     // Left neighbor (-1, 0)
-    let left_x = max(0u, x - 1u);
+    let left_x = u32(max(0, i32(x) - 1));
     let left_data_w = get_cell_solid_fluid(left_x, y, grid_size, false);
     let diff_w_l = h_src_w - (left_data_w.x + left_data_w.y);
     w_flux.left = max(0.0, w_flux.left * uniforms.water_damping + diff_w_l * g_dt_water);
@@ -129,7 +131,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     w_flux.right = max(0.0, w_flux.right * uniforms.water_damping + diff_w_r * g_dt_water);
 
     // Bottom neighbor (0, -1)
-    let bottom_y = max(0u, y - 1u);
+    let bottom_y = u32(max(0, i32(y) - 1));
     let bottom_data_w = get_cell_solid_fluid(x, bottom_y, grid_size, false);
     let diff_w_b = h_src_w - (bottom_data_w.x + bottom_data_w.y);
     w_flux.bottom = max(0.0, w_flux.bottom * uniforms.water_damping + diff_w_b * g_dt_water);
