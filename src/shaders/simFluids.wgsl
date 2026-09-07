@@ -196,9 +196,25 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                 water += amount * 1.5;
             } else if (uniforms.brush_type == 1.0) { // Add Lava
                 lava += amount;
-            } else if (uniforms.brush_type == 5.0) { // Erase liquids
+            } else if (uniforms.brush_type == 5.0) { // Erase liquid and frozen water
                 water = max(0.0, water - amount * 5.0);
                 lava = max(0.0, lava - amount * 5.0);
+                weather_surface[idx].x = max(0.0, weather_surface[idx].x - amount * 5.0);
+                weather_surface[idx].y = max(0.0, weather_surface[idx].y - amount * 5.0);
+            } else if (uniforms.brush_type == 6.0) { // Add bottom ice at -5 C
+                var frozen = weather_surface[idx];
+                let added = amount * 1.5; // Water-equivalent depth, like the water brush.
+                let capacity = 1.0 + water * 8.0 + frozen.y * 5.0 + frozen.x * 2.0;
+                frozen.y += added;
+                frozen.z = (capacity * frozen.z - added * 5.0 * 5.0) / (capacity + added * 5.0);
+                weather_surface[idx] = frozen;
+            } else if (uniforms.brush_type == 7.0 || uniforms.brush_type == 8.0) {
+                // Supply/remove sensible energy; normal weather steps perform
+                // phase changes. Deep water responds more slowly than dry land.
+                let frozen = weather_surface[idx];
+                let capacity = 1.0 + water * 8.0 + frozen.y * 5.0 + frozen.x * 2.0;
+                let direction = select(-1.0, 1.0, uniforms.brush_type == 7.0);
+                weather_surface[idx].z = clamp(frozen.z + direction * amount * 8.0 / capacity, -70.0, 90.0);
             }
         }
     }

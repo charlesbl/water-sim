@@ -102,11 +102,15 @@ Use **Explore atmosphere** to switch between cloud volume and temperature, humid
 
 Surface fluids advance at a fixed 60 Hz, and the atmosphere and its thermal exchanges at 30 Hz. Snow inundated by surface water also melts during the surface-fluid steps. Both clocks use elapsed time instead of frame count, with bounded catch-up after slow frames. **Simulation Speed** scales both clocks; **Weather speed** additionally scales the atmospheric clock. Under sustained GPU overload, the catch-up limits can slow simulated time.
 
+The **Ice** brush adds solid ice beneath the water. **Erase** also removes snow and ice. **Heat** and **Cool** add or remove surface heat using the brush size and strength; deep water responds more slowly. Enable **Simulate weather** and resume the simulation for progressive freezing and melting. Adding or erasing ice resets the water-inventory baseline; thermal brushes preserve the water inventory.
+
 Move the camera with W/A/S/D and Q/E; hold the middle mouse button to look around. Space accelerates movement and Shift slows it down.
 
 See [the atmospheric implementation and manual checks](docs/atmosphere-3d.md) for the model's scope, controls, and limitations. The older [climate and vegetation roadmap](docs/climate-vegetation/README.md) describes a separate 2.5D design; it is not the implementation contract for this 3D atmosphere, and vegetation is not implemented here.
 
 ### GPU checks
+
+The additional `/water-sim/tests/brushes.html` page verifies ice addition and erasure, local heating/cooling, thermal inertia, and the resulting conservative freezing/melting.
 
 With the Vite server running, open these pages in a WebGPU browser:
 

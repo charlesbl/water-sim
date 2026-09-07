@@ -727,7 +727,10 @@ export class GPGPUSimulation {
     computeUniforms[33] = config.fbmOctaves;
     computeUniforms[34] = config.fbmPersistence;
     computeUniforms[35] = config.minWaterDepth;
-    if (this.brushActive && (this.brushType === 0 || this.brushType === 5)) {
+    if (
+      this.brushActive &&
+      (this.brushType === 0 || this.brushType === 5 || this.brushType === 6)
+    ) {
       this.waterBudget?.resetBaseline();
     }
 

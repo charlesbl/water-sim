@@ -18,7 +18,7 @@ export interface Config {
   simSpeed: number; // Time multiplier for the fixed simulation clocks
 
   // Brush settings
-  brushType: number; // 0: Water, 1: Lava, 2: Sand, 3: Raise Rock, 4: Dig Rock, 5: Erase
+  brushType: number; // 0: Water, 1: Lava, 2: Sand, 3: Raise, 4: Dig, 5: Erase, 6: Ice, 7: Heat, 8: Cool
   brushRadius: number; // Radius of the brush in grid units
   brushStrength: number; // Strength/rate of drawing
 
