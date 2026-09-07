@@ -32,6 +32,40 @@
         </button>
         <div class="hud-section-content">
           <div class="hud-section-content-inner">
+            <div class="control-group">
+              <div class="checkbox-row">
+                <input type="checkbox" id="thermal-overlay" />
+                <label for="thermal-overlay">Temperature overlay</label>
+              </div>
+              <div id="thermal-controls" hidden>
+                <label for="thermal-mode">Measure</label>
+                <select id="thermal-mode" class="select-input">
+                  <option value="surface">Surface</option>
+                  <option value="air">Air above surface</option>
+                </select>
+                <div class="label-row">
+                  <label for="thermal-opacity">Opacity</label
+                  ><span id="thermal-opacity-val">45%</span>
+                </div>
+                <input type="range" id="thermal-opacity" min="0" max="100" step="5" value="45" />
+                <div class="label-row">
+                  <label for="thermal-height">Air height above surface</label
+                  ><span id="thermal-height-val">6.25 u</span>
+                </div>
+                <input
+                  type="range"
+                  id="thermal-height"
+                  min="3.125"
+                  max="25"
+                  step="3.125"
+                  value="6.25"
+                />
+                <p class="thermal-help">
+                  Height follows the landscape. Air is interpolated on a coarser grid (3.125 u per
+                  layer); near ground, the first available air layer is used.
+                </p>
+              </div>
+            </div>
             <div class="checkbox-row" style="margin-top: 0; margin-bottom: 12px">
               <input type="checkbox" id="atmosphere-enabled" checked />
               <label for="atmosphere-enabled">Simulate weather</label>
@@ -795,6 +829,13 @@
     </div>
 
     <!-- Script entry point -->
+    <aside id="thermal-legend" class="glass-panel" hidden aria-label="Temperature scale">
+      <strong id="thermal-legend-title">Surface temperature · °C</strong>
+      <div class="thermal-gradient"></div>
+      <div class="thermal-ticks">
+        <span>≤ −30</span><span>0</span><span>15</span><span>≥ 35</span>
+      </div>
+    </aside>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

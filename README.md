@@ -128,3 +128,16 @@ Each page reports individual results and stops at a failure. `npm run typecheck`
 This project is configured to automatically deploy to GitHub Pages via **GitHub Actions**.
 
 Whenever changes are pushed to the `main` branch, the workflow defined in [deploy.yml](.github/workflows/deploy.yml) triggers automatically, builds the project using the configured base URL in [vite.config.ts](vite.config.ts), and deploys the build artifacts to GitHub Pages.
+
+Temperature overlay is available at the top of **3D Atmosphere**. It tints the
+normal landscape with a fixed −30 to +35 °C scale (colors saturate outside that
+range). Choose **Surface** or **Air above
+surface**, adjust opacity, and set air height in simulation units. Air sampling
+follows the physical surface including water, snow and ice. Its coarser grid has
+3.125-unit vertical layers; samples near terrain use the first valid air layer,
+and points above the sampled domain have no air overlay.
+
+Painting, erasing and camera controls remain available with the overlay visible.
+The overlay returns to the
+normal cloud view; selecting an atmospheric slice disables the overlay. Pausing
+or disabling weather keeps the stored temperatures available for inspection.

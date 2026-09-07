@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { config } from './config';
 import { AtmosphereSimulation } from './atmosphere';
 import { AtmosphereRenderer } from './atmosphereRenderer';
+import { ThermalRenderer } from './thermalRenderer';
 import { WaterBudget } from './waterBudget';
 
 import simFluxWGSL from './shaders/simFlux.wgsl?raw';
@@ -18,6 +19,7 @@ export class GPGPUSimulation {
   private context: GPUCanvasContext | null = null;
   private atmosphere: AtmosphereSimulation | null = null;
   private atmosphereRenderer: AtmosphereRenderer | null = null;
+  private thermalRenderer: ThermalRenderer | null = null;
   private waterBudget: WaterBudget | null = null;
   private budgetClosedMode = true;
   private format: GPUTextureFormat = 'rgba8unorm';
@@ -58,6 +60,7 @@ export class GPGPUSimulation {
   private simTerrainPipeline: GPUComputePipeline | null = null;
   private renderTerrainPipeline: GPURenderPipeline | null = null;
   private renderFluidsPipeline: GPURenderPipeline | null = null;
+  private thermalFluidsPipeline: GPURenderPipeline | null = null;
 
   // Bind groups
   private computeBindGroupA: GPUBindGroup | null = null;
@@ -188,6 +191,8 @@ export class GPGPUSimulation {
     await this.atmosphere.init();
     this.atmosphereRenderer = new AtmosphereRenderer(this.device, this.format, this.atmosphere);
     await this.atmosphereRenderer.init();
+    this.thermalRenderer = new ThermalRenderer(this.device, this.format, this.atmosphere);
+    await this.thermalRenderer.init();
     this.waterBudget = new WaterBudget(
       this.device,
       this.size,
@@ -327,7 +332,7 @@ export class GPGPUSimulation {
       depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' },
     });
 
-    this.renderFluidsPipeline = this.device.createRenderPipeline({
+    const fluidDescriptor: GPURenderPipelineDescriptor = {
       layout: renderPipelineLayout,
       vertex: {
         module: renderModule,
@@ -357,6 +362,11 @@ export class GPGPUSimulation {
       },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: { depthWriteEnabled: false, depthCompare: 'less', format: 'depth24plus' },
+    };
+    this.renderFluidsPipeline = this.device.createRenderPipeline(fluidDescriptor);
+    this.thermalFluidsPipeline = this.device.createRenderPipeline({
+      ...fluidDescriptor,
+      depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' },
     });
 
     // Picking Render Pipeline (outputs UV coordinates directly to a Float textures)
@@ -1022,12 +1032,24 @@ export class GPGPUSimulation {
       },
     });
 
-    passFluids.setPipeline(this.renderFluidsPipeline!);
+    passFluids.setPipeline(
+      config.thermalOverlay ? this.thermalFluidsPipeline! : this.renderFluidsPipeline!
+    );
     passFluids.setBindGroup(0, activeRenderFluidsBindGroup);
     passFluids.setVertexBuffer(0, this.vertexBuffer!);
     passFluids.setIndexBuffer(this.indexBuffer!, 'uint32');
     passFluids.drawIndexed(this.indexCount, 1, 0, 0, 0);
     passFluids.end();
+
+    this.thermalRenderer?.render(
+      commandEncoder,
+      canvasTextureView,
+      this.depthTexture!.createView(),
+      mvp,
+      (this.pingPongToggle ? this.terrainBufferB : this.terrainBufferA)!,
+      (this.pingPongToggle ? this.fluidsBufferB : this.fluidsBufferA)!,
+      this.size
+    );
 
     this.atmosphereRenderer?.render(
       commandEncoder,

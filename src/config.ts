@@ -67,6 +67,10 @@ export interface Config {
   showWind: boolean;
   atmosphereView: number; // 0: volume, 1: temperature, 2: humidity, 3: wind
   atmosphereSlice: number; // Normalized altitude of the diagnostic slice
+  thermalOverlay: boolean;
+  thermalAir: boolean;
+  thermalOpacity: number;
+  thermalHeight: number;
 
   // Map border settings
   borderBehavior: number; // 0: block all, 1: pass all, 2: pass water but not sand
@@ -74,6 +78,10 @@ export interface Config {
 }
 
 export const config: Config = {
+  thermalOverlay: false,
+  thermalAir: false,
+  thermalOpacity: 0.45,
+  thermalHeight: 6.25,
   gridSize: 2048,
   waterGravity: 9.81,
   waterDamping: 0.998,

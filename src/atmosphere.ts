@@ -62,7 +62,7 @@ export class AtmosphereSimulation {
 
   private readonly volumes: [GPUBuffer, GPUBuffer];
   private readonly pressureBuffer: GPUBuffer;
-  private readonly columns: GPUBuffer;
+  public readonly columns: GPUBuffer;
   private readonly precipitation: GPUBuffer;
   private readonly divergenceBuffer: GPUBuffer;
   private readonly conjugateState: GPUBuffer;

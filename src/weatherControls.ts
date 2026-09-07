@@ -11,7 +11,9 @@ type WeatherNumberKey =
   | 'sunAzimuth'
   | 'radiativeCooling'
   | 'atmosphereTimeScale'
-  | 'atmosphereSlice';
+  | 'atmosphereSlice'
+  | 'thermalOpacity'
+  | 'thermalHeight';
 
 type WeatherForcing = Pick<
   typeof config,
@@ -125,6 +127,8 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
   bindSlider('radiative-cooling', 'radiativeCooling', (value) => `${value.toFixed(1)}×`);
   bindSlider('atmosphere-time-scale', 'atmosphereTimeScale', (value) => `${value.toFixed(2)}×`);
   bindSlider('atmosphere-slice', 'atmosphereSlice', (value) => `${Math.round(value * 100)}%`, 100);
+  bindSlider('thermal-opacity', 'thermalOpacity', (value) => `${Math.round(value * 100)}%`, 100);
+  bindSlider('thermal-height', 'thermalHeight', (value) => `${value.toFixed(2)} u`);
 
   const bindCheckbox = (id: string, key: 'atmosphereEnabled' | 'showClouds' | 'showWind') => {
     const checkbox = document.getElementById(id) as HTMLInputElement | null;
@@ -250,10 +254,39 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
     }
   };
   syncControls.push(syncView);
+  const thermalToggle = document.getElementById('thermal-overlay') as HTMLInputElement;
+  const thermalMode = document.getElementById('thermal-mode') as HTMLSelectElement;
+  const syncThermal = () => {
+    thermalToggle.checked = config.thermalOverlay;
+    thermalMode.value = config.thermalAir ? 'air' : 'surface';
+    document.getElementById('thermal-controls')!.hidden = !config.thermalOverlay;
+    document.getElementById('thermal-legend')!.hidden = !config.thermalOverlay;
+    document.getElementById('thermal-legend-title')!.textContent = config.thermalAir
+      ? `Air +${config.thermalHeight.toFixed(2)} u above surface · °C`
+      : 'Surface temperature · °C';
+  };
+  syncControls.push(syncThermal);
+  thermalToggle.addEventListener('change', () => {
+    config.thermalOverlay = thermalToggle.checked;
+    if (config.thermalOverlay) {
+      config.atmosphereView = 0;
+      syncView();
+    }
+    syncThermal();
+  });
+  thermalMode.addEventListener('change', () => {
+    config.thermalAir = thermalMode.value === 'air';
+    syncThermal();
+  });
+  document.getElementById('thermal-height')!.addEventListener('input', syncThermal);
   view?.addEventListener('change', () => {
     const selected = Number(view.value);
     if (![0, 1, 2, 3].includes(selected)) return;
     config.atmosphereView = selected;
+    if (selected !== 0) {
+      config.thermalOverlay = false;
+      syncThermal();
+    }
     syncView();
   });
 
