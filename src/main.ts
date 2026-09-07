@@ -561,7 +561,8 @@ function animate() {
 
   // Run GPGPU physical simulation ticks
   if (!config.paused) {
-    simTicksAccumulator += config.simSpeed;
+    // Surface motion uses the same clock on fast and slow GPUs.
+    simTicksAccumulator = Math.min(simTicksAccumulator + elapsed * 60 * config.simSpeed, 8);
 
     while (simTicksAccumulator >= 1.0) {
       gpgpu.setBrush(
@@ -575,6 +576,7 @@ function animate() {
       simTicksAccumulator -= 1.0;
     }
   } else {
+    simTicksAccumulator = 0;
     gpgpu.setBrush(
       isPointerDown,
       pointerUV,

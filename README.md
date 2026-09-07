@@ -17,6 +17,8 @@ This is a qualitative miniature weather model for experimentation, with simplifi
   - **Eraser:** Clear fluids instantly.
 - **Fluid & Erosion Simulation:**
   - Dynamic shallow water equation solver.
+  - Ice forms a solid layer on the bed, and the remaining liquid flows above it in the existing 2.5D solver.
+  - Cooling freezes available water progressively; melting returns the same water-equivalent mass to the liquid reservoir.
   - Sediment transport, erosion, and deposition model.
   - Interactive sliders for fluid parameters (gravity, damping, evaporation).
   - Map border behaviors (block all, pass all, pass water only).
@@ -26,6 +28,8 @@ This is a qualitative miniature weather model for experimentation, with simplifi
   - Surface snow accumulation, ice formation, and melting back into liquid water.
   - Emergent weather by default: temperature, humidity, and wind evolve from their initial state without being pulled toward slider targets.
   - Solar intensity and direction, radiative cooling, surface heat exchange, thermal inertia, snow albedo, and buoyancy drive local changes.
+  - Moist convection couples rising-air cooling with condensation heat, humidity buoyancy, and condensate loading; land–water heating contrasts can create circulation without imposed wind.
+  - Cloud droplets remain airborne while a slower growth process forms precipitation, allowing clouds to travel before releasing their water.
   - Initial air conditions and Mild, Snow, Thaw, and Storm presets; restarting the air preserves the terrain, liquid water, snow, and ice.
   - A closed water cycle by default: vapor, cloud water, rain, snow, ice, and liquid water exchange mass through conservative transfers, within floating-point precision.
   - Live water inventory and reservoir breakdown, with a new balance after adding or erasing water, applying a preset, or resetting.
@@ -92,7 +96,11 @@ The **3D Atmosphere** panel opens by default in emergent mode. Temperature, humi
 
 Choose **Snow** to start with cold, humid air, add some liquid water with the Water brush, and let the weather evolve. Select **Thaw** on the same landscape to initialize warmer air while preserving the accumulated snow and ice. Melting transfers solid water into the liquid water buffer, where it can flow through the existing surface simulation. **Restart air** and the presets preserve the ground and its water reservoirs; **Reset Weather** clears snow and ice as well as restarting the atmosphere.
 
+Ice always forms a solid layer attached to the terrain, with liquid water above it. Freezing consumes available liquid and grows that layer as cooling removes heat; sustained cooling can freeze the entire water column. Melting lowers the solid bed and returns the same water-equivalent mass to liquid. Snow falling into liquid water joins that reservoir and cools it through melting, while snow on dry terrain can accumulate. This is a deliberate simplification for the 2.5D model: it does not reproduce the floating ice cover of a real lake. There is one liquid reservoir per column, with no floating sheets, ice mechanics, or stacked layers of liquid.
+
 Use **Explore atmosphere** to switch between cloud volume and temperature, humidity, or wind slices. **Slice altitude** moves the diagnostic plane through the volume. The wind view includes 3D vectors; **Show 3D wind vectors** also overlays them on the other views. **Pause** freezes the simulation while the camera remains usable. **Simulate weather** suspends the atmosphere independently of the surface fluids.
+
+Surface fluids advance at a fixed 60 Hz, and the atmosphere and its thermal exchanges at 30 Hz. Snow inundated by surface water also melts during the surface-fluid steps. Both clocks use elapsed time instead of frame count, with bounded catch-up after slow frames. **Simulation Speed** scales both clocks; **Weather speed** additionally scales the atmospheric clock. Under sustained GPU overload, the catch-up limits can slow simulated time.
 
 Move the camera with W/A/S/D and Q/E; hold the middle mouse button to look around. Space accelerates movement and Shift slows it down.
 
@@ -104,6 +112,8 @@ With the Vite server running, open these pages in a WebGPU browser:
 
 - `/water-sim/tests/atmosphere.html`: volume transport, emerging circulation, freezing, snow and ice melting, liquid recovery, pause, resets, smooth deposition, and rendering integration.
 - `/water-sim/tests/water-cycle.html`: evaporation from initially dry air, condensation, precipitation, return to the ground and re-evaporation, total water conservation over thousands of steps, both boundary modes, terrain obstruction, stored steam, and the GPU inventory against an independent CPU sum.
+- `/water-sim/tests/bottom-ice.html`: gradual and complete freezing, melting, snow falling into water, solid ice geometry beneath the water, liquid flow over the frozen bed, and water conservation.
+- `/water-sim/tests/air-masses.html`: circulation from initially resting air, moisture rising and moving beyond a lake, persistent clouds over land, pressure projection, thermal stability, and the complete water inventory.
 
 Each page reports individual results and stops at a failure. `npm run typecheck`, `npm run lint`, and `npm run build` complement these runtime checks; shader execution must be checked in a WebGPU browser.
 

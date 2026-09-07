@@ -71,7 +71,9 @@ fn get_cell_solid_fluid(x: u32, y: u32, grid_size: u32, is_lava: bool) -> vec2<f
     let idx = y * grid_size + x;
     let cell_a = terrain_in[idx];
     let cell_b = fluids_in[idx];
-    let frozen_height = weather_surface[idx].x * 5.0 + weather_surface[idx].y / 0.917;
+    // Snow on land and bottom-grown ice form an immobile bed. Only liquid is transported.
+    let frozen = max(weather_surface[idx].xy, vec2<f32>(0.0));
+    let frozen_height = frozen.x * 5.0 + frozen.y / 0.917;
     if (is_lava) {
         let solid = cell_a.rock + cell_a.sand + frozen_height;
         let fluid = cell_b.lava;

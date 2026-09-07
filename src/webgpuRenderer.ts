@@ -498,6 +498,7 @@ export class GPGPUSimulation {
         { binding: 3, resource: { buffer: this.fluidsBufferB! } },
         { binding: 4, resource: { buffer: this.waterFluxBufferB! } }, // Read newest fluxes (written in B)
         { binding: 5, resource: { buffer: this.lavaFluxBufferB! } },
+        { binding: 6, resource: { buffer: this.atmosphere!.surfaceBuffer } },
       ],
     });
 
@@ -510,6 +511,7 @@ export class GPGPUSimulation {
         { binding: 3, resource: { buffer: this.fluidsBufferA! } },
         { binding: 4, resource: { buffer: this.waterFluxBufferA! } }, // Read newest fluxes (written in A)
         { binding: 5, resource: { buffer: this.lavaFluxBufferA! } },
+        { binding: 6, resource: { buffer: this.atmosphere!.surfaceBuffer } },
       ],
     });
 

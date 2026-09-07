@@ -30,6 +30,10 @@ struct WeatherUniforms {
 @group(0) @binding(10) var<storage, read_write> precipitation: array<vec2<f32>>;
 @group(0) @binding(11) var<storage, read> depositionWeights: array<f32>;
 @group(0) @binding(12) var<storage, read_write> layerMeans: array<vec4<f32>>;
+// Residual r, diagonal-preconditioned residual z, search direction p, A p.
+@group(0) @binding(13) var<storage, read_write> cgState: array<vec4<f32>>;
+@group(0) @binding(14) var<storage, read_write> cgPartials: array<vec2<f32>>;
+@group(0) @binding(15) var<storage, read_write> cgCoefficients: vec4<f32>;
 
 fn wrap(p: vec3<i32>) -> vec3<i32> {
     let n = vec3<i32>(u.grid.xyz);
@@ -67,7 +71,9 @@ fn saturation(temperature: f32) -> f32 {
 }
 
 fn targetVapor(height: f32) -> f32 {
-    return saturation(u.forcing.x) * max(u.forcing.y, 0.0) * exp(-height / 300.0);
+    // The initialization slider describes relative humidity throughout the
+    // column, instead of inadvertently starting cold upper layers saturated.
+    return saturation(ambientTemperature(height)) * max(u.forcing.y, 0.0);
 }
 
 fn emptyCell(height: f32) -> AtmosphereCell {
@@ -121,15 +127,20 @@ fn faceVelocity(p: vec3<i32>) -> vec3<f32> {
 // One common flux per face: both adjacent cells read the same donor value and
 // limiter. Even a large combined 3-D Courant number cannot remove more water
 // than the donor owns. All four phases are transported in actual water volume.
-fn donorWater(p: vec3<i32>) -> vec4<f32> {
+fn outgoingCourant(p: vec3<i32>) -> f32 {
     let positive = faceVelocity(p);
     let negative = vec3<f32>(
         faceVelocity(p - vec3<i32>(1, 0, 0)).x,
         faceVelocity(p - vec3<i32>(0, 1, 0)).y,
         faceVelocity(p - vec3<i32>(0, 0, 1)).z);
-    let outgoing = dot(max(positive, vec3<f32>(0.0)) + max(-negative, vec3<f32>(0.0)),
+    return dot(max(positive, vec3<f32>(0.0)) + max(-negative, vec3<f32>(0.0)),
         vec3<f32>(u.spacingTime.w) / u.spacingTime.xyz);
-    return volumeIn[index(p)].moisture / max(1.0, outgoing);
+}
+
+fn limitedSlope(left: vec4<f32>, center: vec4<f32>, right: vec4<f32>) -> vec4<f32> {
+    let before = center - left;
+    let after = right - center;
+    return select(vec4<f32>(0.0), sign(before) * min(abs(before), abs(after)), before * after > vec4<f32>(0.0));
 }
 
 fn waterFlux(p: vec3<i32>, axis: u32) -> vec4<f32> {
@@ -138,7 +149,18 @@ fn waterFlux(p: vec3<i32>, axis: u32) -> vec4<f32> {
     if (!air(p) || !air(p + offset)) { return vec4<f32>(0.0); }
     let speed = volumeIn[index(p)].velocityTemperature[axis];
     let donor = select(p + offset, p, speed >= 0.0);
-    return donorWater(donor) * (speed * u.spacingTime.w / u.spacingTime[axis]);
+    let courant = outgoingCourant(donor);
+    var value = volumeIn[index(donor)].moisture;
+    if (courant <= 0.5 && air(donor - offset) && air(donor + offset)) {
+        // MUSCL reconstruction preserves coherent humid plumes. Minmod bounds
+        // each face by 1.5 times its donor. At combined CFL <= 0.5, the total
+        // outgoing amount is therefore below 0.75 of the available inventory.
+        let slope = limitedSlope(volumeIn[index(donor - offset)].moisture,
+            value, volumeIn[index(donor + offset)].moisture);
+        value += 0.5 * sign(speed) * (1.0 - courant) * slope;
+    }
+    // At high combined CFL fall back to positive, conservative donor transport.
+    return value / max(1.0, courant) * (speed * u.spacingTime.w / u.spacingTime[axis]);
 }
 
 fn transportWater(p: vec3<i32>) -> vec4<f32> {
@@ -150,6 +172,41 @@ fn transportWater(p: vec3<i32>) -> vec4<f32> {
     }
     // Only roundoff can cross zero; the face donor limiter guarantees positivity.
     return max(water, vec4<f32>(0.0));
+}
+
+fn potentialTemperature(p: vec3<i32>) -> f32 {
+    // A dry rising parcel preserves this quantity. The positive Kelvin offset
+    // permits the same positivity-preserving large-CFL fallback as water.
+    let height = (f32(p.z) + 0.5) * u.spacingTime.z;
+    return volumeIn[index(p)].velocityTemperature.w + 273.15 + 0.16 * height;
+}
+
+fn heatFlux(p: vec3<i32>, axis: u32) -> f32 {
+    var offset = vec3<i32>(0);
+    offset[axis] = 1;
+    if (!air(p) || !air(p + offset)) { return 0.0; }
+    let speed = volumeIn[index(p)].velocityTemperature[axis];
+    let donor = select(p + offset, p, speed >= 0.0);
+    let courant = outgoingCourant(donor);
+    var value = potentialTemperature(donor);
+    if (courant <= 0.5 && air(donor - offset) && air(donor + offset)) {
+        let before = value - potentialTemperature(donor - offset);
+        let after = potentialTemperature(donor + offset) - value;
+        if (before * after > 0.0) {
+            value += 0.5 * sign(speed) * (1.0 - courant) * sign(before) * min(abs(before), abs(after));
+        }
+    }
+    return value / max(1.0, courant) * (speed * u.spacingTime.w / u.spacingTime[axis]);
+}
+
+fn transportTemperature(p: vec3<i32>) -> f32 {
+    var potential = potentialTemperature(p);
+    for (var axis = 0u; axis < 3u; axis++) {
+        var offset = vec3<i32>(0);
+        offset[axis] = 1;
+        potential += heatFlux(p - offset, axis) - heatFlux(p, axis);
+    }
+    return potential - 273.15 - 0.16 * (f32(p.z) + 0.5) * u.spacingTime.z;
 }
 
 @compute @workgroup_size(16, 16)
@@ -264,7 +321,7 @@ fn advect(@builtin(global_invocation_id) id: vec3<u32>) {
     let departure = vec3<f32>(id) - centerVelocity * dt / u.spacingTime.xyz;
     var cell = sampleAtmosphere(departure);
     var velocity = cell.velocityTemperature.xyz;
-    var temperature = cell.velocityTemperature.w;
+    var temperature = transportTemperature(p);
     var water = transportWater(p);
     let column = columns[columnIndex(p)];
     let environmentTemperature = ambientTemperature(height);
@@ -278,28 +335,46 @@ fn advect(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         velocity += (vec3<f32>(u.forcing.zw, 0.0) - velocity) * dt * 0.22;
     } else {
-        // Rising air cools; descending air warms. Small viscosity dissipates
-        // momentum without imposing a preferred wind speed or direction.
-        temperature -= centerVelocity.z * u.physics.x * dt;
-        velocity *= exp(-dt * 0.015);
+        // Adiabatic cooling/warming is already encoded by transporting potential
+        // temperature. The dry lapse (0.16) differs from the initial environment
+        // (0.12); latent heat can sustain an otherwise stable rising parcel.
+        velocity *= exp(-dt * 0.0015);
     }
-    let nearGround = exp(-max(height - column.x, 0.0) / 12.0);
-    temperature += (column.y - temperature) * nearGround * dt * 0.22;
+    let groundDistance = max(height - column.x, 0.0);
+    let nearGround = exp(-groundDistance / 5.0);
+    temperature += (column.y - temperature) * nearGround * dt * 0.3;
+    // Surface drag dissipates the boundary layer; free air retains momentum.
+    let drag = exp(-dt * nearGround * 0.09);
+    velocity.x *= drag;
+    velocity.y *= drag;
     let reference = layerMeans[id.z];
-    let buoyancy = (temperature - reference.x) * 0.35 + (water.x - reference.y) * 35.0 - water.y * 25.0;
+    let buoyancy = 9.81 * (temperature - reference.x) / max(reference.x + 273.15, 180.0)
+        + (water.x - reference.y) * 6.0 - (water.y + water.z + water.w) * 9.81;
     velocity.z += buoyancy * dt;
     if (!air(p - vec3<i32>(0, 0, 1))) {
         // The previous surface pass debited exactly this water from fluids.
         water.x += column.z * column.w * max(u.environment.y, 0.001) / u.spacingTime.z;
     }
 
+    // Saturation adjustment solves vapor/condensate/latent heat together. Heat
+    // raises saturation during condensation, so raw supersaturation must not
+    // all be removed at the old temperature. This is fast microphysics, while
+    // droplet growth below controls the much longer lifetime of the cloud.
+    let latentHeat = 480.0;
     let saturated = saturation(temperature);
-    let condensed = max(water.x - saturated, 0.0) * (1.0 - exp(-2.0 * dt));
-    let evaporated = min(water.y, max(saturated - water.x, 0.0) * (1.0 - exp(-0.7 * dt)));
-    water.x += evaporated - condensed;
-    water.y += condensed - evaporated;
-    temperature += (condensed - evaporated) * 180.0;
-    let precipitationFormed = min(water.y, max(water.y - 0.0012, 0.0) * dt * 0.4);
+    let saturationChange = 1.0 + latentHeat * 0.065 * saturated;
+    let phaseTransfer = clamp((water.x - saturated) / saturationChange,
+        -water.y, water.x) * (1.0 - exp(-8.0 * dt));
+    water.x -= phaseTransfer;
+    water.y += phaseTransfer;
+    temperature += phaseTransfer * latentHeat;
+    // Small droplets travel with the air. Collision/coalescence accelerates
+    // in dense clouds and around existing precipitation, over tens of seconds.
+    let cloudExcess = max(water.y - 0.003, 0.0);
+    let growthRate = 0.012 + min(water.y * 1.5, 0.045);
+    let autoconversion = cloudExcess * (1.0 - exp(-growthRate * dt));
+    let accretion = water.y * (1.0 - exp(-min((water.z + water.w) * 4.0, 0.08) * dt));
+    let precipitationFormed = min(water.y, autoconversion + accretion);
     let snowFraction = 1.0 - smoothstep(-1.5, 1.5, temperature);
     water.y -= precipitationFormed;
     water.z += precipitationFormed * (1.0 - snowFraction);
@@ -309,10 +384,11 @@ fn advect(@builtin(global_invocation_id) id: vec3<u32>) {
     water.z += melted - frozen;
     water.w += frozen - melted;
     temperature += (frozen - melted) * 25.0;
-    let rainEvaporated = min(water.z, max(saturation(temperature) - water.x, 0.0) * dt * 0.15);
+    let rainEvaporated = min(water.z, max(saturation(temperature) - water.x, 0.0) * dt * 0.15 /
+        (1.0 + latentHeat * 0.065 * saturation(temperature)));
     water.z -= rainEvaporated;
     water.x += rainEvaporated;
-    temperature -= rainEvaporated * 180.0;
+    temperature -= rainEvaporated * latentHeat;
 
     cell.velocityTemperature = vec4<f32>(constrainFaces(p, clamp(velocity, vec3<f32>(-40.0), vec3<f32>(40.0))), clamp(temperature, -70.0, 65.0));
     cell.moisture = max(water, vec4<f32>(0.0));
@@ -325,28 +401,126 @@ fn divergence(@builtin(global_invocation_id) id: vec3<u32>) {
     let p = vec3<i32>(id);
     let i = index(p);
     pressureOut[i] = 0.0;
-    if (!air(p)) { divergenceField[i] = 0.0; return; }
+    if (!air(p)) { divergenceField[i] = 0.0; cgState[i] = vec4<f32>(0.0); return; }
     let positive = faceVelocity(p);
     let negative = vec3<f32>(faceVelocity(p - vec3<i32>(1, 0, 0)).x, faceVelocity(p - vec3<i32>(0, 1, 0)).y, faceVelocity(p - vec3<i32>(0, 0, 1)).z);
     divergenceField[i] = dot(positive - negative, 1.0 / u.spacingTime.xyz);
+    let residual = -divergenceField[i];
+    let preconditioned = residual / max(pressureDiagonal(p), 0.00001);
+    cgState[i] = vec4<f32>(residual, preconditioned, preconditioned, 0.0);
 }
 
-@compute @workgroup_size(4, 4, 4)
-fn pressure(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (!inside(id)) { return; }
-    let p = vec3<i32>(id);
-    let i = index(p);
-    if (!air(p)) { pressureOut[i] = 0.0; return; }
-    var total = 0.0;
+fn pressureDiagonal(p: vec3<i32>) -> f32 {
     var weights = 0.0;
     for (var axis = 0u; axis < 3u; axis++) {
         var offset = vec3<i32>(0);
         offset[axis] = 1;
         let weight = 1.0 / (u.spacingTime[axis] * u.spacingTime[axis]);
-        if (air(p + offset)) { total += pressureIn[index(p + offset)] * weight; weights += weight; }
-        if (air(p - offset)) { total += pressureIn[index(p - offset)] * weight; weights += weight; }
+        if (air(p + offset)) { weights += weight; }
+        if (air(p - offset)) { weights += weight; }
     }
-    pressureOut[i] = (total - divergenceField[i]) / max(weights, 0.00001);
+    return weights;
+}
+
+fn linearCoordinate(i: u32) -> vec3<i32> {
+    let n = vec3<u32>(u.grid.xyz);
+    return vec3<i32>(i32(i % n.x), i32((i / n.x) % n.y), i32(i / (n.x * n.y)));
+}
+
+var<workgroup> cgSum: array<vec2<f32>, 256>;
+
+fn reducePressureDot(lane: u32) {
+    workgroupBarrier();
+    for (var stride = 128u; stride > 0u; stride /= 2u) {
+        if (lane < stride) { cgSum[lane] += cgSum[lane + stride]; }
+        workgroupBarrier();
+    }
+}
+
+// A is the positive semi-definite negative Laplacian with the exact same face
+// mask as divergence/project. Closed Neumann components retain arbitrary
+// constant pressure, which has no effect on their velocity gradients.
+@compute @workgroup_size(256)
+fn cgApply(@builtin(global_invocation_id) id: vec3<u32>,
+    @builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_index) lane: u32) {
+    let i = id.x;
+    var dotProducts = vec2<f32>(0.0);
+    if (i < u32(u.grid.x * u.grid.y * u.grid.z)) {
+        let p = linearCoordinate(i);
+        if (air(p)) {
+            let state = cgState[i];
+            var product = 0.0;
+            for (var axis = 0u; axis < 3u; axis++) {
+                var offset = vec3<i32>(0);
+                offset[axis] = 1;
+                let weight = 1.0 / (u.spacingTime[axis] * u.spacingTime[axis]);
+                if (air(p + offset)) { product += (state.z - cgState[index(p + offset)].z) * weight; }
+                if (air(p - offset)) { product += (state.z - cgState[index(p - offset)].z) * weight; }
+            }
+            cgState[i].w = product;
+            dotProducts = vec2<f32>(state.x * state.y, state.z * product);
+        }
+    }
+    cgSum[lane] = dotProducts;
+    reducePressureDot(lane);
+    if (lane == 0u) { cgPartials[group.x] = cgSum[0]; }
+}
+
+@compute @workgroup_size(256)
+fn cgReduceBefore(@builtin(local_invocation_index) lane: u32) {
+    let count = (u32(u.grid.x * u.grid.y * u.grid.z) + 255u) / 256u;
+    var total = vec2<f32>(0.0);
+    for (var i = lane; i < count; i += 256u) { total += cgPartials[i]; }
+    cgSum[lane] = total;
+    reducePressureDot(lane);
+    if (lane == 0u) {
+        let sums = cgSum[0];
+        var alpha = 0.0;
+        if (sums.x > 1e-25 && sums.y > 1e-25) { alpha = sums.x / sums.y; }
+        cgCoefficients = vec4<f32>(alpha, 0.0, sums.x, 0.0);
+    }
+}
+
+@compute @workgroup_size(256)
+fn cgUpdate(@builtin(global_invocation_id) id: vec3<u32>,
+    @builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_index) lane: u32) {
+    let i = id.x;
+    var product = 0.0;
+    if (i < u32(u.grid.x * u.grid.y * u.grid.z)) {
+        let p = linearCoordinate(i);
+        if (air(p)) {
+            var state = cgState[i];
+            pressureOut[i] += cgCoefficients.x * state.z;
+            state.x -= cgCoefficients.x * state.w;
+            state.y = state.x / max(pressureDiagonal(p), 0.00001);
+            product = state.x * state.y;
+            cgState[i] = state;
+        }
+    }
+    cgSum[lane] = vec2<f32>(product, 0.0);
+    reducePressureDot(lane);
+    if (lane == 0u) { cgPartials[group.x] = cgSum[0]; }
+}
+
+@compute @workgroup_size(256)
+fn cgReduceAfter(@builtin(local_invocation_index) lane: u32) {
+    let count = (u32(u.grid.x * u.grid.y * u.grid.z) + 255u) / 256u;
+    var total = vec2<f32>(0.0);
+    for (var i = lane; i < count; i += 256u) { total += cgPartials[i]; }
+    cgSum[lane] = total;
+    reducePressureDot(lane);
+    if (lane == 0u) {
+        var beta = 0.0;
+        if (cgCoefficients.z > 1e-25) { beta = cgSum[0].x / cgCoefficients.z; }
+        cgCoefficients.y = beta;
+    }
+}
+
+@compute @workgroup_size(256)
+fn cgDirection(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= u32(u.grid.x * u.grid.y * u.grid.z)) { return; }
+    let state = cgState[id.x];
+    cgState[id.x].z = state.y + cgCoefficients.y * state.z;
 }
 
 @compute @workgroup_size(4, 4, 4)
@@ -406,7 +580,15 @@ fn surfaceWeather(xy: vec2<f32>, height: f32) -> vec4<f32> {
             if (firstZ < i32(u.grid.z)) {
                 let cell = volumeIn[index(vec3<i32>(p.xy, firstZ))];
                 let airHeight = (f32(firstZ) + 0.5) * u.spacingTime.z;
-                result.x += (cell.velocityTemperature.w + u.physics.x * (airHeight - height)) * weight;
+                // Reconstruct the current profile, not the initialization
+                // lapse. A fixed lapse warmed an isothermal surface/air pair
+                // repeatedly even with every external energy source disabled.
+                var temperatureGradient = 0.0;
+                if (firstZ + 1 < i32(u.grid.z)) {
+                    let above = volumeIn[index(vec3<i32>(p.xy, firstZ + 1))].velocityTemperature.w;
+                    temperatureGradient = clamp((above - cell.velocityTemperature.w) / u.spacingTime.z, -0.4, 0.4);
+                }
+                result.x += (cell.velocityTemperature.w + temperatureGradient * (height - airHeight)) * weight;
                 result.y += cell.moisture.x * weight;
             } else {
                 // A column entirely outside the air domain has no exchange.
@@ -425,6 +607,10 @@ fn terrainElevation(p: vec2<i32>) -> f32 {
     let q = clamp(p, vec2<i32>(0), vec2<i32>(n - 1));
     let cell = terrain[u32(q.y * n + q.x)];
     return (cell.x + cell.y) * u.environment.y;
+}
+
+fn surfaceHeatCapacity(liquid: f32, ice: f32, snow: f32) -> f32 {
+    return 1.0 + liquid * 8.0 + ice * 5.0 + snow * 2.0;
 }
 
 // Each invocation owns exactly one fine cell. No neighboring fluids are read
@@ -448,9 +634,24 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
     let airTemperature = weather.x;
     let vapor = weather.y;
     let fallen = weather.zw;
-    liquid.x = max(liquid.x, 0.0) + fallen.x;
-    cover.x = max(cover.x, 0.0) + fallen.y;
+    liquid.x = max(liquid.x, 0.0);
+    cover.x = max(cover.x, 0.0);
     cover.y = max(cover.y, 0.0);
+    let latentFusion = 80.0;
+    var energy = cover.z * surfaceHeatCapacity(liquid.x, cover.y, cover.x);
+    liquid.x += fallen.x;
+    cover.x += fallen.y;
+    energy += fallen.x * 8.0 * airTemperature + fallen.y * 2.0 * min(airTemperature, 0.0);
+    // The water model has one liquid reservoir above a fixed bed of ice.
+    // Snow meeting this water melts into that reservoir, removing latent heat.
+    // It never becomes a floating solid lid; sufficiently cold water can then
+    // freeze progressively into the bed below it.
+    if (liquid.x > 0.0 && cover.x > 0.0) {
+        energy -= cover.x * latentFusion;
+        liquid.x += cover.x;
+        cover.x = 0.0;
+    }
+    cover.z = energy / surfaceHeatCapacity(liquid.x, cover.y, cover.x);
     // Snow albedo and liquid-water thermal inertia temper daytime heating.
     let albedo = mix(0.25, 0.82, clamp(cover.x * 300.0, 0.0, 1.0));
     let pos = vec2<i32>(id.xy);
@@ -458,26 +659,41 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
         terrainElevation(pos - vec2<i32>(1, 0)) - terrainElevation(pos + vec2<i32>(1, 0)),
         terrainElevation(pos - vec2<i32>(0, 1)) - terrainElevation(pos + vec2<i32>(0, 1)), 400.0 / u.grid.w));
     let exposure = max(0.0, dot(normal, u.radiation.xyz));
-    let absorbedSolar = u.environment.x * (1.0 - albedo) * exposure * 1.8;
+    let absorbedSolar = u.environment.x * (1.0 - albedo) * exposure * 0.65;
     let kelvin = max(cover.z + 273.15, 150.0);
     let longwaveLoss = u.radiation.w * 0.25 * pow(kelvin / 288.15, 4.0);
-    let sensibleHeat = (airTemperature - cover.z) * 0.22;
+    let snowThickness = cover.x * 5.0 * u.environment.y;
+    // Dry snow insulates the terrain. Ice is anchored below the liquid, so it
+    // cannot seal evaporation or steam exchange at the exposed water surface.
+    let conductance = 1.0 / (1.0 + snowThickness * 5.0);
+    let sensibleHeat = (airTemperature - cover.z) * 0.22 * conductance;
     let lavaHeat = min(max(liquid.y, 0.0) * 120.0, 70.0) * 0.35;
-    let heatCapacity = 1.0 + liquid.x * 8.0 + cover.y * 5.0 + cover.x * 2.0;
-    cover.z += (absorbedSolar - longwaveLoss + sensibleHeat + lavaHeat) * dt / heatCapacity;
-    let snowMelt = min(cover.x, max(cover.z, 0.0) * dt * 0.00013);
-    let iceMelt = min(cover.y, max(cover.z, 0.0) * dt * 0.000055);
-    let frozenWater = min(liquid.x, max(-cover.z, 0.0) * dt * 0.00015);
-    cover.x -= snowMelt;
-    cover.y += frozenWater - iceMelt;
-    liquid.x += snowMelt + iceMelt - frozenWater;
-    cover.z += (frozenWater - snowMelt - iceMelt) * 80.0;
+    energy += (absorbedSolar - longwaveLoss + sensibleHeat + lavaHeat) * dt;
+    // Continuous heat-limited phase transfer: consume only the sensible energy
+    // available relative to 0 C, and approach equilibrium over several seconds.
+    // Recompute capacity after transfer; latent heat cannot overshoot 0 C.
+    if (energy < 0.0) {
+        let frozenWater = min(liquid.x, -energy / latentFusion * (1.0 - exp(-0.18 * dt)));
+        liquid.x -= frozenWater;
+        cover.y += frozenWater;
+        energy += frozenWater * latentFusion;
+    } else {
+        let meltBudget = energy / latentFusion * (1.0 - exp(-0.25 * dt));
+        let snowMelt = min(cover.x, meltBudget);
+        let iceMelt = min(cover.y, max(meltBudget - snowMelt, 0.0));
+        cover.x -= snowMelt;
+        cover.y -= iceMelt;
+        liquid.x += snowMelt + iceMelt;
+        energy -= (snowMelt + iceMelt) * latentFusion;
+    }
+    cover.z = energy / surfaceHeatCapacity(liquid.x, cover.y, cover.x);
     let deficit = max(saturation(cover.z) - vapor, 0.0);
     // Only water actually present is evaporated; dry land cannot create vapor.
     var evaporation = 0.0;
     if (availableAir) { evaporation = min(max(liquid.x, 0.0), deficit * dt * max(u.hydrology.z, 0.0)); }
     liquid.x = max(liquid.x - evaporation, 0.0);
-    cover.z = clamp(cover.z - evaporation * 450.0, -70.0, 90.0);
+    energy -= evaporation * (450.0 + 8.0 * cover.z);
+    cover.z = clamp(energy / surfaceHeatCapacity(liquid.x, cover.y, cover.x), -70.0, 90.0);
     if (availableAir) {
         // The old cover.w was injected by advect this step. Lava-generated
         // steam is also real water-equivalent volume and joins the next step.

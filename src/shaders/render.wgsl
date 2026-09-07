@@ -88,11 +88,8 @@ fn get_cell_ground_height(x: i32, y: i32, grid_size: i32) -> f32 {
     let cx = clamp(x, 0, grid_size - 1);
     let cy = clamp(y, 0, grid_size - 1);
     let idx = cy * grid_size + cx;
-    // An ice sheet floats over the remaining liquid. Keeping it in the opaque
-    // surface makes snow, normal reconstruction, picking and cloud occlusion
-    // agree even before all of the underlying water has frozen.
-    let under_ice = select(0.0, fluids_in[idx].water, weather_surface[idx].y > 0.00001);
-    return terrain_in[idx].rock + terrain_in[idx].sand + frozen_depth(idx) + under_ice;
+    // Ice is a fixed bed beneath the remaining water, just like solid terrain.
+    return terrain_in[idx].rock + terrain_in[idx].sand + frozen_depth(idx);
 }
 
 fn get_ground_height_smooth(uv: vec2<f32>, grid_size: i32) -> f32 {
@@ -165,8 +162,7 @@ fn vs_main(input: VertexInput) -> VertexOutput {
         } else {
             h = get_cell_total_height(i32(cell_x), i32(cell_y), grid_size);
         }
-        // Steam can still render over a frozen surface. Liquid water is hidden
-        // by the ice in fs_main instead of relying on equal-depth rejection.
+        // Keep steam visible after the last liquid freezes into the solid bed.
         if (output.snow_ice.y > 0.00001) { h += 0.00005; }
     } else {
         if (uniforms.smooth_rendering > 0.5) {
@@ -344,13 +340,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 
         let ice_cover = smoothstep(0.00001, 0.004, input.snow_ice.y);
         let snow_cover = smoothstep(0.00001, 0.008, input.snow_ice.x);
-        if (input.snow_ice.y > 0.00001 && input.water > 0.001) {
-            // A new, thin floating ice sheet reveals the blue water beneath,
-            // not the rock color from the submerged ground mesh.
-            let frozen_fresnel = 0.04 + 0.75 * pow(1.0 - max(dot(normal, view_dir), 0.0), 5.0);
-            let under_ice_water = mix(vec3<f32>(0.0, 0.18, 0.40), vec3<f32>(0.20, 0.63, 0.72), exp(-input.water * 15.0));
-            terrain_lit = mix(under_ice_water, vec3<f32>(0.65, 0.80, 0.95), frozen_fresnel);
-        }
         if (ice_cover > 0.0) {
             let ice_fresnel = pow(1.0 - max(dot(normal, view_dir), 0.0), 3.0);
             let ice_specular = pow(max(0.0, dot(reflect(-uniforms.sun_dir, normal), view_dir)), 110.0);
@@ -371,10 +360,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 
     } else {
         // --- FLUIDS SHADING ---
-        let has_ice = input.snow_ice.y > 0.00001;
-        let has_water = (input.water > 0.001 && uniforms.show_water > 0.5 && !has_ice);
+        let has_water = (input.water > 0.001 && uniforms.show_water > 0.5);
         let has_lava = (input.lava > 0.001 && uniforms.show_lava > 0.5);
-        let has_suspended = (input.suspended_sand > 0.0 && uniforms.show_suspended > 0.5 && !has_ice);
+        let has_suspended = (input.suspended_sand > 0.0 && uniforms.show_suspended > 0.5);
         let has_steam = (input.steam > 0.001);
 
         if (!has_water && !has_lava && !has_suspended && !has_steam) {

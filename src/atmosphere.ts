@@ -9,7 +9,11 @@ type PassName =
   | 'reduceLayers'
   | 'advect'
   | 'divergence'
-  | 'pressure'
+  | 'cgApply'
+  | 'cgReduceBefore'
+  | 'cgUpdate'
+  | 'cgReduceAfter'
+  | 'cgDirection'
   | 'project'
   | 'sediment'
   | 'surfaceExchange';
@@ -22,7 +26,11 @@ interface AtmosphericBindings {
   reduceLayers: [GPUBindGroup, GPUBindGroup];
   advect: [GPUBindGroup, GPUBindGroup];
   divergence: [GPUBindGroup, GPUBindGroup];
-  pressure: [GPUBindGroup, GPUBindGroup];
+  cgApply: GPUBindGroup;
+  cgReduceBefore: GPUBindGroup;
+  cgUpdate: GPUBindGroup;
+  cgReduceAfter: GPUBindGroup;
+  cgDirection: GPUBindGroup;
   project: [GPUBindGroup, GPUBindGroup];
   sediment: [GPUBindGroup, GPUBindGroup];
   surfaceExchange: [GPUBindGroup, GPUBindGroup];
@@ -38,7 +46,9 @@ interface AtmosphericBindings {
  * ice at the surface use the same water-equivalent units as fluids.water.
  *
  * Water uses conservative finite-volume transport with common face fluxes and
- * a donor limiter. Temperature/velocity use diffusive semi-Lagrangian transport.
+ * a limited second-order reconstruction, falling back to donor transport at
+ * large Courant numbers. Potential temperature uses conservative face fluxes;
+ * velocity uses semi-Lagrangian transport.
  * Closed-cycle mode disables moisture forcing. Exact fine-grid area weights
  * preserve surface transfers, and pending evaporation waits for available air.
  * Initialization and resets explicitly edit the inventory. This is an
@@ -51,10 +61,13 @@ export class AtmosphereSimulation {
   public simulationTime = 0;
 
   private readonly volumes: [GPUBuffer, GPUBuffer];
-  private readonly pressures: [GPUBuffer, GPUBuffer];
+  private readonly pressureBuffer: GPUBuffer;
   private readonly columns: GPUBuffer;
   private readonly precipitation: GPUBuffer;
   private readonly divergenceBuffer: GPUBuffer;
+  private readonly conjugateState: GPUBuffer;
+  private readonly conjugatePartials: GPUBuffer;
+  private readonly conjugateCoefficients: GPUBuffer;
   private readonly layerMeans: GPUBuffer;
   private readonly depositionWeights: GPUBuffer;
   private readonly depositionWeightValues: [Float32Array, Float32Array];
@@ -83,10 +96,7 @@ export class AtmosphereSimulation {
       storage('Atmosphere volume A', volumeCells * 32),
       storage('Atmosphere volume B', volumeCells * 32),
     ];
-    this.pressures = [
-      storage('Atmosphere pressure A', volumeCells * 4),
-      storage('Atmosphere pressure B', volumeCells * 4),
-    ];
+    this.pressureBuffer = storage('Atmosphere pressure', volumeCells * 4);
     this.surfaceBuffer = storage(
       'Snow, ice, surface temperature, evaporated water',
       surfaceSize * surfaceSize * 16
@@ -97,6 +107,15 @@ export class AtmosphereSimulation {
     );
     this.precipitation = storage('Atmospheric rain and snow deposition', nx * ny * 8);
     this.divergenceBuffer = storage('Atmosphere divergence', volumeCells * 4);
+    this.conjugateState = storage(
+      'Pressure residual, preconditioner, direction, matrix product',
+      volumeCells * 16
+    );
+    this.conjugatePartials = storage(
+      'Pressure dot product partial sums',
+      Math.ceil(volumeCells / 256) * 8
+    );
+    this.conjugateCoefficients = storage('Pressure conjugate gradient coefficients', 16);
     this.layerMeans = storage('Horizontal mean air temperature and vapor', nz * 16);
     this.depositionWeights = storage('Conservative smooth precipitation weights', nx * ny * 4);
     // Geometry-only quadrature weights. Physics and deposition remain on GPU.
@@ -158,7 +177,11 @@ export class AtmosphereSimulation {
       'reduceLayers',
       'advect',
       'divergence',
-      'pressure',
+      'cgApply',
+      'cgReduceBefore',
+      'cgUpdate',
+      'cgReduceAfter',
+      'cgDirection',
       'project',
       'sediment',
       'surfaceExchange',
@@ -270,9 +293,15 @@ export class AtmosphereSimulation {
     dispatch('reduceLayers', groups.reduceLayers[source], nz, 1);
     volumePass('advect', groups.advect[source]);
     volumePass('divergence', groups.divergence[advected]);
-    // Jacobi starts from zero every frame; the twelfth iteration writes A.
-    for (let iteration = 0; iteration < 12; iteration++) {
-      volumePass('pressure', groups.pressure[iteration % 2]);
+    // Preconditioned conjugate gradients resolve broad circulation modes that
+    // local Jacobi sweeps leave divergent. Every dot product stays on the GPU.
+    const pressureGroups = Math.ceil((nx * ny * nz) / 256);
+    for (let iteration = 0; iteration < 20; iteration++) {
+      dispatch('cgApply', groups.cgApply, pressureGroups, 1);
+      dispatch('cgReduceBefore', groups.cgReduceBefore, 1, 1);
+      dispatch('cgUpdate', groups.cgUpdate, pressureGroups, 1);
+      dispatch('cgReduceAfter', groups.cgReduceAfter, 1, 1);
+      dispatch('cgDirection', groups.cgDirection, pressureGroups, 1);
     }
     volumePass('project', groups.project[advected]);
     volumePass('sediment', groups.sediment[source]);
@@ -294,11 +323,14 @@ export class AtmosphereSimulation {
   public destroy(): void {
     for (const buffer of [
       ...this.volumes,
-      ...this.pressures,
+      this.pressureBuffer,
       this.surfaceBuffer,
       this.columns,
       this.precipitation,
       this.divergenceBuffer,
+      this.conjugateState,
+      this.conjugatePartials,
+      this.conjugateCoefficients,
       this.layerMeans,
       this.depositionWeights,
       this.uniforms,
@@ -371,24 +403,41 @@ export class AtmosphereSimulation {
         group('divergence', [
           [1, this.volumes[i]],
           [3, this.columns],
-          [8, this.pressures[0]],
+          [8, this.pressureBuffer],
           [9, this.divergenceBuffer],
+          [13, this.conjugateState],
         ])
       ),
-      pressure: pair((i) =>
-        group('pressure', [
-          [3, this.columns],
-          [7, this.pressures[i]],
-          [8, this.pressures[1 - i]],
-          [9, this.divergenceBuffer],
-        ])
-      ),
+      cgApply: group('cgApply', [
+        [3, this.columns],
+        [13, this.conjugateState],
+        [14, this.conjugatePartials],
+      ]),
+      cgReduceBefore: group('cgReduceBefore', [
+        [14, this.conjugatePartials],
+        [15, this.conjugateCoefficients],
+      ]),
+      cgUpdate: group('cgUpdate', [
+        [3, this.columns],
+        [8, this.pressureBuffer],
+        [13, this.conjugateState],
+        [14, this.conjugatePartials],
+        [15, this.conjugateCoefficients],
+      ]),
+      cgReduceAfter: group('cgReduceAfter', [
+        [14, this.conjugatePartials],
+        [15, this.conjugateCoefficients],
+      ]),
+      cgDirection: group('cgDirection', [
+        [13, this.conjugateState],
+        [15, this.conjugateCoefficients],
+      ]),
       project: pair((i) =>
         group('project', [
           [1, this.volumes[i]],
           [2, this.volumes[1 - i]],
           [3, this.columns],
-          [7, this.pressures[0]],
+          [7, this.pressureBuffer],
         ])
       ),
       sediment: pair((i) =>

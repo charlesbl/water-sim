@@ -15,7 +15,7 @@ export interface Config {
   depositionRate: number; // Rate at which suspended sand deposits
   evaporation: number; // Water evaporation rate per step
   paused: boolean; // Is the simulation paused?
-  simSpeed: number; // Simulation ticks per frame
+  simSpeed: number; // Time multiplier for the fixed simulation clocks
 
   // Brush settings
   brushType: number; // 0: Water, 1: Lava, 2: Sand, 3: Raise Rock, 4: Dig Rock, 5: Erase

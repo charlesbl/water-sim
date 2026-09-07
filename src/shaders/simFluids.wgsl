@@ -64,6 +64,7 @@ struct SimUniforms {
 @group(0) @binding(3) var<storage, read_write> fluids_out : array<FluidCell>;
 @group(0) @binding(4) var<storage, read> water_flux : array<FluxCell>;
 @group(0) @binding(5) var<storage, read> lava_flux : array<FluxCell>;
+@group(0) @binding(6) var<storage, read_write> weather_surface : array<vec4<f32>>;
 
 fn hash3D(p: vec3<u32>) -> u32 {
     var p3 = p * vec3<u32>(1103515245u, 205891187u, 123456789u);
@@ -206,7 +207,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (uniforms.paused < 0.5) {
         if (uniforms.border_behavior > 0.5) {
             if (x == 0u || x == grid_size - 1u || y == 0u || y == grid_size - 1u) {
-                let ground = cell_a.rock + cell_a.sand;
+                let frozen = max(weather_surface[idx].xy, vec2<f32>(0.0));
+                let ground = cell_a.rock + cell_a.sand + frozen.x * 5.0 + frozen.y / 0.917;
                 water = max(0.0, uniforms.border_water_height - ground);
                 lava = 0.0;
             }
@@ -215,6 +217,19 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     water = max(water, 0.0);
     lava = clamp(lava, 0.0, 10.0);
+
+    // Flooded snow joins the liquid even when atmospheric evolution is disabled.
+    // Each invocation owns its surface cell; neighbor fluxes have already run.
+    // Match surfaceExchange's heat capacity and fusion energy accounting.
+    if ((uniforms.paused < 0.5 || uniforms.brush_active > 0.5) && water > 0.0 && weather_surface[idx].x > 0.0) {
+        var frozen = weather_surface[idx];
+        let capacity = 1.0 + water * 8.0 + frozen.y * 5.0 + frozen.x * 2.0;
+        let energy = capacity * frozen.z - 80.0 * frozen.x;
+        water += frozen.x;
+        frozen.x = 0.0;
+        frozen.z = energy / (1.0 + water * 8.0 + frozen.y * 5.0);
+        weather_surface[idx] = frozen;
+    }
 
     // Steam is water waiting to join the atmosphere, including while weather
     // is paused/disabled. Visual opacity is scaled separately in the renderer.

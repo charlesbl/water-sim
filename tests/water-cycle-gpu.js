@@ -187,16 +187,11 @@ async function run() {
     returned = await snapshot();
     document.querySelector('#results').textContent =
       `Cooling cycle ${(batch + 1) * 100} steps: ${JSON.stringify(returned)}`;
-    if (
-      groundWater(returned) > groundWater(beforeCooling) + 1 &&
-      returned.liquid > beforeCooling.liquid + 1
-    )
-      break;
+    if (groundWater(returned) > groundWater(beforeCooling) + 1) break;
   }
   check(
-    'Precipitation returns atmospheric water to liquid on the ground',
-    groundWater(returned) > groundWater(beforeCooling) + 1 &&
-      returned.liquid > beforeCooling.liquid + 1,
+    'Precipitation returns atmospheric water to the ground, including frozen phases',
+    groundWater(returned) > groundWater(beforeCooling) + 1,
     `before=${JSON.stringify(beforeCooling)}, returned=${JSON.stringify(returned)}`
   );
   check(
