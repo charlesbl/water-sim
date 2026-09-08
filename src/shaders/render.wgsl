@@ -303,7 +303,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             hU = get_cell_ground_height(cx, cy + 1, grid_size);
         }
 
-        let spacing = 100.0 / uniforms.grid_size;
+        // The terrain spans 200 world units; the samples are two cells apart.
+        let spacing = 200.0 / uniforms.grid_size;
         let normal = normalize(vec3<f32>(
             (hL - hR) * uniforms.height_scale,
             (hD - hU) * uniforms.height_scale,
@@ -384,7 +385,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             hU = get_cell_total_height(cx, cy + 1, grid_size);
         }
 
-        let spacing = 100.0 / uniforms.grid_size;
+        let spacing = 200.0 / uniforms.grid_size;
         let normal = normalize(vec3<f32>(
             (hL - hR) * uniforms.height_scale,
             (hD - hU) * uniforms.height_scale,

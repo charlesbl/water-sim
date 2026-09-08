@@ -11,7 +11,10 @@ type PassName =
   | 'initializeVolume'
   | 'captureObstructedWater'
   | 'reduceLayers'
+  | 'prepareHeat'
   | 'exchangeHeat'
+  | 'gatherHeat'
+  | 'radiateColumns'
   | 'prepareSolar'
   | 'normalizeSolar'
   | 'advect'
@@ -31,7 +34,10 @@ interface AtmosphericBindings {
   initializeVolume: [GPUBindGroup, GPUBindGroup];
   captureObstructedWater: [GPUBindGroup, GPUBindGroup];
   reduceLayers: [GPUBindGroup, GPUBindGroup];
-  exchangeHeat: [GPUBindGroup, GPUBindGroup];
+  prepareHeat: [GPUBindGroup, GPUBindGroup];
+  exchangeHeat: GPUBindGroup;
+  gatherHeat: GPUBindGroup;
+  radiateColumns: [GPUBindGroup, GPUBindGroup];
   prepareSolar: GPUBindGroup;
   normalizeSolar: GPUBindGroup;
   advect: [GPUBindGroup, GPUBindGroup];
@@ -80,6 +86,9 @@ export class AtmosphereSimulation {
   private readonly conjugateCoefficients: GPUBuffer;
   private readonly layerMeans: GPUBuffer;
   private readonly surfaceHeat: GPUBuffer;
+  private readonly heatProfiles: GPUBuffer;
+  private readonly heatTransfers: GPUBuffer;
+  private readonly longwaveHeating: GPUBuffer;
   private readonly solarPartials: GPUBuffer;
   private readonly solarNormalization: GPUBuffer;
   private readonly depositionWeights: GPUBuffer;
@@ -131,11 +140,22 @@ export class AtmosphereSimulation {
     this.conjugateCoefficients = storage('Pressure conjugate gradient coefficients', 16);
     this.layerMeans = storage('Horizontal mean air temperature and vapor', nz * 16);
     this.surfaceHeat = storage('Paired surface to air sensible heat', nx * ny * 4);
+    this.heatProfiles = storage('Near-ground air thermal profiles', nx * ny * 16);
+    this.heatTransfers = storage(
+      'Four conservative heat transfers per surface cell',
+      surfaceSize * surfaceSize * 16
+    );
+    this.longwaveHeating = storage('Atmospheric infrared temperature increments', volumeCells * 4);
     this.solarPartials = storage(
       'Raw and contrasted solar energy sums',
       Math.ceil(surfaceSize / 16) ** 2 * 8
     );
-    this.solarNormalization = storage('Solar budget normalization and mean fluxes', 16);
+    // Share the radiation budget binding to keep surfaceExchange within the
+    // default WebGPU limit of eight storage buffers per shader stage.
+    this.solarNormalization = storage(
+      'Solar normalization and column infrared fluxes',
+      (1 + nx * ny) * 16
+    );
     this.depositionWeights = storage('Conservative smooth precipitation weights', nx * ny * 4);
     // Geometry-only quadrature weights. Physics and deposition remain on GPU.
     // Normalize the tent footprint of each coarse cell on the fine grid,
@@ -194,7 +214,10 @@ export class AtmosphereSimulation {
       'initializeVolume',
       'captureObstructedWater',
       'reduceLayers',
+      'prepareHeat',
       'exchangeHeat',
+      'gatherHeat',
+      'radiateColumns',
       'prepareSolar',
       'normalizeSolar',
       'advect',
@@ -319,7 +342,10 @@ export class AtmosphereSimulation {
     dispatch('reduceLayers', groups.reduceLayers[source], nz, 1);
     dispatch('prepareSolar', groups.prepareSolar, surfaceGroups, surfaceGroups);
     dispatch('normalizeSolar', groups.normalizeSolar, 1, 1);
-    dispatch('exchangeHeat', groups.exchangeHeat[source], Math.ceil(nx / 8), Math.ceil(ny / 8));
+    dispatch('prepareHeat', groups.prepareHeat[source], Math.ceil(nx / 8), Math.ceil(ny / 8));
+    dispatch('exchangeHeat', groups.exchangeHeat, surfaceGroups, surfaceGroups);
+    dispatch('gatherHeat', groups.gatherHeat, nx, ny);
+    dispatch('radiateColumns', groups.radiateColumns[source], Math.ceil(nx / 8), Math.ceil(ny / 8));
     volumePass('advect', groups.advect[source]);
     volumePass('divergence', groups.divergence[advected]);
     // Preconditioned conjugate gradients resolve broad circulation modes that
@@ -362,6 +388,9 @@ export class AtmosphereSimulation {
       this.conjugateCoefficients,
       this.layerMeans,
       this.surfaceHeat,
+      this.heatProfiles,
+      this.heatTransfers,
+      this.longwaveHeating,
       this.solarPartials,
       this.solarNormalization,
       this.depositionWeights,
@@ -423,14 +452,35 @@ export class AtmosphereSimulation {
           [12, this.layerMeans],
         ])
       ),
-      exchangeHeat: pair((i) =>
-        group('exchangeHeat', [
+      prepareHeat: pair((i) =>
+        group('prepareHeat', [
           [1, this.volumes[i]],
           [3, this.columns],
-          [4, terrain],
-          [5, fluids],
-          [6, this.surfaceBuffer],
-          [16, this.surfaceHeat],
+          [11, this.depositionWeights],
+          [19, this.heatProfiles],
+        ])
+      ),
+      exchangeHeat: group('exchangeHeat', [
+        [4, terrain],
+        [5, fluids],
+        [6, this.surfaceBuffer],
+        [19, this.heatProfiles],
+        [20, this.heatTransfers],
+      ]),
+      gatherHeat: group('gatherHeat', [
+        [6, this.surfaceBuffer],
+        [11, this.depositionWeights],
+        [16, this.surfaceHeat],
+        [20, this.heatTransfers],
+        [18, this.solarNormalization],
+      ]),
+      radiateColumns: pair((i) =>
+        group('radiateColumns', [
+          [1, this.volumes[i]],
+          [3, this.columns],
+          [11, this.depositionWeights],
+          [18, this.solarNormalization],
+          [22, this.longwaveHeating],
         ])
       ),
       prepareSolar: group('prepareSolar', [
@@ -450,6 +500,7 @@ export class AtmosphereSimulation {
           [3, this.columns],
           [12, this.layerMeans],
           [16, this.surfaceHeat],
+          [22, this.longwaveHeating],
         ])
       ),
       divergence: pair((i) =>

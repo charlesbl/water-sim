@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Continuous surface heat GPU checks</title>
+  <style>
+    body {
+      background: #14202a;
+      color: #e0f0fa;
+      font: 14px monospace;
+      padding: 24px;
+    }
+    pre {
+      white-space: pre-wrap;
+    }
+    canvas {
+      width: 768px;
+      max-width: 100%;
+      image-rendering: pixelated;
+    }
+  </style>
+  <h1>Continuous surface heat GPU checks</h1>
+  <p>
+    Ice thickness after freezing under alternating cold air columns (blue = thinner, white =
+    thicker).
+  </p>
+  <canvas id="ice" width="769" height="160"></canvas>
+  <pre id="results">Running on WebGPU…</pre>
+  <script type="module" src="./surface-heat-gpu.js"></script>
+</html>

@@ -35,12 +35,23 @@ sont calculés sur le GPU.
 - Les échanges thermiques entre sol et air, le chauffage solaire, le
   refroidissement radiatif, l'albédo des matériaux et l'inertie thermique
   produisent des contrastes de température locaux.
-  Une passe dédiée débite la chaleur sensible de chaque cellule de surface
-  et crédite exactement cette énergie à la première cellule d'air de sa
-  colonne, avec correction des aires représentées. L'échange tient compte
+  Chaque cellule de surface échange de la chaleur sensible avec les quatre
+  colonnes d'air voisines, pondérées par interpolation bilinéaire. Les débits
+  sont mémorisés puis additionnés pour créditer exactement cette énergie à
+  la première cellule d'air de chaque colonne, avec correction des aires
+  représentées aux bords et sur les grilles non divisibles. L'échange tient compte
   des deux capacités thermiques et de l'isolation par la neige. Son taux
   augmente avec le vent local et le contraste chaud sol–air, tout en restant
   actif au repos. Une relaxation exponentielle borne chaque transfert.
+- Le rayonnement infrarouge traverse les colonnes dans les deux sens. Le sol
+  émet selon sa température ; chaque couche d'air absorbe et réémet, y compris
+  au repos. La vapeur et l'eau condensée augmentent l'opacité. Le plafond ferme
+  les mouvements d'air mais laisse sortir le rayonnement vers l'espace.
+  Le flux redescendant réchauffe le sol, avec la même interpolation et les
+  mêmes poids d'aire que les échanges sensibles. Le bilan radiatif sol + air
+  perd seulement le flux sortant au sommet, aux arrondis près. Une couche
+  haute chaude peut ainsi refroidir sans devoir redescendre jusqu'au sol.
+  L'opacité et les flux sont calibrés à l'échelle illustrative de la scène.
 - La flottabilité compare la température locale à la moyenne de sa couche
   d'altitude pour créer des mouvements verticaux. Elle prend aussi en compte
   l'humidité de l'air et le poids de l'eau condensée. Le transport vertical
@@ -80,9 +91,13 @@ fine, le couplage utilise une interpolation bilinéaire dont les poids sont
 normalisés selon les aires représentées. Cette répartition préserve le budget
 de dépôt et évite d'imprimer les limites des colonnes atmosphériques dans la
 neige. La température des précipitations et l'humidité utilisées en surface
-sont également interpolées. L'échange de chaleur sensible utilise le profil
-vertical courant de la colonne, reconstruit à la hauteur de chaque cellule
-fine, et un transfert d'énergie commun aux deux réservoirs. La
+sont également interpolées. L'échange de chaleur sensible utilise les profils
+verticaux courants des quatre colonnes, reconstruits à la hauteur de chaque
+cellule fine, et des transferts d'énergie communs aux deux réservoirs.
+La continuité des échanges évite de faire croître la glace par blocs alignés
+sur la grille atmosphérique. Les transferts occupent un buffer temporaire
+de 16 octets par cellule de surface (64 Mio pour 2048 × 2048 cellules),
+réutilisé à chaque pas. La
 résolution de la dynamique atmosphérique reste de 96 × 96 × 64.
 
 ## Glace solide sous l'eau
@@ -216,7 +231,10 @@ déclencheurs locaux.
 
 Le soleil reste une entrée externe : son intensité, son élévation et son
 azimut règlent l'échauffement selon l'exposition du sol. Le refroidissement
-radiatif règle les pertes de chaleur. Ces paramètres s'appliquent immédiatement
+radiatif règle les échanges infrarouges du sol et de tout le volume d'air,
+ainsi que les pertes vers l'espace. Une baisse du soleil peut produire une
+inversion temporaire près du sol, mais l'air en altitude continue lui aussi
+de rayonner. Le profil initial n'est pas réimposé. Ces paramètres s'appliquent immédiatement
 pendant la simulation. Il n'y a pas de cycle jour/nuit automatique impliqué
 par ces curseurs. La température et le vent sont des résultats dynamiques ;
 leur évolution ne garantit pas une circulation spectaculaire sur un terrain
@@ -444,6 +462,12 @@ thermique sans source et l'uniformité d'un sol homogène. Les scénarios nuageu
 contrôlent la bruine sous l'ancien seuil, le retour de l'eau au sol et la
 réévaporation avec refroidissement. Un rendu GPU hors écran vérifie aussi
 l'opacité effective d'une couche faible et d'une couche dense.
+
+La page `/water-sim/tests/radiation.html` vérifie le bilan infrarouge entre
+sol, air et espace sur les surfaces 49², 97² et 257², avec relief et colonnes
+obstruées, dans les deux modes de frontières. Elle contrôle aussi le
+refroidissement d'une couche haute chaude après réduction du soleil, même
+sans convection, et la suppression des flux après désactivation du rayonnement.
 
 La page `/water-sim/tests/water-cycle.html` vérifie en plus la boucle complète
 sur plusieurs milliers de pas : une réserve liquide alimente un air initialement

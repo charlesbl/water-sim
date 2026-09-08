@@ -117,6 +117,8 @@ With the Vite server running, open these pages in a WebGPU browser:
 - `/water-sim/tests/atmosphere.html`: volume transport, emerging circulation, freezing, snow and ice melting, liquid recovery, pause, resets, smooth deposition, and rendering integration.
 - `/water-sim/tests/water-cycle.html`: evaporation from initially dry air, condensation, precipitation, return to the ground and re-evaporation, total water conservation over thousands of steps, both boundary modes, terrain obstruction, stored steam, and the GPU inventory against an independent CPU sum.
 - `/water-sim/tests/bottom-ice.html`: gradual and complete freezing, melting, snow falling into water, solid ice geometry beneath the water, liquid flow over the frozen bed, and water conservation.
+- `/water-sim/tests/surface-heat.html`: continuous air–surface heat exchange and freezing across atmospheric cell boundaries, paired energy conservation, and closed/periodic edges on several surface resolutions.
+- `/water-sim/tests/radiation.html`: infrared energy balance between surface, atmosphere and space, upper-air cooling after reduced sunlight, terrain obstruction, and live radiation controls.
 - `/water-sim/tests/air-masses.html`: circulation from initially resting air, moisture rising and moving beyond a lake, persistent clouds over land, pressure projection, thermal stability, and the complete water inventory.
 
 Each page reports individual results and stops at a failure. `npm run typecheck`, `npm run lint`, and `npm run build` complement these runtime checks; shader execution must be checked in a WebGPU browser.

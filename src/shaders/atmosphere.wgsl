@@ -37,7 +37,14 @@ struct WeatherUniforms {
 @group(0) @binding(15) var<storage, read_write> cgCoefficients: vec4<f32>;
 @group(0) @binding(16) var<storage, read_write> surfaceHeat: array<f32>;
 @group(0) @binding(17) var<storage, read_write> solarPartials: array<vec2<f32>>;
-@group(0) @binding(18) var<storage, read_write> solarNormalization: vec4<f32>;
+// Entry 0: solar normalization and mean fluxes. Entries 1..nx*ny: mean surface
+// IR emission, downwelling surface flux, escaping top flux, unused.
+@group(0) @binding(18) var<storage, read_write> radiationBudget: array<vec4<f32>>;
+// Air temperature intercept, vertical gradient, speed, inverse footprint capacity.
+@group(0) @binding(19) var<storage, read_write> heatProfiles: array<vec4<f32>>;
+// Signed surface-to-air energy for the four bilinear neighbors (00, 10, 01, 11).
+@group(0) @binding(20) var<storage, read_write> heatTransfers: array<vec4<f32>>;
+@group(0) @binding(22) var<storage, read_write> longwaveHeating: array<f32>;
 
 const dryLapse: f32 = 0.16;
 
@@ -331,7 +338,7 @@ fn advect(@builtin(global_invocation_id) id: vec3<u32>) {
     let departure = vec3<f32>(id) - centerVelocity * dt / u.spacingTime.xyz;
     var cell = sampleAtmosphere(departure);
     var velocity = cell.velocityTemperature.xyz;
-    var temperature = transportTemperature(p);
+    var temperature = transportTemperature(p) + longwaveHeating[i];
     var water = transportWater(p);
     let column = columns[columnIndex(p)];
     let environmentTemperature = ambientTemperature(height);
@@ -668,20 +675,20 @@ fn normalizeSolar(@builtin(local_invocation_index) lane: u32) {
     sumSolar(lane);
     if (lane == 0u) {
         let sums = solarSum[0];
-        solarNormalization = vec4<f32>(sums.x / max(sums.y, 1e-20), sums / (u.grid.w * u.grid.w), 0.0);
+        radiationBudget[0] = vec4<f32>(sums.x / max(sums.y, 1e-20), sums / (u.grid.w * u.grid.w), 0.0);
     }
 }
 
-// One invocation owns a column's fine surface cells and its air heat credit.
-// Equal/opposite sensible energy transfers need neither atomics nor a pending
-// heat reservoir. Capacity units match atmospheric latent heat: air capacity per
-// unit surface area is dz / heightScale, with exact fine/coarse area correction.
+// Cache the air properties once per column, before any surface temperature changes.
+// The tent footprint replaces integer buckets for heat exchange. Its quadrature
+// weight gives the air capacity per represented surface area, even at walls or
+// on non-divisible grids. A zero inverse capacity denotes an unavailable column.
 @compute @workgroup_size(8, 8)
-fn exchangeHeat(@builtin(global_invocation_id) id: vec3<u32>) {
+fn prepareHeat(@builtin(global_invocation_id) id: vec3<u32>) {
     let n = vec2<u32>(u.grid.xy);
     if (any(id.xy >= n)) { return; }
     let ci = id.y * n.x + id.x;
-    surfaceHeat[ci] = 0.0;
+    heatProfiles[ci] = vec4<f32>(0.0);
     let column = columns[ci];
     let firstZ = max(0, i32(floor(column.x / u.spacingTime.z - 0.5)) + 1);
     if (firstZ >= i32(u.grid.z)) { return; }
@@ -693,41 +700,161 @@ fn exchangeHeat(@builtin(global_invocation_id) id: vec3<u32>) {
         gradient = clamp((volumeIn[index(p + vec3<i32>(0, 0, 1))].velocityTemperature.w
             - cell.velocityTemperature.w) / u.spacingTime.z, -0.4, 0.4);
     }
-    let airCapacity = u.spacingTime.z / (max(u.environment.y, 0.001) * column.w);
+    let airCapacity = u.spacingTime.z * depositionWeights[ci] / max(u.environment.y, 0.001);
     let speed = length(0.5 * (faceVelocity(p) + vec3<f32>(
         faceVelocity(p - vec3<i32>(1, 0, 0)).x,
         faceVelocity(p - vec3<i32>(0, 1, 0)).y,
         faceVelocity(p - vec3<i32>(0, 0, 1)).z)));
+    heatProfiles[ci] = vec4<f32>(cell.velocityTemperature.w - gradient * airHeight,
+        gradient, speed, 1.0 / airCapacity);
+}
+
+// Each fine cell exchanges with four air columns. Weight pairwise relaxation,
+// rather than the timestep, so both surface and air updates remain bounded by
+// their capacities when all neighbors contribute. Store the exact signed debits
+// for the subsequent gather: no float atomics or concurrent surface writes.
+@compute @workgroup_size(16, 16)
+fn exchangeHeat(@builtin(global_invocation_id) id: vec3<u32>) {
     let fine = u32(u.grid.w);
-    let start = (id.xy * fine + n - vec2<u32>(1)) / n;
-    let end = ((id.xy + vec2<u32>(1)) * fine + n - vec2<u32>(1)) / n;
-    var heat = 0.0;
-    var count = 0.0;
-    for (var y = start.y; y < end.y; y++) {
-        for (var x = start.x; x < end.x; x++) {
-            let i = y * fine + x;
-            let cover = surface[i];
-            let liquid = max(fluids[i].x, 0.0);
-            let height = max(0.0, terrain[i].x + terrain[i].y + liquid + max(fluids[i].y, 0.0)
-                + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
-            // Reconstruct the CURRENT air profile to avoid heating an isothermal
-            // surface/air pair merely because its samples have different heights.
-            let airTemperature = cell.velocityTemperature.w + gradient * (height - airHeight);
-            let difference = cover.z - airTemperature;
-            let capacity = surfaceHeatCapacity(i, liquid, cover.y, cover.x);
-            let insulation = 1.0 + cover.x * 5.0 * u.environment.y * 5.0;
-            // Free convection works from rest; existing wind enhances exchange.
-            // Bounded feedback and exact two-capacity relaxation prevent overshoot.
-            let mixing = 1.0 + min(2.0, speed * 0.12 + sqrt(max(difference, 0.0)) * 0.15);
+    if (any(id.xy >= vec2<u32>(fine))) { return; }
+    let i = id.y * fine + id.x;
+    let cover = surface[i];
+    let liquid = max(fluids[i].x, 0.0);
+    let height = max(0.0, terrain[i].x + terrain[i].y + liquid + max(fluids[i].y, 0.0)
+        + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
+    let capacity = surfaceHeatCapacity(i, liquid, cover.y, cover.x);
+    let insulation = 1.0 + cover.x * 5.0 * u.environment.y * 5.0;
+    let xy = (vec2<f32>(id.xy) + 0.5) * u.grid.xy / u.grid.w - 0.5;
+    let base = vec2<i32>(floor(xy));
+    let f = fract(xy);
+    var transfers = vec4<f32>(0.0);
+    for (var y = 0; y < 2; y++) {
+        for (var x = 0; x < 2; x++) {
+            let profile = heatProfiles[columnIndex(vec3<i32>(base + vec2<i32>(x, y), 0))];
+            if (profile.w <= 0.0) { continue; }
+            let weight = select(1.0 - f, f, vec2<bool>(x == 1, y == 1));
+            let difference = cover.z - (profile.x + profile.y * height);
+            let mixing = 1.0 + min(2.0, profile.z * 0.12 + sqrt(max(difference, 0.0)) * 0.15);
             let conductance = 0.45 * mixing / insulation;
-            let inverseCapacity = 1.0 / capacity + 1.0 / airCapacity;
-            let transferred = difference * (1.0 - exp(-conductance * inverseCapacity * u.spacingTime.w)) / inverseCapacity;
-            surface[i].z = cover.z - transferred / capacity;
-            heat += transferred;
-            count += 1.0;
+            let inverseCapacity = 1.0 / capacity + profile.w;
+            transfers[y * 2 + x] = weight.x * weight.y * difference
+                * (1.0 - exp(-conductance * inverseCapacity * u.spacingTime.w)) / inverseCapacity;
         }
     }
-    surfaceHeat[ci] = heat / max(count, 1.0) / airCapacity;
+    heatTransfers[i] = transfers;
+    surface[i].z = cover.z - dot(transfers, vec4<f32>(1.0)) / capacity;
+}
+
+fn longwaveEmission(temperature: f32) -> f32 {
+    let kelvin = max(temperature + 273.15, 150.0);
+    return u.radiation.w * 0.25 * pow(kelvin / 288.15, 4.0);
+}
+
+var<workgroup> gatheredHeat: array<vec2<f32>, 64>;
+
+// One workgroup gathers a column's overlapping tent footprint. Read each stored
+// debit exactly once for its recipient, including both clamped neighbors at a
+// wall and wrapped neighbors at periodic edges. Convert fine-cell surface energy
+// to the receiving air cell's temperature using physical areas, not bucket sizes.
+@compute @workgroup_size(64)
+fn gatherHeat(@builtin(workgroup_id) id: vec3<u32>, @builtin(local_invocation_index) lane: u32) {
+    let n = vec2<u32>(u.grid.xy);
+    if (any(id.xy >= n)) { return; }
+    let fine = i32(u.grid.w);
+    let ci = id.y * n.x + id.x;
+    var start = vec2<i32>(ceil((vec2<f32>(id.xy) - 0.5) * u.grid.w / u.grid.xy - 0.5));
+    var end = vec2<i32>(ceil((vec2<f32>(id.xy) + 1.5) * u.grid.w / u.grid.xy - 0.5));
+    if (u.hydrology.y > 0.5) {
+        start = max(start, vec2<i32>(0));
+        end = min(end, vec2<i32>(fine));
+    }
+    let extent = end - start;
+    var heat = vec2<f32>(0.0);
+    for (var k = i32(lane); k < extent.x * extent.y; k += 64) {
+        let unfolded = start + vec2<i32>(k % extent.x, k / extent.x);
+        let q = ((unfolded % vec2<i32>(fine)) + vec2<i32>(fine)) % vec2<i32>(fine);
+        let xy = (vec2<f32>(q) + 0.5) * u.grid.xy / u.grid.w - 0.5;
+        let base = vec2<i32>(floor(xy));
+        let transfers = heatTransfers[q.y * fine + q.x];
+        let emission = longwaveEmission(surface[q.y * fine + q.x].z);
+        let f = fract(xy);
+        for (var y = 0; y < 2; y++) {
+            for (var x = 0; x < 2; x++) {
+                if (columnIndex(vec3<i32>(base + vec2<i32>(x, y), 0)) == ci) {
+                    let weight = select(1.0 - f, f, vec2<bool>(x == 1, y == 1));
+                    heat += vec2<f32>(transfers[y * 2 + x], emission * weight.x * weight.y);
+                }
+            }
+        }
+    }
+    gatheredHeat[lane] = heat;
+    workgroupBarrier();
+    for (var stride = 32u; stride > 0u; stride /= 2u) {
+        if (lane < stride) { gatheredHeat[lane] += gatheredHeat[lane + stride]; }
+        workgroupBarrier();
+    }
+    if (lane == 0u) {
+        let areaRatio = u.grid.x * u.grid.y / (u.grid.w * u.grid.w);
+        surfaceHeat[ci] = gatheredHeat[0].x * areaRatio
+            * max(u.environment.y, 0.001) / u.spacingTime.z;
+        radiationBudget[ci + 1u] = vec4<f32>(gatheredHeat[0].y * areaRatio * depositionWeights[ci], 0.0, 0.0, 0.0);
+    }
+}
+
+fn airEmissivity(cell: AtmosphereCell) -> f32 {
+    // Gray-gas optical depth at the illustrative domain scale. Even dry air
+    // radiates; vapor and condensed water increase absorption and emission.
+    let opacity = 1.2 + 50.0 * min(cell.moisture.x, 0.06)
+        + 250.0 * min(cell.moisture.y + cell.moisture.z + cell.moisture.w, 0.03);
+    return 1.0 - exp(-opacity * u.spacingTime.z / u.environment.w);
+}
+
+// Two-stream infrared transfer, independent of air motion and solar input.
+// The mechanical lid is transparent to radiation: no incoming IR from space.
+// Each layer absorbs incoming flux and emits in both directions. Flux differences
+// telescope, so surface + air lose exactly the energy escaping at the top.
+@compute @workgroup_size(8, 8)
+fn radiateColumns(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (any(id.xy >= vec2<u32>(u.grid.xy))) { return; }
+    let ci = id.y * u32(u.grid.x) + id.x;
+    let capacity = u.spacingTime.z * depositionWeights[ci] / max(u.environment.y, 0.001);
+    let toTemperature = u.spacingTime.w / capacity;
+    var downward = 0.0;
+    for (var z = i32(u.grid.z) - 1; z >= 0; z--) {
+        let p = vec3<i32>(vec2<i32>(id.xy), z);
+        let i = index(p);
+        longwaveHeating[i] = 0.0;
+        if (!air(p) || u.radiation.w <= 0.0) { continue; }
+        let cell = volumeIn[i];
+        let absorbed = airEmissivity(cell) * (downward - longwaveEmission(cell.velocityTemperature.w));
+        downward -= absorbed;
+        longwaveHeating[i] = absorbed * toTemperature;
+    }
+    radiationBudget[ci + 1u].y = downward;
+    var upward = radiationBudget[ci + 1u].x;
+    for (var z = 0; z < i32(u.grid.z); z++) {
+        let p = vec3<i32>(vec2<i32>(id.xy), z);
+        if (!air(p) || u.radiation.w <= 0.0) { continue; }
+        let i = index(p);
+        let cell = volumeIn[i];
+        let absorbed = airEmissivity(cell) * (upward - longwaveEmission(cell.velocityTemperature.w));
+        upward -= absorbed;
+        longwaveHeating[i] += absorbed * toTemperature;
+    }
+    radiationBudget[ci + 1u].z = upward;
+}
+
+fn surfaceDownwardLongwave(xy: vec2<f32>) -> f32 {
+    let base = vec2<i32>(floor(xy));
+    let f = fract(xy);
+    var flux = 0.0;
+    for (var y = 0; y < 2; y++) {
+        for (var x = 0; x < 2; x++) {
+            let weight = select(1.0 - f, f, vec2<bool>(x == 1, y == 1));
+            flux += weight.x * weight.y * radiationBudget[columnIndex(vec3<i32>(base + vec2<i32>(x, y), 0)) + 1u].y;
+        }
+    }
+    return flux;
 }
 
 // Each invocation owns exactly one fine cell. No neighboring fluids are read
@@ -745,11 +872,13 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
     let dt = u.spacingTime.w;
     // Use the same material state as prepareSolar, before precipitation and
     // phase changes alter its cover. No CPU readback or additional solar source.
-    let absorbedSolar = u.environment.x * solarWeights(vec2<i32>(id.xy)).y * solarNormalization.x;
+    let absorbedSolar = u.environment.x * solarWeights(vec2<i32>(id.xy)).y * radiationBudget[0].x;
     var cover = surface[i];
     var liquid = fluids[i];
     let height = (terrain[i].x + terrain[i].y + max(liquid.x, 0.0) + max(liquid.y, 0.0) + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
     let sampleXY = (vec2<f32>(id.xy) + vec2<f32>(0.5)) * u.grid.xy / u.grid.w - vec2<f32>(0.5);
+    // Use the same pre-phase surface emission gathered for the air budget.
+    let netLongwave = surfaceDownwardLongwave(sampleXY) - longwaveEmission(cover.z);
     let weather = surfaceWeather(sampleXY, height);
     let airTemperature = weather.x;
     let vapor = weather.y;
@@ -772,11 +901,9 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
         cover.x = 0.0;
     }
     cover.z = energy / surfaceHeatCapacity(i, liquid.x, cover.y, cover.x);
-    let kelvin = max(cover.z + 273.15, 150.0);
-    let longwaveLoss = u.radiation.w * 0.25 * pow(kelvin / 288.15, 4.0);
     // Sensible heat was exchanged conservatively before atmospheric transport.
     let lavaHeat = min(max(liquid.y, 0.0) * 120.0, 70.0) * 0.35;
-    energy += (absorbedSolar - longwaveLoss + lavaHeat) * dt;
+    energy += (absorbedSolar + netLongwave + lavaHeat) * dt;
     // Continuous heat-limited phase transfer: consume only the sensible energy
     // available relative to 0 C, and approach equilibrium over several seconds.
     // Recompute capacity after transfer; latent heat cannot overshoot 0 C.
