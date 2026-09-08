@@ -12,7 +12,8 @@ struct WeatherUniforms {
     environment: vec4<f32>,          // solar, terrain height scale, time, domain height
     physics: vec4<f32>,              // lapse rate, rain fall speed, snow fall speed, emergent mode
     radiation: vec4<f32>,            // direction toward sun xyz, longwave cooling strength
-    hydrology: vec4<f32>,            // closed water cycle, boundary (0 periodic/1 walls), evaporation rate, reserved
+    hydrology: vec4<f32>,            // closed water cycle, boundary (0 periodic/1 walls), evaporation rate, heating contrast
+    convection: vec4<f32>,           // cap start/end height, upper lapse, buoyancy response
 };
 
 @group(0) @binding(0) var<uniform> u: WeatherUniforms;
@@ -34,6 +35,11 @@ struct WeatherUniforms {
 @group(0) @binding(13) var<storage, read_write> cgState: array<vec4<f32>>;
 @group(0) @binding(14) var<storage, read_write> cgPartials: array<vec2<f32>>;
 @group(0) @binding(15) var<storage, read_write> cgCoefficients: vec4<f32>;
+@group(0) @binding(16) var<storage, read_write> surfaceHeat: array<f32>;
+@group(0) @binding(17) var<storage, read_write> solarPartials: array<vec2<f32>>;
+@group(0) @binding(18) var<storage, read_write> solarNormalization: vec4<f32>;
+
+const dryLapse: f32 = 0.16;
 
 fn wrap(p: vec3<i32>) -> vec3<i32> {
     let n = vec3<i32>(u.grid.xyz);
@@ -63,11 +69,16 @@ fn air(p: vec3<i32>) -> bool {
 }
 
 fn ambientTemperature(height: f32) -> f32 {
-    return u.forcing.x - u.physics.x * height;
+    // Integrate a smooth lapse transition: nearly neutral lower air, stable
+    // upper air. This is an initial profile, never a thermostat in emergent mode.
+    let depth = u.convection.y - u.convection.x;
+    let t = clamp((height - u.convection.x) / depth, 0.0, 1.0);
+    let capIntegral = depth * t * t * t * (1.0 - 0.5 * t) + max(height - u.convection.y, 0.0);
+    return u.forcing.x - u.physics.x * height + (u.physics.x - u.convection.z) * capIntegral;
 }
 
 fn saturation(temperature: f32) -> f32 {
-    return clamp(0.008 * exp(0.065 * temperature), 0.0001, 0.1);
+    return cloudSaturation(temperature);
 }
 
 fn targetVapor(height: f32) -> f32 {
@@ -178,7 +189,7 @@ fn potentialTemperature(p: vec3<i32>) -> f32 {
     // A dry rising parcel preserves this quantity. The positive Kelvin offset
     // permits the same positivity-preserving large-CFL fallback as water.
     let height = (f32(p.z) + 0.5) * u.spacingTime.z;
-    return volumeIn[index(p)].velocityTemperature.w + 273.15 + 0.16 * height;
+    return volumeIn[index(p)].velocityTemperature.w + 273.15 + dryLapse * height;
 }
 
 fn heatFlux(p: vec3<i32>, axis: u32) -> f32 {
@@ -206,7 +217,7 @@ fn transportTemperature(p: vec3<i32>) -> f32 {
         offset[axis] = 1;
         potential += heatFlux(p - offset, axis) - heatFlux(p, axis);
     }
-    return potential - 273.15 - 0.16 * (f32(p.z) + 0.5) * u.spacingTime.z;
+    return potential - 273.15 - dryLapse * (f32(p.z) + 0.5) * u.spacingTime.z;
 }
 
 @compute @workgroup_size(16, 16)
@@ -240,7 +251,7 @@ fn reduceColumns(@builtin(global_invocation_id) id: vec3<u32>) {
             count += 1.0;
         }
     }
-    // 2048 is not divisible by 48: columns contain 42 or 43 fine cells per
+    // 2048 is not divisible by 96: columns contain 21 or 22 fine cells per
     // direction. Account for their exact physical area in both water transfers.
     let areaRatio = max(count * f32(n.x * n.y) / f32(fine * fine), 0.000001);
     columns[id.y * n.x + id.x] = vec4<f32>(highest, totals / max(count, 1.0), areaRatio);
@@ -253,10 +264,9 @@ fn initializeVolume(@builtin(global_invocation_id) id: vec3<u32>) {
     let height = (f32(id.z) + 0.5) * u.spacingTime.z;
     var cell = emptyCell(height);
     if (air(p)) {
-        let phase = vec3<f32>(id) / u.grid.xyz * 6.2831853;
-        let perturbation = sin(phase.x * 2.0 + phase.z) * cos(phase.y * 3.0 - phase.z);
-        cell.velocityTemperature = vec4<f32>(constrainFaces(p, vec3<f32>(u.forcing.zw, 0.0)), ambientTemperature(height) + perturbation * 0.6);
-        cell.moisture.x = targetVapor(height) * (1.0 + perturbation * 0.15);
+        // Horizontal symmetry is broken by the actual surface, not seeded noise.
+        cell.velocityTemperature = vec4<f32>(constrainFaces(p, vec3<f32>(u.forcing.zw, 0.0)), ambientTemperature(height));
+        cell.moisture.x = targetVapor(height);
     }
     volumeOut[index(p)] = cell;
 }
@@ -335,23 +345,18 @@ fn advect(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         velocity += (vec3<f32>(u.forcing.zw, 0.0) - velocity) * dt * 0.22;
     } else {
-        // Adiabatic cooling/warming is already encoded by transporting potential
-        // temperature. The dry lapse (0.16) differs from the initial environment
-        // (0.12); latent heat can sustain an otherwise stable rising parcel.
+        // Adiabatic cooling/warming is already encoded by potential temperature.
         velocity *= exp(-dt * 0.0015);
     }
     let groundDistance = max(height - column.x, 0.0);
     let nearGround = exp(-groundDistance / 5.0);
-    temperature += (column.y - temperature) * nearGround * dt * 0.3;
     // Surface drag dissipates the boundary layer; free air retains momentum.
     let drag = exp(-dt * nearGround * 0.09);
     velocity.x *= drag;
     velocity.y *= drag;
-    let reference = layerMeans[id.z];
-    let buoyancy = 9.81 * (temperature - reference.x) / max(reference.x + 273.15, 180.0)
-        + (water.x - reference.y) * 6.0 - (water.y + water.z + water.w) * 9.81;
-    velocity.z += buoyancy * dt;
     if (!air(p - vec3<i32>(0, 0, 1))) {
+        // The heat pass debits the surface and credits this cell in the same step.
+        temperature += surfaceHeat[columnIndex(p)];
         // The previous surface pass debited exactly this water from fluids.
         water.x += column.z * column.w * max(u.environment.y, 0.001) / u.spacingTime.z;
     }
@@ -360,19 +365,14 @@ fn advect(@builtin(global_invocation_id) id: vec3<u32>) {
     // raises saturation during condensation, so raw supersaturation must not
     // all be removed at the old temperature. This is fast microphysics, while
     // droplet growth below controls the much longer lifetime of the cloud.
-    let latentHeat = 480.0;
-    let saturated = saturation(temperature);
-    let saturationChange = 1.0 + latentHeat * 0.065 * saturated;
-    let phaseTransfer = clamp((water.x - saturated) / saturationChange,
-        -water.y, water.x) * (1.0 - exp(-8.0 * dt));
+    let latentHeat = cloudLatentHeat;
+    let phaseTransfer = cloudPhaseTransfer(temperature, water.x, water.y) * (1.0 - exp(-8.0 * dt));
     water.x -= phaseTransfer;
     water.y += phaseTransfer;
     temperature += phaseTransfer * latentHeat;
     // Small droplets travel with the air. Collision/coalescence accelerates
     // in dense clouds and around existing precipitation, over tens of seconds.
-    let cloudExcess = max(water.y - 0.003, 0.0);
-    let growthRate = 0.012 + min(water.y * 1.5, 0.045);
-    let autoconversion = cloudExcess * (1.0 - exp(-growthRate * dt));
+    let autoconversion = water.y * (1.0 - exp(-cloudConversionRate(water.y) * dt));
     let accretion = water.y * (1.0 - exp(-min((water.z + water.w) * 4.0, 0.08) * dt));
     let precipitationFormed = min(water.y, autoconversion + accretion);
     let snowFraction = 1.0 - smoothstep(-1.5, 1.5, temperature);
@@ -384,11 +384,17 @@ fn advect(@builtin(global_invocation_id) id: vec3<u32>) {
     water.z += melted - frozen;
     water.w += frozen - melted;
     temperature += (frozen - melted) * 25.0;
-    let rainEvaporated = min(water.z, max(saturation(temperature) - water.x, 0.0) * dt * 0.15 /
-        (1.0 + latentHeat * 0.065 * saturation(temperature)));
+    let rainEvaporated = max(0.0, -cloudPhaseTransfer(temperature, water.x, water.z)) * (1.0 - exp(-0.15 * dt));
     water.z -= rainEvaporated;
     water.x += rainEvaporated;
     temperature -= rainEvaporated * latentHeat;
+
+    // React to this step's sensible AND latent heat. The scene-scale multiplier
+    // changes acceleration, never the temperature or water inventory itself.
+    let reference = layerMeans[id.z];
+    let buoyancy = 9.81 * (temperature - reference.x) / max(reference.x + 273.15, 180.0)
+        + (water.x - reference.y) * 6.0 - (water.y + water.z + water.w) * 9.81;
+    velocity.z += buoyancy * u.convection.w * dt;
 
     cell.velocityTemperature = vec4<f32>(constrainFaces(p, clamp(velocity, vec3<f32>(-40.0), vec3<f32>(40.0))), clamp(temperature, -70.0, 65.0));
     cell.moisture = max(water, vec4<f32>(0.0));
@@ -609,8 +615,119 @@ fn terrainElevation(p: vec2<i32>) -> f32 {
     return (cell.x + cell.y) * u.environment.y;
 }
 
-fn surfaceHeatCapacity(liquid: f32, ice: f32, snow: f32) -> f32 {
-    return 1.0 + liquid * 8.0 + ice * 5.0 + snow * 2.0;
+fn surfaceHeatCapacity(i: u32, liquid: f32, ice: f32, snow: f32) -> f32 {
+    return materialHeatCapacity(terrain[i].y, liquid, ice, snow);
+}
+
+// Return raw absorption and its contrast weight. The score is the local warming
+// tendency (absorption / capacity), so high-absorptivity deep water does not
+// automatically take energy away from the more responsive dry land.
+fn solarWeights(pos: vec2<i32>) -> vec2<f32> {
+    let i = u32(pos.y) * u32(u.grid.w) + u32(pos.x);
+    let cover = surface[i];
+    let liquid = max(fluids[i].x, 0.0);
+    let albedo = materialAlbedo(terrain[i].y, liquid, cover.y, cover.x);
+    let normal = normalize(vec3<f32>(
+        terrainElevation(pos - vec2<i32>(1, 0)) - terrainElevation(pos + vec2<i32>(1, 0)),
+        terrainElevation(pos - vec2<i32>(0, 1)) - terrainElevation(pos + vec2<i32>(0, 1)), 400.0 / u.grid.w));
+    let exposure = max(0.0, dot(normal, u.radiation.xyz));
+    let absorbed = (1.0 - albedo) * exposure * 0.65;
+    let response = clamp((1.0 - albedo) * exposure / surfaceHeatCapacity(i, liquid, cover.y, cover.x), 0.0, 1.0);
+    // Positive, bounded sharpening. No artificial heating of unlit cells and no
+    // unstable powers near sunset; normalization below restores the raw budget.
+    let shaped = absorbed * exp((u.hydrology.w - 1.0) * (response - 1.0));
+    return vec2<f32>(absorbed, shaped);
+}
+
+var<workgroup> solarSum: array<vec2<f32>, 256>;
+
+fn sumSolar(lane: u32) {
+    workgroupBarrier();
+    for (var stride = 128u; stride > 0u; stride /= 2u) {
+        if (lane < stride) { solarSum[lane] += solarSum[lane + stride]; }
+        workgroupBarrier();
+    }
+}
+
+@compute @workgroup_size(16, 16)
+fn prepareSolar(@builtin(global_invocation_id) id: vec3<u32>,
+    @builtin(workgroup_id) group: vec3<u32>, @builtin(local_invocation_index) lane: u32) {
+    var value = vec2<f32>(0.0);
+    if (all(id.xy < vec2<u32>(u32(u.grid.w)))) { value = solarWeights(vec2<i32>(id.xy)); }
+    solarSum[lane] = value;
+    sumSolar(lane);
+    if (lane == 0u) { solarPartials[group.y * ((u32(u.grid.w) + 15u) / 16u) + group.x] = solarSum[0]; }
+}
+
+@compute @workgroup_size(256)
+fn normalizeSolar(@builtin(local_invocation_index) lane: u32) {
+    let groups = (u32(u.grid.w) + 15u) / 16u;
+    var total = vec2<f32>(0.0);
+    for (var i = lane; i < groups * groups; i += 256u) { total += solarPartials[i]; }
+    solarSum[lane] = total;
+    sumSolar(lane);
+    if (lane == 0u) {
+        let sums = solarSum[0];
+        solarNormalization = vec4<f32>(sums.x / max(sums.y, 1e-20), sums / (u.grid.w * u.grid.w), 0.0);
+    }
+}
+
+// One invocation owns a column's fine surface cells and its air heat credit.
+// Equal/opposite sensible energy transfers need neither atomics nor a pending
+// heat reservoir. Capacity units match atmospheric latent heat: air capacity per
+// unit surface area is dz / heightScale, with exact fine/coarse area correction.
+@compute @workgroup_size(8, 8)
+fn exchangeHeat(@builtin(global_invocation_id) id: vec3<u32>) {
+    let n = vec2<u32>(u.grid.xy);
+    if (any(id.xy >= n)) { return; }
+    let ci = id.y * n.x + id.x;
+    surfaceHeat[ci] = 0.0;
+    let column = columns[ci];
+    let firstZ = max(0, i32(floor(column.x / u.spacingTime.z - 0.5)) + 1);
+    if (firstZ >= i32(u.grid.z)) { return; }
+    let p = vec3<i32>(vec2<i32>(id.xy), firstZ);
+    let cell = volumeIn[index(p)];
+    let airHeight = (f32(firstZ) + 0.5) * u.spacingTime.z;
+    var gradient = 0.0;
+    if (firstZ + 1 < i32(u.grid.z)) {
+        gradient = clamp((volumeIn[index(p + vec3<i32>(0, 0, 1))].velocityTemperature.w
+            - cell.velocityTemperature.w) / u.spacingTime.z, -0.4, 0.4);
+    }
+    let airCapacity = u.spacingTime.z / (max(u.environment.y, 0.001) * column.w);
+    let speed = length(0.5 * (faceVelocity(p) + vec3<f32>(
+        faceVelocity(p - vec3<i32>(1, 0, 0)).x,
+        faceVelocity(p - vec3<i32>(0, 1, 0)).y,
+        faceVelocity(p - vec3<i32>(0, 0, 1)).z)));
+    let fine = u32(u.grid.w);
+    let start = (id.xy * fine + n - vec2<u32>(1)) / n;
+    let end = ((id.xy + vec2<u32>(1)) * fine + n - vec2<u32>(1)) / n;
+    var heat = 0.0;
+    var count = 0.0;
+    for (var y = start.y; y < end.y; y++) {
+        for (var x = start.x; x < end.x; x++) {
+            let i = y * fine + x;
+            let cover = surface[i];
+            let liquid = max(fluids[i].x, 0.0);
+            let height = max(0.0, terrain[i].x + terrain[i].y + liquid + max(fluids[i].y, 0.0)
+                + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
+            // Reconstruct the CURRENT air profile to avoid heating an isothermal
+            // surface/air pair merely because its samples have different heights.
+            let airTemperature = cell.velocityTemperature.w + gradient * (height - airHeight);
+            let difference = cover.z - airTemperature;
+            let capacity = surfaceHeatCapacity(i, liquid, cover.y, cover.x);
+            let insulation = 1.0 + cover.x * 5.0 * u.environment.y * 5.0;
+            // Free convection works from rest; existing wind enhances exchange.
+            // Bounded feedback and exact two-capacity relaxation prevent overshoot.
+            let mixing = 1.0 + min(2.0, speed * 0.12 + sqrt(max(difference, 0.0)) * 0.15);
+            let conductance = 0.45 * mixing / insulation;
+            let inverseCapacity = 1.0 / capacity + 1.0 / airCapacity;
+            let transferred = difference * (1.0 - exp(-conductance * inverseCapacity * u.spacingTime.w)) / inverseCapacity;
+            surface[i].z = cover.z - transferred / capacity;
+            heat += transferred;
+            count += 1.0;
+        }
+    }
+    surfaceHeat[ci] = heat / max(count, 1.0) / airCapacity;
 }
 
 // Each invocation owns exactly one fine cell. No neighboring fluids are read
@@ -626,6 +743,9 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
     let firstAirZ = max(0, i32(floor(column.x / u.spacingTime.z - 0.5)) + 1);
     let availableAir = firstAirZ < i32(u.grid.z);
     let dt = u.spacingTime.w;
+    // Use the same material state as prepareSolar, before precipitation and
+    // phase changes alter its cover. No CPU readback or additional solar source.
+    let absorbedSolar = u.environment.x * solarWeights(vec2<i32>(id.xy)).y * solarNormalization.x;
     var cover = surface[i];
     var liquid = fluids[i];
     let height = (terrain[i].x + terrain[i].y + max(liquid.x, 0.0) + max(liquid.y, 0.0) + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
@@ -638,7 +758,7 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
     cover.x = max(cover.x, 0.0);
     cover.y = max(cover.y, 0.0);
     let latentFusion = 80.0;
-    var energy = cover.z * surfaceHeatCapacity(liquid.x, cover.y, cover.x);
+    var energy = cover.z * surfaceHeatCapacity(i, liquid.x, cover.y, cover.x);
     liquid.x += fallen.x;
     cover.x += fallen.y;
     energy += fallen.x * 8.0 * airTemperature + fallen.y * 2.0 * min(airTemperature, 0.0);
@@ -651,24 +771,12 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
         liquid.x += cover.x;
         cover.x = 0.0;
     }
-    cover.z = energy / surfaceHeatCapacity(liquid.x, cover.y, cover.x);
-    // Snow albedo and liquid-water thermal inertia temper daytime heating.
-    let albedo = mix(0.25, 0.82, clamp(cover.x * 300.0, 0.0, 1.0));
-    let pos = vec2<i32>(id.xy);
-    let normal = normalize(vec3<f32>(
-        terrainElevation(pos - vec2<i32>(1, 0)) - terrainElevation(pos + vec2<i32>(1, 0)),
-        terrainElevation(pos - vec2<i32>(0, 1)) - terrainElevation(pos + vec2<i32>(0, 1)), 400.0 / u.grid.w));
-    let exposure = max(0.0, dot(normal, u.radiation.xyz));
-    let absorbedSolar = u.environment.x * (1.0 - albedo) * exposure * 0.65;
+    cover.z = energy / surfaceHeatCapacity(i, liquid.x, cover.y, cover.x);
     let kelvin = max(cover.z + 273.15, 150.0);
     let longwaveLoss = u.radiation.w * 0.25 * pow(kelvin / 288.15, 4.0);
-    let snowThickness = cover.x * 5.0 * u.environment.y;
-    // Dry snow insulates the terrain. Ice is anchored below the liquid, so it
-    // cannot seal evaporation or steam exchange at the exposed water surface.
-    let conductance = 1.0 / (1.0 + snowThickness * 5.0);
-    let sensibleHeat = (airTemperature - cover.z) * 0.22 * conductance;
+    // Sensible heat was exchanged conservatively before atmospheric transport.
     let lavaHeat = min(max(liquid.y, 0.0) * 120.0, 70.0) * 0.35;
-    energy += (absorbedSolar - longwaveLoss + sensibleHeat + lavaHeat) * dt;
+    energy += (absorbedSolar - longwaveLoss + lavaHeat) * dt;
     // Continuous heat-limited phase transfer: consume only the sensible energy
     // available relative to 0 C, and approach equilibrium over several seconds.
     // Recompute capacity after transfer; latent heat cannot overshoot 0 C.
@@ -686,14 +794,14 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
         liquid.x += snowMelt + iceMelt;
         energy -= (snowMelt + iceMelt) * latentFusion;
     }
-    cover.z = energy / surfaceHeatCapacity(liquid.x, cover.y, cover.x);
+    cover.z = energy / surfaceHeatCapacity(i, liquid.x, cover.y, cover.x);
     let deficit = max(saturation(cover.z) - vapor, 0.0);
     // Only water actually present is evaporated; dry land cannot create vapor.
     var evaporation = 0.0;
     if (availableAir) { evaporation = min(max(liquid.x, 0.0), deficit * dt * max(u.hydrology.z, 0.0)); }
     liquid.x = max(liquid.x - evaporation, 0.0);
     energy -= evaporation * (450.0 + 8.0 * cover.z);
-    cover.z = clamp(energy / surfaceHeatCapacity(liquid.x, cover.y, cover.x), -70.0, 90.0);
+    cover.z = clamp(energy / surfaceHeatCapacity(i, liquid.x, cover.y, cover.x), -70.0, 90.0);
     if (availableAir) {
         // The old cover.w was injected by advect this step. Lava-generated
         // steam is also real water-equivalent volume and joins the next step.

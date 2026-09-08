@@ -14,7 +14,7 @@ export class ThermalRenderer {
     private atmosphere: AtmosphereSimulation
   ) {
     this.uniform = device.createBuffer({
-      size: 96,
+      size: 112,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
   }
@@ -54,10 +54,11 @@ export class ThermalRenderer {
     size: number
   ) {
     if (!config.thermalOverlay) return;
-    const values = new Float32Array(24);
+    const values = new Float32Array(28);
     values.set(mvp.clone().invert().elements);
     values.set([size, config.heightScale, config.thermalHeight, config.thermalOpacity], 16);
     values[20] = config.thermalAir ? 1 : 0;
+    values.set([...this.atmosphere.dimensions, this.atmosphere.domainHeight], 24);
     this.device.queue.writeBuffer(this.uniform, 0, values);
     const entries: GPUBindGroupEntry[] = [
       { binding: 0, resource: { buffer: this.uniform } },

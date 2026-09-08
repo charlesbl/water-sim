@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { config } from './config';
+import { ATMOSPHERE_DIMENSIONS } from './atmosphere';
 import { GPGPUSimulation } from './webgpuRenderer';
 import { setupWeatherControls } from './weatherControls';
 
@@ -260,7 +261,8 @@ function setupUI() {
   // Update footer text dynamically with actual grid size
   const perfDisplay = document.getElementById('perf-display');
   if (perfDisplay) {
-    perfDisplay.textContent = `Surface: ${config.gridSize}×${config.gridSize} · Atmosphere: 48×48×32`;
+    perfDisplay.textContent =
+      `Surface: ${config.gridSize}×${config.gridSize} · Atmosphere: ${ATMOSPHERE_DIMENSIONS.join('×')}`;
   }
 
   // 0. Collapsible HUD Sections Toggle

@@ -1,8 +1,10 @@
 import { config } from '../src/config.ts';
+import { ATMOSPHERE_DIMENSIONS } from '../src/atmosphere.ts';
 import { GPGPUSimulation } from '../src/webgpuRenderer.ts';
 import * as THREE from 'three';
 
 const results = [];
+const [atmoX, atmoY, atmoZ] = ATMOSPHERE_DIMENSIONS;
 function check(name, condition) {
   results.push({ name, passed: !!condition });
   document.querySelector('#results').textContent = JSON.stringify(results, null, 2);
@@ -125,7 +127,7 @@ async function run() {
   paint(7, 20);
   const dry = await read(e.device, e.atmosphere.surfaceBuffer);
   check('Deep water heats more slowly than dry ground', dry[center + 2] > hot[center + 2] * 2);
-  const air = new Float32Array(48 * 48 * 32 * 8);
+  const air = new Float32Array(atmoX * atmoY * atmoZ * 8);
   const phase = async (type) => {
     seed();
     paint(type, 20);

@@ -2,7 +2,7 @@
 
 🚀 **Live Demo:** [https://charlesbl.github.io/water-sim/](https://charlesbl.github.io/water-sim/)
 
-An interactive GPU sandbox inspired by _From Dust_, with a **volumetric 3D atmosphere** coupled to water, sand, lava, and terrain. Weather evolves in a separate **48 × 48 × 32 grid (73,728 cells)** using WebGPU compute shaders. The existing terrain and surface fluids remain a 2.5D heightfield.
+An interactive GPU sandbox inspired by _From Dust_, with a **volumetric 3D atmosphere** coupled to water, sand, lava, and terrain. Weather evolves in a separate **96 × 96 × 64 grid (589,824 cells)** using WebGPU compute shaders. The existing terrain and surface fluids remain a 2.5D heightfield.
 
 This is a qualitative miniature weather model for experimentation, with simplified units and physical processes. It is not a calibrated forecasting model. The live demo above reflects the latest deployed version and may differ from the current working tree.
 
@@ -134,7 +134,7 @@ normal landscape with a fixed −30 to +35 °C scale (colors saturate outside th
 range). Choose **Surface** or **Air above
 surface**, adjust opacity, and set air height in simulation units. Air sampling
 follows the physical surface including water, snow and ice. Its coarser grid has
-3.125-unit vertical layers; samples near terrain use the first valid air layer,
+1.5625-unit vertical layers; samples near terrain use the first valid air layer,
 and points above the sampled domain have no air overlay.
 
 Painting, erasing and camera controls remain available with the overlay visible.

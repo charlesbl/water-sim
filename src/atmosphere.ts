@@ -1,5 +1,9 @@
 import { config } from './config';
 import atmosphereWGSL from './shaders/atmosphere.wgsl?raw';
+import surfaceThermalWGSL from './shaders/surfaceThermal.wgsl?raw';
+import cloudPhysicsWGSL from './shaders/cloudPhysics.wgsl?raw';
+
+export const ATMOSPHERE_DIMENSIONS: readonly [number, number, number] = [96, 96, 64];
 
 type PassName =
   | 'initializeSurface'
@@ -7,6 +11,9 @@ type PassName =
   | 'initializeVolume'
   | 'captureObstructedWater'
   | 'reduceLayers'
+  | 'exchangeHeat'
+  | 'prepareSolar'
+  | 'normalizeSolar'
   | 'advect'
   | 'divergence'
   | 'cgApply'
@@ -24,6 +31,9 @@ interface AtmosphericBindings {
   initializeVolume: [GPUBindGroup, GPUBindGroup];
   captureObstructedWater: [GPUBindGroup, GPUBindGroup];
   reduceLayers: [GPUBindGroup, GPUBindGroup];
+  exchangeHeat: [GPUBindGroup, GPUBindGroup];
+  prepareSolar: GPUBindGroup;
+  normalizeSolar: GPUBindGroup;
   advect: [GPUBindGroup, GPUBindGroup];
   divergence: [GPUBindGroup, GPUBindGroup];
   cgApply: GPUBindGroup;
@@ -55,7 +65,7 @@ interface AtmosphericBindings {
  * illustrative weather model, not a scientific forecast model.
  */
 export class AtmosphereSimulation {
-  public readonly dimensions: readonly [number, number, number] = [48, 48, 32];
+  public readonly dimensions: readonly [number, number, number] = ATMOSPHERE_DIMENSIONS;
   public readonly domainHeight = 100;
   public readonly surfaceBuffer: GPUBuffer;
   public simulationTime = 0;
@@ -69,11 +79,14 @@ export class AtmosphereSimulation {
   private readonly conjugatePartials: GPUBuffer;
   private readonly conjugateCoefficients: GPUBuffer;
   private readonly layerMeans: GPUBuffer;
+  private readonly surfaceHeat: GPUBuffer;
+  private readonly solarPartials: GPUBuffer;
+  private readonly solarNormalization: GPUBuffer;
   private readonly depositionWeights: GPUBuffer;
   private readonly depositionWeightValues: [Float32Array, Float32Array];
   private depositionBoundary = -1;
   private readonly uniforms: GPUBuffer;
-  private readonly uniformValues = new Float32Array(28);
+  private readonly uniformValues = new Float32Array(32);
   private readonly bindCache = new WeakMap<GPUBuffer, WeakMap<GPUBuffer, AtmosphericBindings>>();
   private pipelines: Record<PassName, GPUComputePipeline> | null = null;
   private current = 0;
@@ -117,10 +130,16 @@ export class AtmosphereSimulation {
     );
     this.conjugateCoefficients = storage('Pressure conjugate gradient coefficients', 16);
     this.layerMeans = storage('Horizontal mean air temperature and vapor', nz * 16);
+    this.surfaceHeat = storage('Paired surface to air sensible heat', nx * ny * 4);
+    this.solarPartials = storage(
+      'Raw and contrasted solar energy sums',
+      Math.ceil(surfaceSize / 16) ** 2 * 8
+    );
+    this.solarNormalization = storage('Solar budget normalization and mean fluxes', 16);
     this.depositionWeights = storage('Conservative smooth precipitation weights', nx * ny * 4);
     // Geometry-only quadrature weights. Physics and deposition remain on GPU.
     // Normalize the tent footprint of each coarse cell on the fine grid,
-    // including periodic edges and non-divisible surface sizes (e.g. 2048/48).
+    // including periodic edges and non-divisible surface sizes (e.g. 2048/96).
     const axisWeights = (count: number, sealed: boolean) => {
       const weights = new Float64Array(count);
       for (let fine = 0; fine < surfaceSize; fine++) {
@@ -160,7 +179,7 @@ export class AtmosphereSimulation {
   public async init(): Promise<void> {
     const module = this.device.createShaderModule({
       label: 'Volumetric atmosphere WGSL',
-      code: atmosphereWGSL,
+      code: surfaceThermalWGSL + '\n' + cloudPhysicsWGSL + '\n' + atmosphereWGSL,
     });
     const compilation = await module.getCompilationInfo();
     const errors = compilation.messages.filter((message) => message.type === 'error');
@@ -175,6 +194,9 @@ export class AtmosphereSimulation {
       'initializeVolume',
       'captureObstructedWater',
       'reduceLayers',
+      'exchangeHeat',
+      'prepareSolar',
+      'normalizeSolar',
       'advect',
       'divergence',
       'cgApply',
@@ -234,7 +256,7 @@ export class AtmosphereSimulation {
       config.heightScale,
       this.simulationTime,
       this.domainHeight,
-      0.12,
+      0.16 - 0.04 * Math.max(0, Math.min(1, config.airStability)),
       14,
       2.5,
       config.emergentWeather ? 1 : 0,
@@ -245,7 +267,11 @@ export class AtmosphereSimulation {
       config.closedWaterCycle ? 1 : 0,
       config.atmosphereBoundary,
       config.evaporationRate,
-      0,
+      Math.max(1, Math.min(10, config.heatingContrast)),
+      this.domainHeight * 0.4,
+      this.domainHeight * 0.65,
+      0.04,
+      Math.max(0, Math.min(8, config.convectionStrength)),
     ]);
     this.device.queue.writeBuffer(this.uniforms, 0, this.uniformValues);
     const boundary = config.atmosphereBoundary === 1 ? 1 : 0;
@@ -291,6 +317,9 @@ export class AtmosphereSimulation {
       Math.ceil(ny / 8)
     );
     dispatch('reduceLayers', groups.reduceLayers[source], nz, 1);
+    dispatch('prepareSolar', groups.prepareSolar, surfaceGroups, surfaceGroups);
+    dispatch('normalizeSolar', groups.normalizeSolar, 1, 1);
+    dispatch('exchangeHeat', groups.exchangeHeat[source], Math.ceil(nx / 8), Math.ceil(ny / 8));
     volumePass('advect', groups.advect[source]);
     volumePass('divergence', groups.divergence[advected]);
     // Preconditioned conjugate gradients resolve broad circulation modes that
@@ -332,6 +361,9 @@ export class AtmosphereSimulation {
       this.conjugatePartials,
       this.conjugateCoefficients,
       this.layerMeans,
+      this.surfaceHeat,
+      this.solarPartials,
+      this.solarNormalization,
       this.depositionWeights,
       this.uniforms,
     ])
@@ -391,12 +423,33 @@ export class AtmosphereSimulation {
           [12, this.layerMeans],
         ])
       ),
+      exchangeHeat: pair((i) =>
+        group('exchangeHeat', [
+          [1, this.volumes[i]],
+          [3, this.columns],
+          [4, terrain],
+          [5, fluids],
+          [6, this.surfaceBuffer],
+          [16, this.surfaceHeat],
+        ])
+      ),
+      prepareSolar: group('prepareSolar', [
+        [4, terrain],
+        [5, fluids],
+        [6, this.surfaceBuffer],
+        [17, this.solarPartials],
+      ]),
+      normalizeSolar: group('normalizeSolar', [
+        [17, this.solarPartials],
+        [18, this.solarNormalization],
+      ]),
       advect: pair((i) =>
         group('advect', [
           [1, this.volumes[i]],
           [2, this.volumes[1 - i]],
           [3, this.columns],
           [12, this.layerMeans],
+          [16, this.surfaceHeat],
         ])
       ),
       divergence: pair((i) =>
@@ -457,6 +510,7 @@ export class AtmosphereSimulation {
           [6, this.surfaceBuffer],
           [10, this.precipitation],
           [11, this.depositionWeights],
+          [18, this.solarNormalization],
         ])
       ),
     };

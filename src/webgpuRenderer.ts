@@ -7,6 +7,7 @@ import { WaterBudget } from './waterBudget';
 
 import simFluxWGSL from './shaders/simFlux.wgsl?raw';
 import simFluidsWGSL from './shaders/simFluids.wgsl?raw';
+import surfaceThermalWGSL from './shaders/surfaceThermal.wgsl?raw';
 import simTerrainWGSL from './shaders/simTerrain.wgsl?raw';
 import renderWGSL from './shaders/render.wgsl?raw';
 
@@ -240,7 +241,9 @@ export class GPGPUSimulation {
 
     // 6. Create pipelines
     const simFluxModule = this.device.createShaderModule({ code: simFluxWGSL });
-    const simFluidsModule = this.device.createShaderModule({ code: simFluidsWGSL });
+    const simFluidsModule = this.device.createShaderModule({
+      code: surfaceThermalWGSL + '\n' + simFluidsWGSL,
+    });
     const simTerrainModule = this.device.createShaderModule({ code: simTerrainWGSL });
     const renderModule = this.device.createShaderModule({ code: renderWGSL });
     for (const [label, module] of [

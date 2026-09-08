@@ -1,9 +1,10 @@
 import { config } from '../src/config.ts';
-import { AtmosphereSimulation } from '../src/atmosphere.ts';
+import { AtmosphereSimulation, ATMOSPHERE_DIMENSIONS } from '../src/atmosphere.ts';
 import { GPGPUSimulation } from '../src/webgpuRenderer.ts';
 import * as THREE from 'three';
 
 const results = [];
+const [atmoX, atmoY, atmoZ] = ATMOSPHERE_DIMENSIONS;
 function check(name, condition, detail = '') {
   results.push({ name, passed: !!condition, detail });
   document.querySelector('#results').textContent = JSON.stringify(results, null, 2);
@@ -35,7 +36,7 @@ function maximumDifference(a, b) {
 }
 function totalWater(air, surface, fluid, n) {
   const surfaceVolume = (40000 * config.heightScale) / (n * n);
-  const airVolume = (40000 * 100) / (48 * 48 * 32);
+  const airVolume = (40000 * 100) / (atmoX * atmoY * atmoZ);
   return (
     (sum(fluid, 0) + sum(fluid, 3) + sum(surface, 0) + sum(surface, 1) + sum(surface, 3)) *
       surfaceVolume +
@@ -161,7 +162,7 @@ async function run() {
   await tick(1);
   const afterLatent = await snapshot();
   const enthalpy = (state, i) =>
-    (1 + 8 * state.fluid[i] + 5 * state.surface[i + 1] + 2 * state.surface[i]) *
+    (1.5 + 8 * state.fluid[i] + 5 * state.surface[i + 1] + 2 * state.surface[i]) *
       state.surface[i + 2] -
     80 * (state.surface[i] + state.surface[i + 1]);
   let maxEnergyDrift = 0;
@@ -238,10 +239,10 @@ async function run() {
   // exercises the conservative precipitation mapping at the final edge.
   await seed({ water: 0.02, temperature: -1, airTemperature: -1 });
   const snowfallAir = await read(device, sim.volumeBuffer);
-  for (let z = 0; z < 32; z++)
-    for (let y = 0; y < 48; y++)
-      for (let x = 0; x < 48; x++) {
-        const i = ((z * 48 + y) * 48 + x) * 8;
+  for (let z = 0; z < atmoZ; z++)
+    for (let y = 0; y < atmoY; y++)
+      for (let x = 0; x < atmoX; x++) {
+        const i = ((z * atmoY + y) * atmoX + x) * 8;
         snowfallAir[i + 3] = -1;
         snowfallAir[i + 7] = z === 0 ? 0.001 : 0;
       }

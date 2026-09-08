@@ -1,9 +1,10 @@
 import { config } from '../src/config.ts';
-import { AtmosphereSimulation } from '../src/atmosphere.ts';
+import { AtmosphereSimulation, ATMOSPHERE_DIMENSIONS } from '../src/atmosphere.ts';
 import { GPGPUSimulation } from '../src/webgpuRenderer.ts';
 import { WaterBudget } from '../src/waterBudget.ts';
 
 const results = [];
+const [atmoX, atmoY, atmoZ] = ATMOSPHERE_DIMENSIONS;
 function check(name, condition, detail = '') {
   results.push({ name, passed: !!condition, detail });
   document.querySelector('#results').textContent = JSON.stringify(results, null, 2);
@@ -26,7 +27,7 @@ async function read(device, buffer) {
 }
 function inventory(air, surface, fluid, n) {
   const factor = (40000 * config.heightScale) / (n * n),
-    airFactor = (40000 * 100) / (48 * 48 * 32);
+    airFactor = (40000 * 100) / (atmoX * atmoY * atmoZ);
   const sums = {
     liquid: 0,
     snow: 0,
@@ -158,13 +159,13 @@ async function run() {
   );
   const wallAir = await read(device, sim.volumeBuffer);
   let maxBoundarySpeed = 0;
-  for (let z = 0; z < 32; z++)
-    for (let y = 0; y < 48; y++)
-      for (let x = 0; x < 48; x++) {
-        const i = ((z * 48 + y) * 48 + x) * 8;
-        if (x === 47) maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i]));
-        if (y === 47) maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i + 1]));
-        if (z === 31) maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i + 2]));
+  for (let z = 0; z < atmoZ; z++)
+    for (let y = 0; y < atmoY; y++)
+      for (let x = 0; x < atmoX; x++) {
+        const i = ((z * atmoY + y) * atmoX + x) * 8;
+        if (x === atmoX - 1) maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i]));
+        if (y === atmoY - 1) maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i + 1]));
+        if (z === atmoZ - 1) maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i + 2]));
       }
   check(
     'Air cannot cross closed side walls or ceiling',
@@ -255,7 +256,7 @@ async function run() {
   );
 
   // Test the diagnostic against independent double-precision CPU sums.
-  const budget = new WaterBudget(device, n, [48, 48, 32], 100);
+  const budget = new WaterBudget(device, n, ATMOSPHERE_DIMENSIONS, 100);
   await budget.init();
   budget.sample(fluid, sim.surfaceBuffer, sim.volumeBuffer);
   for (let i = 0; i < 120 && !budget.latest; i++) await nextFrame();

@@ -3,9 +3,12 @@ import { config } from './config';
 type WeatherNumberKey =
   | 'airTemperature'
   | 'relativeHumidity'
+  | 'airStability'
+  | 'convectionStrength'
   | 'windSpeed'
   | 'windDirection'
   | 'solarHeating'
+  | 'heatingContrast'
   | 'evaporationRate'
   | 'sunElevation'
   | 'sunAzimuth'
@@ -119,8 +122,11 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
     100
   );
   bindSlider('wind-speed', 'windSpeed', (value) => `${value.toFixed(0)} u/s`);
+  bindSlider('air-stability', 'airStability', (value) => `${(value * 100).toFixed(1)}%`, 100);
+  bindSlider('convection-strength', 'convectionStrength', (value) => `${value.toFixed(1)}×`);
   bindSlider('wind-direction', 'windDirection', (value) => `${value.toFixed(0)}°`);
   bindSlider('solar-heating', 'solarHeating', (value) => `${value.toFixed(1)}×`);
+  bindSlider('heating-contrast', 'heatingContrast', (value) => `${value.toFixed(1)}×`);
   bindSlider('evaporation-rate', 'evaporationRate', (value) => `${value.toFixed(2)}×`);
   bindSlider('sun-elevation', 'sunElevation', (value) => `${value.toFixed(0)}°`);
   bindSlider('sun-azimuth', 'sunAzimuth', (value) => `${value.toFixed(0)}°`);
@@ -152,6 +158,7 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
     for (const [id, label] of [
       ['air-temperature', 'air temperature'],
       ['relative-humidity', 'humidity'],
+      ['air-stability', 'lower-air stability'],
       ['wind-speed', 'wind speed'],
       ['wind-direction', 'wind heading'],
     ]) {
@@ -165,7 +172,7 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
     document.getElementById('restart-air-group')!.hidden =
       !config.emergentWeather && !config.closedWaterCycle;
     document.getElementById('weather-dynamics-help')!.textContent = config.emergentWeather
-      ? 'Air evolves freely. Initial values apply only on Restart air or a preset; snow and water are preserved. Sunlight and cooling remain live.'
+      ? 'Air starts horizontally uniform and evolves freely. Initial values apply on Restart air or a preset; snow and water are preserved. Convection response, sunlight and cooling remain live.'
       : config.closedWaterCycle
         ? 'Temperature and wind are imposed. Humidity is an initial condition only: Restart air applies it and starts a new water balance.'
         : 'Air continuously relaxes toward the selected temperature, humidity and wind; humidity forcing exchanges water with an external reservoir.';

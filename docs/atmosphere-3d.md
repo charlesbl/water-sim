@@ -2,7 +2,7 @@
 
 TerraGPU associe désormais deux domaines : une surface en heightfield 2.5D pour
 le relief et les fluides, et une atmosphère véritablement 3D. La grille
-atmosphérique contient **48 × 48 × 32 = 73 728 voxels**. Chaque position
+atmosphérique contient **96 × 96 × 64 = 589 824 voxels**. Chaque position
 horizontale possède plusieurs niveaux d'air qui évoluent séparément. Le vent
 possède trois composantes, dont une vitesse verticale, et les échanges lisent
 les voisins selon les trois axes. Les coupes visibles sont des diagnostics de
@@ -33,22 +33,35 @@ sont calculés sur le GPU.
   parcelle qui monte et le réchauffement d'une parcelle qui descend, sans
   ajouter une seconde correction adiabatique indépendante.
 - Les échanges thermiques entre sol et air, le chauffage solaire, le
-  refroidissement radiatif, l'albédo de la neige et l'inertie thermique
+  refroidissement radiatif, l'albédo des matériaux et l'inertie thermique
   produisent des contrastes de température locaux.
+  Une passe dédiée débite la chaleur sensible de chaque cellule de surface
+  et crédite exactement cette énergie à la première cellule d'air de sa
+  colonne, avec correction des aires représentées. L'échange tient compte
+  des deux capacités thermiques et de l'isolation par la neige. Son taux
+  augmente avec le vent local et le contraste chaud sol–air, tout en restant
+  actif au repos. Une relaxation exponentielle borne chaque transfert.
 - La flottabilité compare la température locale à la moyenne de sa couche
   d'altitude pour créer des mouvements verticaux. Elle prend aussi en compte
   l'humidité de l'air et le poids de l'eau condensée. Le transport vertical
   s'accompagne d'un changement de température adiabatique ; le refroidissement
   d'une parcelle sèche est distinct du profil initial de température ambiante.
+  **Convection response** multiplie cette accélération (4× par défaut) pour
+  l'échelle illustrative du paysage. Elle utilise la température après les
+  échanges de chaleur sensible et les changements de phase du pas courant ;
+  le multiplicateur ne crée ni chaleur ni eau.
 - Une projection de pression par gradient conjugué préconditionné (PCG), avec
   20 itérations et ses réductions entièrement sur GPU, réduit la divergence
   du champ de vitesse. Les frontières horizontales sont
   périodiques ou fermées au choix ; le terrain et le plafond sont solides.
 - La condensation et l'évaporation des nuages couplent le transfert d'eau à
   la chaleur latente : la saturation est réévaluée avec ce changement de
-  température. La croissance des gouttelettes transforme ensuite plus
-  lentement l'eau nuageuse en précipitations, avec une accélération dans les
-  nuages denses ou en présence de précipitations existantes.
+  température par une résolution itérative bornée par les réserves disponibles.
+  La pluie qui se réévapore utilise le même couplage et refroidit l'air.
+  La croissance des gouttelettes transforme ensuite plus lentement l'eau
+  nuageuse en précipitations, avec une accélération dans les nuages denses ou
+  en présence de précipitations existantes. Il n'y a plus de seuil de
+  condensat sous lequel toute conversion en pluie reste bloquée.
 - Le couplage avec la surface produit de la pluie ou de la neige suivant les
   conditions thermiques, permet le gel de l'eau et restitue de l'eau liquide
   lors de la fonte.
@@ -66,9 +79,11 @@ Pour transmettre une précipitation de la grille atmosphérique à la surface
 fine, le couplage utilise une interpolation bilinéaire dont les poids sont
 normalisés selon les aires représentées. Cette répartition préserve le budget
 de dépôt et évite d'imprimer les limites des colonnes atmosphériques dans la
-neige. La température de l'air utilisée pour l'échange thermique au sol est
-elle aussi interpolée. Cela lisse le couplage entre résolutions ; la
-résolution de la dynamique atmosphérique reste de 48 × 48 × 32.
+neige. La température des précipitations et l'humidité utilisées en surface
+sont également interpolées. L'échange de chaleur sensible utilise le profil
+vertical courant de la colonne, reconstruit à la hauteur de chaque cellule
+fine, et un transfert d'énergie commun aux deux réservoirs. La
+résolution de la dynamique atmosphérique reste de 96 × 96 × 64.
 
 ## Glace solide sous l'eau
 
@@ -177,9 +192,27 @@ préservé. Comparer la dérive seulement après la fin de ces interventions.
 Il n'applique aucun rappel continu de la température, de l'humidité ou du vent
 vers les curseurs. Ces valeurs définissent l'état initial de l'air et sont
 appliquées par **Restart air** ou par un preset. Le vent horizontal initial
-vaut zéro par défaut. Le volume évolue ensuite à partir de cet état, du
+vaut zéro par défaut. À chaque altitude, température et humidité initiales
+sont uniformes horizontalement ; aucune perturbation sinusoïdale ou aléatoire
+n'est ajoutée. Le volume évolue ensuite à partir de cet état, du
 relief, des échanges sol–air, des changements de phase et des sources
 d'énergie.
+
+**Initial lower-air stability** règle le profil thermique de départ. À 0 %, la
+couche basse est neutre pour une parcelle sèche ; à 100 %, son gradient vaut
+0,12 °C par unité de hauteur. Le défaut de 12,5 % donne 0,155, proche du gradient
+adiabatique sec de 0,16. Entre les hauteurs 40 et 65, le gradient rejoint
+progressivement 0,04 dans la couche haute, plus stable. Ce profil n'est pas
+entretenu en mode émergent : les ascendances, le mélange et les échanges le
+font évoluer. Modifier sa stabilité demande **Restart air**, comme les autres
+conditions initiales. En mode forcé, il sert aussi de profil de référence.
+
+**Convection response** s'applique immédiatement et règle la vitesse de
+réaction aux écarts thermiques et hydriques. L'air chaud monte et la projection
+de pression fait converger l'air voisin, sans vent horizontal supplémentaire
+imposé. Un monde parfaitement symétrique, sans contraste de surface, peut
+rester calme ; les lacs, les pentes et les pinceaux thermiques fournissent des
+déclencheurs locaux.
 
 Le soleil reste une entrée externe : son intensité, son élévation et son
 azimut règlent l'échauffement selon l'exposition du sol. Le refroidissement
@@ -189,14 +222,47 @@ par ces curseurs. La température et le vent sont des résultats dynamiques ;
 leur évolution ne garantit pas une circulation spectaculaire sur un terrain
 uniforme à chaque instant.
 
+**Surface heating contrast** accentue la répartition locale du chauffage
+solaire, de 1× à 10×, avec 3× par défaut. Les cellules bien exposées, absorbantes
+et de faible capacité thermique reçoivent une plus grande part du budget.
+Le gain règle un renforcement exponentiel borné de cette préférence ; il ne
+multiplie pas directement les watts de chaque cellule. Deux réductions GPU
+normalisent ensuite les poids pour préserver la somme de l'énergie absorbée
+à 1×, à état de surface et soleil identiques. Une cellule non éclairée ne
+reçoit rien et un monde uniforme reste uniforme. **Solar heating** reste le
+réglage distinct de la puissance totale. Les deux curseurs s'appliquent en direct.
+
+Les propriétés thermiques effectives sont partagées entre l'atmosphère et
+les pinceaux de surface dans `surfaceThermal.wgsl`. La capacité de base passe
+progressivement de 1,5 pour la roche à 0,6 pour une couche de sable sec de
+0,05 unité. S'y ajoutent les réserves d'eau, de glace et de neige, pondérées
+respectivement par 8, 5 et 2. Les albédos cibles valent 0,18 pour la roche,
+0,38 pour le sable, 0,08 pour l'eau, 0,55 pour la glace et 0,82 pour la neige,
+avec des transitions continues selon leur couverture. Le sable se réchauffe
+donc vite malgré une absorption plus faible que la roche ; l'eau conserve
+une forte inertie. Ces valeurs règlent une simulation illustrative, sans
+prétendre représenter les propriétés mesurées de matériaux réels.
+
 Le contraste d'inertie thermique entre l'eau et les terres permet des
 circulations locales. Une étendue d'eau fournit de la vapeur, qui peut gagner
 les terres et monter avec l'air chaud. Le refroidissement pendant l'ascension
 favorise la condensation ; la chaleur libérée soutient à son tour le mouvement
 ascendant. La conversion progressive de l'eau nuageuse en précipitations
-laisse davantage de temps à ces masses d'air pour se déplacer. Le modèle
+laisse du temps à ces masses d'air pour se déplacer, tout en drainant aussi
+lentement les faibles condensats. Le modèle
 cherche ainsi à faire émerger des panaches et des nuages convectifs à partir
 des échanges, sans injecter de nuages ni imposer leur trajectoire.
+
+Le cycle et le rendu partagent une échelle de condensat de 0,001 dans
+`cloudPhysics.wgsl`. La conversion spontanée suit le taux continu
+`0,018 × qc / (qc + 0,001)` : une brume très fine se vide plus lentement qu'un
+nuage dense. L'air sec peut aussi réévaporer le condensat en vapeur, avec
+absorption de chaleur latente. Le rendu intègre l'extinction sur la longueur
+du rayon, sans seuil qui masquerait arbitrairement une réserve d'eau. À cette
+échelle de condensat, une couche de 10 unités présente environ 16 % d'opacité ;
+les couches épaisses ou denses peuvent rester opaques. Ces mécanismes permettent
+la dissipation et le renouvellement des nuages, sans garantir l'absence de
+brouillard ou de nappes sous une couche d'air stable.
 
 Les échanges thermiques restent locaux ; il n'y a pas de calcul séparé de
 température à chaque profondeur de l'eau, de la glace et de la neige, ni
@@ -246,28 +312,30 @@ une simulation CPU parallèle.
 Le panneau **3D Atmosphere** est ouvert au démarrage. Les noms de l'interface
 restent en anglais pour correspondre aux autres panneaux.
 
-| Commande                | Sens et plage                                                                                                           |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Simulate weather        | Active ou suspend le calcul atmosphérique et son couplage.                                                              |
-| Closed water cycle      | Ferme le bilan hydrique ; actif par défaut. Suspend pluie externe, ouverture des bords de surface et rappel d'humidité. |
-| Atmosphere boundaries   | Bords horizontaux périodiques (0, défaut) ou murs fermés (1).                                                           |
-| Water inventory         | Inventaire total, écart au bilan de référence et répartition dans les réservoirs.                                       |
-| Mode météo              | Émergent par défaut ; le mode forcé maintient température et vent, ainsi que l'humidité seulement en cycle ouvert.      |
-| Air temperature         | Température initiale, de −25 à 35 °C ; référence continue en mode forcé.                                                |
-| Relative humidity       | Humidité initiale, de 0 à 140 % ; référence continue uniquement en mode forcé avec cycle ouvert.                        |
-| Wind speed              | Vent horizontal initial, de 0 à 30 unités de simulation par seconde ; référence continue en mode forcé.                 |
-| Wind heading            | Direction de déplacement du vent initial ou forcé, de 0 à 360°. Il ne s'agit pas de sa provenance météorologique.       |
-| Solar heating           | Intensité relative du chauffage solaire, de 0 à 3.                                                                      |
-| Solar evaporation       | Coefficient d'évaporation de 0 à 1, défaut 0,25 ; l'eau transférée est prélevée au sol puis restituée à l'air.          |
-| Sun elevation / azimuth | Élévation et azimut du soleil ; déterminent l'exposition au chauffage.                                                  |
-| Radiative cooling       | Intensité relative des pertes de chaleur radiatives.                                                                    |
-| Weather speed           | Multiplicateur de temps météorologique, de 0,25 à 4.                                                                    |
-| Explore atmosphere      | Nuages volumiques ou coupe horizontale de température, d'humidité ou de vitesse du vent.                                |
-| Slice altitude          | Hauteur relative de la coupe dans le volume, de 0 à 100 %.                                                              |
-| Show volumetric clouds  | Visibilité des nuages, sans désactiver leur simulation.                                                                 |
-| Show 3D wind vectors    | Affichage de directions locales du vent, y compris sa composante verticale.                                             |
-| Restart air             | Applique les conditions initiales à l'air ; préserve terrain, température du sol, eau, neige et glace.                  |
-| Reset Weather           | Réinitialise l'air aux paramètres courants et efface neige et glace ; conserve terrain et eau liquide.                  |
+| Commande                    | Sens et plage                                                                                                              |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Simulate weather            | Active ou suspend le calcul atmosphérique et son couplage.                                                                 |
+| Closed water cycle          | Ferme le bilan hydrique ; actif par défaut. Suspend pluie externe, ouverture des bords de surface et rappel d'humidité.    |
+| Atmosphere boundaries       | Bords horizontaux périodiques (0, défaut) ou murs fermés (1).                                                              |
+| Water inventory             | Inventaire total, écart au bilan de référence et répartition dans les réservoirs.                                          |
+| Mode météo                  | Émergent par défaut ; le mode forcé maintient température et vent, ainsi que l'humidité seulement en cycle ouvert.         |
+| Air temperature             | Température initiale, de −25 à 35 °C ; référence continue en mode forcé.                                                   |
+| Relative humidity           | Humidité initiale, de 0 à 140 % ; référence continue uniquement en mode forcé avec cycle ouvert.                           |
+| Wind speed                  | Vent horizontal initial, de 0 à 30 unités de simulation par seconde ; référence continue en mode forcé.                    |
+| Wind heading                | Direction de déplacement du vent initial ou forcé, de 0 à 360°. Il ne s'agit pas de sa provenance météorologique.          |
+| Initial lower-air stability | Stabilité de la couche basse, de 0 % (neutre) à 100 % (stable), défaut 12,5 %. S'applique au redémarrage en mode émergent. |
+| Convection response         | Multiplicateur de flottabilité de 0 à 8, défaut 4. S'applique immédiatement ; 0 désactive cette accélération.              |
+| Solar heating               | Intensité relative du chauffage solaire, de 0 à 3.                                                                         |
+| Solar evaporation           | Coefficient d'évaporation de 0 à 1, défaut 0,25 ; l'eau transférée est prélevée au sol puis restituée à l'air.             |
+| Sun elevation / azimuth     | Élévation et azimut du soleil ; déterminent l'exposition au chauffage.                                                     |
+| Radiative cooling           | Intensité relative des pertes de chaleur radiatives.                                                                       |
+| Weather speed               | Multiplicateur de temps météorologique, de 0,25 à 4.                                                                       |
+| Explore atmosphere          | Nuages volumiques ou coupe horizontale de température, d'humidité ou de vitesse du vent.                                   |
+| Slice altitude              | Hauteur relative de la coupe dans le volume, de 0 à 100 %.                                                                 |
+| Show volumetric clouds      | Visibilité des nuages, sans désactiver leur simulation.                                                                    |
+| Show 3D wind vectors        | Affichage de directions locales du vent, y compris sa composante verticale.                                                |
+| Restart air                 | Applique les conditions initiales à l'air ; préserve terrain, température du sol, eau, neige et glace.                     |
+| Reset Weather               | Réinitialise l'air aux paramètres courants et efface neige et glace ; conserve terrain et eau liquide.                     |
 
 La coupe parcourt un volume haut de 100 unités de scène, en restant entre
 0,5 et 99,5 pour les extrêmes du curseur. La température va du bleu à −30 °C
@@ -362,12 +430,27 @@ local dans un navigateur WebGPU. La page exécute plus de vingt vérifications
 en compilant les shaders, en lançant les passes et en relisant les buffers
 GPU. Elle affiche chaque résultat et s'arrête sur un échec.
 
+La page `/water-sim/tests/convection.html` vérifie le départ uniforme au repos,
+le profil presque neutre sous la couche stable, le maintien du calme sans
+source de contraste, le transfert égal et opposé de chaleur sur une grille
+non divisible, et la réaction plus rapide à un même chauffage local pour les
+réponses 1×, 4× et 8×. Les tests de convection existants déclenchent maintenant
+le mouvement par une zone de surface chaude, au lieu du bruit initial retiré.
+
+La page `/water-sim/tests/heating-clouds.html` compare les températures de la
+roche, du sable et de l'eau, puis le budget solaire aux contrastes 1×, 3× et 10×
+sur une grille 97². Elle vérifie l'effet de l'orientation du soleil, le calme
+thermique sans source et l'uniformité d'un sol homogène. Les scénarios nuageux
+contrôlent la bruine sous l'ancien seuil, le retour de l'eau au sol et la
+réévaporation avec refroidissement. Un rendu GPU hors écran vérifie aussi
+l'opacité effective d'une couche faible et d'une couche dense.
+
 La page `/water-sim/tests/water-cycle.html` vérifie en plus la boucle complète
 sur plusieurs milliers de pas : une réserve liquide alimente un air initialement
 sec, condense, précipite au sol puis s'évapore à nouveau. Seuls le soleil et le
 refroidissement changent pendant ce scénario, sans remise à zéro ni apport d'eau.
 Elle compare les inventaires avant et après les échanges, dans les deux modes
-de frontière, y compris avec une surface 97² non divisible par 48. Elle couvre
+de frontière, y compris avec une surface 97² non divisible par 96. Elle couvre
 la récupération de l'eau quand le relief envahit l'atmosphère, la vapeur en
 attente, le moteur de fluides avec météo désactivée et le compteur GPU confronté
 à une somme CPU indépendante.
@@ -392,7 +475,7 @@ part importante de son condensat pendant son transport, au lieu de le
 convertir immédiatement en pluie. Les deux scénarios vérifient également
 la conservation de l'inventaire d'eau et les valeurs finies dans les buffers.
 Des contrôles mesurent la réduction de divergence par la projection de
-pression, la persistance de nuages éloignés du lac pendant plusieurs minutes,
+pression, le retour de nuages éloignés du lac au cours de plusieurs minutes,
 et le déplacement d'un nuage au-delà de son emplacement initial. Le transport
 d'un air sec uniforme sans apport d'énergie doit également préserver sa
 température, afin de détecter un réchauffement purement numérique.
@@ -409,7 +492,7 @@ la vitesse de réchauffement de l'air.
 Les régressions vérifient également qu'un air au repos développe une circulation,
 que modifier les curseurs initiaux ne force pas le mode émergent, et qu'un monde
 sec ne reçoit pas d'humidité artificielle. Une surface 257² teste la conservation
-du dépôt lissé malgré le rapport non entier avec la grille 48². Un autre contrôle
+du dépôt lissé malgré le rapport non entier avec la grille 96². Un autre contrôle
 vérifie que les petits apports de fonte survivent aux étapes suivantes du moteur
 d'eau : l'ancien seuil de suppression de 10⁻⁴ les effaçait trop tôt.
 

@@ -48,7 +48,7 @@ export interface Config {
   rainQuantity: number;
   rainSize: number;
 
-  // Volumetric atmosphere (independent 48 x 48 x 32 GPU grid)
+  // Volumetric atmosphere (independent 96 x 96 x 64 GPU grid)
   atmosphereEnabled: boolean;
   closedWaterCycle: boolean; // Keep all water reservoirs internal; suspend manual sources and open surface edges
   atmosphereBoundary: number; // 0: periodic horizontal boundaries, 1: closed walls
@@ -56,9 +56,12 @@ export interface Config {
   emergentWeather: boolean; // Initial air evolves freely; no temperature/humidity/wind thermostat
   airTemperature: number; // Reference air temperature, degrees Celsius
   relativeHumidity: number; // Reference humidity: 1 = 100%, may be supersaturated
+  airStability: number; // Initial lower-air stability: 0 neutral, 1 stable
+  convectionStrength: number; // Live buoyancy response at the illustrative scene scale
   windSpeed: number; // Horizontal wind forcing, simulation units per second
   windDirection: number; // Direction of travel in the horizontal plane, degrees
   solarHeating: number; // Relative solar heating strength
+  heatingContrast: number; // Redistribute solar heating toward responsive surfaces, 1..10, same total energy
   sunElevation: number; // Sun angle above horizon, degrees
   sunAzimuth: number; // Sun direction in terrain coordinates, degrees
   radiativeCooling: number; // Longwave heat loss multiplier
@@ -131,9 +134,12 @@ export const config: Config = {
   emergentWeather: true,
   airTemperature: 8,
   relativeHumidity: 0.75,
+  airStability: 0.125,
+  convectionStrength: 4,
   windSpeed: 0,
   windDirection: 45,
   solarHeating: 1,
+  heatingContrast: 3,
   sunElevation: 40,
   sunAzimuth: 135,
   radiativeCooling: 1,

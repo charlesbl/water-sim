@@ -132,13 +132,13 @@ fn fs_volume(input: VolumeVertex) -> @location(0) vec4<f32> {
         if (t >= end || transmittance < 0.025) { break; }
         let p = origin + direction * t;
         let cell = sample_air(p);
-        let density = max(0.0, cell.moisture.y - 0.000015) * 155.0;
-        if (density > 0.0001) {
-            let alpha = 1.0 - exp(-density * step_length * 0.22);
+        let extinction = cloudExtinction(cell.moisture.y);
+        if (extinction > 0.0) {
+            let alpha = 1.0 - exp(-extinction * step_length);
             // Height and condensate approximate ambient light penetration;
             // geometry and opacity come exclusively from the simulated volume.
             let light = 0.56 + 0.40 * clamp(p.z / uniforms.grid_height.w, 0.0, 1.0);
-            let cloud_color = mix(vec3<f32>(0.45, 0.53, 0.64), vec3<f32>(1.0, 0.98, 0.94), light / (1.0 + density * 0.13));
+            let cloud_color = mix(vec3<f32>(0.45, 0.53, 0.64), vec3<f32>(1.0, 0.98, 0.94), light / (1.0 + extinction * 0.6));
             color += transmittance * alpha * cloud_color;
             transmittance *= 1.0 - alpha;
         }

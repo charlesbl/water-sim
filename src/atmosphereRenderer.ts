@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { AtmosphereSimulation } from './atmosphere';
 import { config } from './config';
 import atmosphereRenderWGSL from './shaders/renderAtmosphere.wgsl?raw';
+import cloudPhysicsWGSL from './shaders/cloudPhysics.wgsl?raw';
 
 /** Draw the simulated XYZ air volume, diagnostic slices and GPU precipitation. */
 export class AtmosphereRenderer {
@@ -21,7 +22,7 @@ export class AtmosphereRenderer {
   async init(): Promise<void> {
     const module = this.device.createShaderModule({
       label: 'Atmosphere volume and precipitation',
-      code: atmosphereRenderWGSL,
+      code: cloudPhysicsWGSL + '\n' + atmosphereRenderWGSL,
     });
     const compilation = await module.getCompilationInfo();
     const errors = compilation.messages.filter((message) => message.type === 'error');

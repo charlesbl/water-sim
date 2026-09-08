@@ -1,9 +1,12 @@
 import { config } from '../src/config.ts';
-import { AtmosphereSimulation } from '../src/atmosphere.ts';
+import { AtmosphereSimulation, ATMOSPHERE_DIMENSIONS } from '../src/atmosphere.ts';
 import { GPGPUSimulation } from '../src/webgpuRenderer.ts';
 import * as THREE from 'three';
 
 const results = [];
+const [atmoX, atmoY, atmoZ] = ATMOSPHERE_DIMENSIONS;
+const highTestLayer = Math.floor((20 * atmoZ) / 32);
+const seededLayer = Math.floor((8 * atmoZ) / 32);
 const report = document.getElementById('results');
 const check = (name, condition, detail = '') => {
   results.push({ name, passed: !!condition, detail });
@@ -70,23 +73,26 @@ async function run() {
     await device.queue.onSubmittedWorkDone();
   };
   step(0);
+  const coldInitial = await read(atmosphere.volumeBuffer);
+  check(
+    'Cold air starts without a seeded temperature pattern',
+    coldInitial.every(
+      (v, i) => i % 8 !== 3 || v === coldInitial[Math.floor(i / (atmoX * atmoY * 8)) * atmoX * atmoY * 8 + 3]
+    )
+  );
   await tick(60);
   const coldVolume = await read(atmosphere.volumeBuffer);
   const coldSurface = await read(atmosphere.surfaceBuffer);
   const coldFluids = await read(fluids);
-  check('Three-dimensional volume allocated', coldVolume.length === 48 * 48 * 32 * 8);
+  check('Three-dimensional volume allocated', coldVolume.length === atmoX * atmoY * atmoZ * 8);
   check('All atmosphere values finite', coldVolume.every(Number.isFinite));
   check(
     'Air temperature varies vertically',
-    Math.abs(coldVolume[3] - coldVolume[48 * 48 * 20 * 8 + 3]) > 0.1
+    Math.abs(coldVolume[3] - coldVolume[atmoX * atmoY * highTestLayer * 8 + 3]) > 0.1
   );
   check(
     'Water freezes below zero',
     sum(coldSurface, 4, 1) > 0 && sum(coldFluids, 4, 0) < size * size * 0.05
-  );
-  check(
-    'Vertical wind develops',
-    coldVolume.some((v, i) => i % 8 === 2 && Math.abs(v) > 0.001)
   );
   check('Clouds condense in humid air', sum(coldVolume, 8, 5) > 0);
   const frozenTime = atmosphere.simulationTime;
@@ -129,7 +135,7 @@ async function run() {
   // Seed condensate in an elevated slab. Advection/sedimentation must move it in z.
   const volumeSeed = await read(atmosphere.volumeBuffer);
   for (let i = 0; i < volumeSeed.length; i += 8) {
-    const z = Math.floor(i / 8 / (48 * 48));
+    const z = Math.floor(i / 8 / (atmoX * atmoY));
     volumeSeed[i] = 0;
     volumeSeed[i + 1] = 0;
     volumeSeed[i + 2] = 0;
@@ -137,7 +143,7 @@ async function run() {
     volumeSeed[i + 4] = 0;
     volumeSeed[i + 5] = 0;
     volumeSeed[i + 6] = 0;
-    volumeSeed[i + 7] = z === 8 ? 0.01 : 0;
+    volumeSeed[i + 7] = z === seededLayer ? 0.01 : 0;
   }
   Object.assign(config, {
     airTemperature: -12,
@@ -149,7 +155,7 @@ async function run() {
   await tick(15);
   const transported = await read(atmosphere.volumeBuffer);
   let belowSlab = 0;
-  for (let i = 7; i < 48 * 48 * 8 * 8; i += 8) belowSlab += transported[i];
+  for (let i = 7; i < atmoX * atmoY * seededLayer * 8; i += 8) belowSlab += transported[i];
   check('Snow transports between vertical layers', belowSlab > 0);
   check(
     'Moisture stays finite and nonnegative',
@@ -178,6 +184,10 @@ async function run() {
   step(0);
   const initialAir = await read(atmosphere.volumeBuffer);
   const initialSurface = await read(atmosphere.surfaceBuffer);
+  // Break symmetry through a real local surface heat source, not seeded air noise.
+  for (let y = 32; y < 64; y++)
+    for (let x = 32; x < 64; x++) initialSurface[(y * size + x) * 4 + 2] += 6;
+  device.queue.writeBuffer(atmosphere.surfaceBuffer, 0, initialSurface);
   const initialWater = await read(fluids);
   check(
     'Emergent air starts at rest',
@@ -193,6 +203,7 @@ async function run() {
     relativeHumidity: 1.4,
     windSpeed: 30,
     windDirection: 270,
+    airStability: 1,
   });
   await tick(1);
   const changedSlidersAir = await read(atmosphere.volumeBuffer);
@@ -200,7 +211,7 @@ async function run() {
   for (let i = 0; i < baselineAir.length; i++)
     maxDifference = Math.max(maxDifference, Math.abs(baselineAir[i] - changedSlidersAir[i]));
   check(
-    'Emergent evolution ignores imposed temperature, humidity and wind',
+    'Emergent evolution ignores initial temperature, humidity, stability and wind sliders',
     maxDifference < 0.000001,
     String(maxDifference)
   );
@@ -281,10 +292,10 @@ async function run() {
   let depositionEncoder = depositionDevice.createCommandEncoder();
   depositionSim.step(depositionEncoder, depositionTerrain, depositionFluid, 0);
   depositionDevice.queue.submit([depositionEncoder.finish()]);
-  const snowSeed = new Float32Array(48 * 48 * 32 * 8);
+  const snowSeed = new Float32Array(atmoX * atmoY * atmoZ * 8);
   for (let i = 0; i < snowSeed.length; i += 8) {
     snowSeed[i + 3] = -12;
-    if (i < 48 * 48 * 8) snowSeed[i + 7] = (i / 8) % 2 === 0 ? 0.016 : 0.004;
+    if (i < atmoX * atmoY * 8) snowSeed[i + 7] = (i / 8) % 2 === 0 ? 0.016 : 0.004;
   }
   depositionDevice.queue.writeBuffer(depositionSim.volumeBuffer, 0, snowSeed);
   depositionEncoder = depositionDevice.createCommandEncoder();
@@ -305,7 +316,7 @@ async function run() {
   const deposited = new Float32Array(depositedReadback.getMappedRange().slice(0));
   depositedReadback.unmap();
   const expectedSnow =
-    (((sum(snowSeed, 8, 7) * (2.5 / 30)) / config.heightScale) * fine * fine) / (48 * 48);
+    (((sum(snowSeed, 8, 7) * (2.5 / 30)) / config.heightScale) * fine * fine) / (atmoX * atmoY);
   const actualSnow = sum(deposited, 4, 0);
   check(
     'Smooth deposition conserves snow on a non-divisible grid',
@@ -321,7 +332,7 @@ async function run() {
   for (let x = 1; x < fine; x++) {
     const jump = Math.abs(profile[x] - profile[x - 1]);
     allJumps += jump;
-    if (Math.floor((x * 48) / fine) !== Math.floor(((x - 1) * 48) / fine)) {
+    if (Math.floor((x * atmoX) / fine) !== Math.floor(((x - 1) * atmoX) / fine)) {
       seamJumps += jump;
       seamCount++;
     }

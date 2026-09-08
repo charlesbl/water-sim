@@ -2,6 +2,7 @@ struct Uniforms {
     inverse: mat4x4<f32>,
     settings: vec4<f32>, // surface size, height scale, air offset, opacity
     mode: vec4<f32>, // air mode, reserved
+    grid: vec4<f32>, // atmospheric nx, ny, nz, reserved
 };
 struct Air { velocity: vec4<f32>, moisture: vec4<f32> };
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -39,24 +40,29 @@ fn surface_at(xy: vec2<f32>) -> vec2<f32> {
     return value;
 }
 // Ignore buried cells. Near ground, use the first valid air layer; never invent
-// fine atmospheric detail below the simulation's 3.125-unit vertical spacing.
+// fine atmospheric detail below the simulation's vertical spacing.
 fn air_at(xy: vec2<f32>, height: f32) -> vec2<f32> {
-    if (height > 98.4375) { return vec2<f32>(0.0); }
-    let grid = (xy+100.0)/200.0*48.0-0.5;
+    let nx = i32(u.grid.x);
+    let ny = i32(u.grid.y);
+    let nz = i32(u.grid.z);
+    let layerSize = nx * ny;
+    let dz = u.grid.w / u.grid.z;
+    if (height > u.grid.w - 0.5 * dz) { return vec2<f32>(0.0); }
+    let grid = (xy+100.0)/200.0*u.grid.xy-vec2<f32>(0.5);
     let base = vec2<i32>(floor(grid));
     let f = fract(grid);
     var total = 0.0;
     var weights = 0.0;
     for (var y=0; y<2; y++) {
         for (var x=0; x<2; x++) {
-            let c = clamp(base+vec2<i32>(x,y),vec2<i32>(0),vec2<i32>(47));
-            let ci = c.x+c.y*48;
-            let first = max(0,i32(floor(columns[ci].x/3.125-0.5))+1);
-            if (first >= 32) { continue; }
-            let z = clamp(height/3.125-0.5,f32(first),31.0);
+            let c = clamp(base+vec2<i32>(x,y),vec2<i32>(0),vec2<i32>(nx-1,ny-1));
+            let ci = c.x+c.y*nx;
+            let first = max(0,i32(floor(columns[ci].x/dz-0.5))+1);
+            if (first >= nz) { continue; }
+            let z = clamp(height/dz-0.5,f32(first),f32(nz-1));
             let lo = i32(floor(z));
-            let hi = min(lo+1,31);
-            let t = mix(air[ci+lo*2304].velocity.w,air[ci+hi*2304].velocity.w,fract(z));
+            let hi = min(lo+1,nz-1);
+            let t = mix(air[ci+lo*layerSize].velocity.w,air[ci+hi*layerSize].velocity.w,fract(z));
             let w = select(1.0-f.x,f.x,x==1)*select(1.0-f.y,f.y,y==1);
             total += t*w;
             weights += w;

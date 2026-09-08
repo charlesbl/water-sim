@@ -55,13 +55,13 @@
                 <input
                   type="range"
                   id="thermal-height"
-                  min="3.125"
+                  min="1.5625"
                   max="25"
-                  step="3.125"
+                  step="1.5625"
                   value="6.25"
                 />
                 <p class="thermal-help">
-                  Height follows the landscape. Air is interpolated on a coarser grid (3.125 u per
+                  Height follows the landscape. Air is interpolated on a coarser grid (1.5625 u per
                   layer); near ground, the first available air layer is used.
                 </p>
               </div>
@@ -195,6 +195,32 @@
               </div>
               <input type="range" id="wind-direction" min="0" max="360" value="45" step="5" />
             </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="air-stability">Initial lower-air stability</label>
+                <span id="air-stability-val" class="value-display">12.5%</span>
+              </div>
+              <input
+                type="range"
+                id="air-stability"
+                min="0"
+                max="100"
+                value="12.5"
+                step="0.5"
+                aria-describedby="air-stability-help"
+              />
+              <p
+                id="air-stability-help"
+                style="
+                  font-size: 11px;
+                  line-height: 1.5;
+                  color: var(--text-secondary);
+                  margin: 5px 0 0;
+                "
+              >
+                0%: easy to lift · 100%: resists lifting. Starts with a more stable upper layer.
+              </p>
+            </div>
             <div class="btn-row" id="restart-air-group" style="margin-bottom: 14px">
               <button id="btn-weather-restart-air" type="button" class="btn-action">
                 Restart air from these values
@@ -202,10 +228,63 @@
             </div>
             <div class="control-group">
               <div class="label-row">
+                <label for="convection-strength">Convection response</label>
+                <span id="convection-strength-val" class="value-display">4.0×</span>
+              </div>
+              <input
+                type="range"
+                id="convection-strength"
+                min="0"
+                max="8"
+                value="4"
+                step="0.5"
+                aria-describedby="convection-strength-help"
+              />
+              <p
+                id="convection-strength-help"
+                style="
+                  font-size: 11px;
+                  line-height: 1.5;
+                  color: var(--text-secondary);
+                  margin: 5px 0 0;
+                "
+              >
+                How strongly air accelerates from heat and moisture differences. Applies live.
+              </p>
+            </div>
+            <div class="control-group">
+              <div class="label-row">
                 <label for="solar-heating">Solar heating</label>
                 <span id="solar-heating-val" class="value-display">1.0×</span>
               </div>
               <input type="range" id="solar-heating" min="0" max="3" value="1" step="0.1" />
+            </div>
+            <div class="control-group">
+              <div class="label-row">
+                <label for="heating-contrast">Surface heating contrast</label>
+                <span id="heating-contrast-val" class="value-display">3.0×</span>
+              </div>
+              <input
+                type="range"
+                id="heating-contrast"
+                min="1"
+                max="10"
+                value="3"
+                step="0.5"
+                aria-describedby="heating-contrast-help"
+              />
+              <p
+                id="heating-contrast-help"
+                style="
+                  font-size: 11px;
+                  line-height: 1.5;
+                  color: var(--text-secondary);
+                  margin: 5px 0 0;
+                "
+              >
+                Concentrates heating on responsive, sunlit surfaces while keeping the same total
+                solar energy. Applies live.
+              </p>
             </div>
             <div class="control-group">
               <div class="label-row">
@@ -290,7 +369,7 @@
               aria-live="polite"
               style="line-height: 1.5; margin-top: 10px; letter-spacing: 0; text-transform: none"
             >
-              48 × 48 × 32 cells · live GPU weather
+              96 × 96 × 64 cells · live GPU weather
             </p>
           </div>
         </div>

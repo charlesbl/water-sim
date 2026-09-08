@@ -204,7 +204,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             } else if (uniforms.brush_type == 6.0) { // Add bottom ice at -5 C
                 var frozen = weather_surface[idx];
                 let added = amount * 1.5; // Water-equivalent depth, like the water brush.
-                let capacity = 1.0 + water * 8.0 + frozen.y * 5.0 + frozen.x * 2.0;
+                let capacity = materialHeatCapacity(cell_a.sand, water, frozen.y, frozen.x);
                 frozen.y += added;
                 frozen.z = (capacity * frozen.z - added * 5.0 * 5.0) / (capacity + added * 5.0);
                 weather_surface[idx] = frozen;
@@ -212,7 +212,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                 // Supply/remove sensible energy; normal weather steps perform
                 // phase changes. Deep water responds more slowly than dry land.
                 let frozen = weather_surface[idx];
-                let capacity = 1.0 + water * 8.0 + frozen.y * 5.0 + frozen.x * 2.0;
+                let capacity = materialHeatCapacity(cell_a.sand, water, frozen.y, frozen.x);
                 let direction = select(-1.0, 1.0, uniforms.brush_type == 7.0);
                 weather_surface[idx].z = clamp(frozen.z + direction * amount * 8.0 / capacity, -70.0, 90.0);
             }
@@ -239,11 +239,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     // Match surfaceExchange's heat capacity and fusion energy accounting.
     if ((uniforms.paused < 0.5 || uniforms.brush_active > 0.5) && water > 0.0 && weather_surface[idx].x > 0.0) {
         var frozen = weather_surface[idx];
-        let capacity = 1.0 + water * 8.0 + frozen.y * 5.0 + frozen.x * 2.0;
+        let capacity = materialHeatCapacity(cell_a.sand, water, frozen.y, frozen.x);
         let energy = capacity * frozen.z - 80.0 * frozen.x;
         water += frozen.x;
         frozen.x = 0.0;
-        frozen.z = energy / (1.0 + water * 8.0 + frozen.y * 5.0);
+        frozen.z = energy / materialHeatCapacity(cell_a.sand, water, frozen.y, frozen.x);
         weather_surface[idx] = frozen;
     }
 
