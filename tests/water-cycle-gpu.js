@@ -1,3 +1,4 @@
+import { terrainFixture } from './terrain-fixture.js';
 import { config } from '../src/config.ts';
 import { AtmosphereSimulation, ATMOSPHERE_DIMENSIONS } from '../src/atmosphere.ts';
 import { GPGPUSimulation } from '../src/webgpuRenderer.ts';
@@ -65,7 +66,7 @@ async function run() {
       size,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
-  const terrain = make(n * n * 16),
+  const terrain = make(n * n * 24),
     fluid = make(n * n * 16);
   const state = new Float32Array(n * n * 4),
     ground = new Float32Array(state.length);
@@ -75,7 +76,7 @@ async function run() {
       ground[i] = 0.05 + 0.12 * Math.sin((x / n) * Math.PI * 2) ** 2;
       state[i] = 0.12 + 0.12 * Math.cos((y / n) * Math.PI * 2) ** 2;
     }
-  device.queue.writeBuffer(terrain, 0, ground);
+  device.queue.writeBuffer(terrain, 0, terrainFixture(ground));
   device.queue.writeBuffer(fluid, 0, state);
   Object.assign(config, {
     closedWaterCycle: true,
@@ -164,8 +165,10 @@ async function run() {
       for (let x = 0; x < atmoX; x++) {
         const i = ((z * atmoY + y) * atmoX + x) * 8;
         if (x === atmoX - 1) maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i]));
-        if (y === atmoY - 1) maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i + 1]));
-        if (z === atmoZ - 1) maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i + 2]));
+        if (y === atmoY - 1)
+          maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i + 1]));
+        if (z === atmoZ - 1)
+          maxBoundarySpeed = Math.max(maxBoundarySpeed, Math.abs(wallAir[i + 2]));
       }
   check(
     'Air cannot cross closed side walls or ceiling',
@@ -225,7 +228,7 @@ async function run() {
   const beforeObstruction = await snapshot();
   const elevated = new Float32Array(ground);
   for (let i = 0; i < elevated.length; i += 4) elevated[i] = 7;
-  device.queue.writeBuffer(terrain, 0, elevated);
+  device.queue.writeBuffer(terrain, 0, terrainFixture(elevated));
   await tick(2);
   const obstructed = await snapshot();
   check(
@@ -245,7 +248,7 @@ async function run() {
       stillWaiting.steam > 0,
     JSON.stringify(stillWaiting)
   );
-  device.queue.writeBuffer(terrain, 0, ground);
+  device.queue.writeBuffer(terrain, 0, terrainFixture(ground));
   await tick(3);
   const released = await snapshot();
   check(
@@ -285,6 +288,7 @@ async function run() {
     terrainType: 1,
     flatRockHeight: 0.05,
     terrainSandHeight: 0,
+    terrainSoilHeight: 0,
     renderResolution: 0.25,
     evaporation: 0.001,
     rainActive: true,

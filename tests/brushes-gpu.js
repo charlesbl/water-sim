@@ -40,6 +40,7 @@ async function run() {
     terrainType: 1,
     flatRockHeight: 0,
     terrainSandHeight: 0,
+    terrainSoilHeight: 0,
     erosionRate: 0,
   });
   const n = 96,

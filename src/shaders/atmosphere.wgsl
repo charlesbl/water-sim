@@ -1,3 +1,12 @@
+struct TerrainCell {
+    rock: f32,
+    sand: f32,
+    suspended_sand: f32,
+    avalanche: f32, // Packed independent flags: sand = 1, soil = 2.
+    soil: f32,
+    suspended_soil: f32,
+};
+
 struct AtmosphereCell {
     // Velocity on the three positive faces; temperature at the cell center.
     velocityTemperature: vec4<f32>,
@@ -21,7 +30,7 @@ struct WeatherUniforms {
 @group(0) @binding(2) var<storage, read_write> volumeOut: array<AtmosphereCell>;
 // Highest surface elevation, mean temperature, mean evaporation, represented area ratio.
 @group(0) @binding(3) var<storage, read_write> columns: array<vec4<f32>>;
-@group(0) @binding(4) var<storage, read> terrain: array<vec4<f32>>;
+@group(0) @binding(4) var<storage, read> terrain: array<TerrainCell>;
 @group(0) @binding(5) var<storage, read_write> fluids: array<vec4<f32>>;
 // Snow SWE, ice SWE, temperature C, evaporated water awaiting available air.
 @group(0) @binding(6) var<storage, read_write> surface: array<vec4<f32>>;
@@ -232,7 +241,7 @@ fn initializeSurface(@builtin(global_invocation_id) id: vec3<u32>) {
     let n = u32(u.grid.w);
     if (id.x >= n || id.y >= n) { return; }
     let i = id.y * n + id.x;
-    let height = (terrain[i].x + terrain[i].y) * u.environment.y;
+    let height = (terrain[i].rock + terrain[i].soil + terrain[i].sand) * u.environment.y;
     surface[i] = vec4<f32>(0.0, 0.0, ambientTemperature(height), 0.0);
 }
 
@@ -252,7 +261,7 @@ fn reduceColumns(@builtin(global_invocation_id) id: vec3<u32>) {
         for (var x = start.x; x < end.x; x++) {
             let i = y * fine + x;
             let cover = surface[i];
-            let height = max(0.0, terrain[i].x + terrain[i].y + max(fluids[i].x, 0.0) + max(fluids[i].y, 0.0) + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
+            let height = max(0.0, terrain[i].rock + terrain[i].soil + terrain[i].sand + max(fluids[i].x, 0.0) + max(fluids[i].y, 0.0) + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
             highest = max(highest, height);
             totals += vec2<f32>(cover.z, max(cover.w, 0.0));
             count += 1.0;
@@ -619,11 +628,11 @@ fn terrainElevation(p: vec2<i32>) -> f32 {
     let n = i32(u.grid.w);
     let q = clamp(p, vec2<i32>(0), vec2<i32>(n - 1));
     let cell = terrain[u32(q.y * n + q.x)];
-    return (cell.x + cell.y) * u.environment.y;
+    return (cell.rock + cell.soil + cell.sand) * u.environment.y;
 }
 
 fn surfaceHeatCapacity(i: u32, liquid: f32, ice: f32, snow: f32) -> f32 {
-    return materialHeatCapacity(terrain[i].y, liquid, ice, snow);
+    return materialHeatCapacity(terrain[i].sand, terrain[i].soil, liquid, ice, snow);
 }
 
 // Return raw absorption and its contrast weight. The score is the local warming
@@ -633,7 +642,7 @@ fn solarWeights(pos: vec2<i32>) -> vec2<f32> {
     let i = u32(pos.y) * u32(u.grid.w) + u32(pos.x);
     let cover = surface[i];
     let liquid = max(fluids[i].x, 0.0);
-    let albedo = materialAlbedo(terrain[i].y, liquid, cover.y, cover.x);
+    let albedo = materialAlbedo(terrain[i].sand, terrain[i].soil, liquid, cover.y, cover.x);
     let normal = normalize(vec3<f32>(
         terrainElevation(pos - vec2<i32>(1, 0)) - terrainElevation(pos + vec2<i32>(1, 0)),
         terrainElevation(pos - vec2<i32>(0, 1)) - terrainElevation(pos + vec2<i32>(0, 1)), 400.0 / u.grid.w));
@@ -720,7 +729,7 @@ fn exchangeHeat(@builtin(global_invocation_id) id: vec3<u32>) {
     let i = id.y * fine + id.x;
     let cover = surface[i];
     let liquid = max(fluids[i].x, 0.0);
-    let height = max(0.0, terrain[i].x + terrain[i].y + liquid + max(fluids[i].y, 0.0)
+    let height = max(0.0, terrain[i].rock + terrain[i].soil + terrain[i].sand + liquid + max(fluids[i].y, 0.0)
         + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
     let capacity = surfaceHeatCapacity(i, liquid, cover.y, cover.x);
     let insulation = 1.0 + cover.x * 5.0 * u.environment.y * 5.0;
@@ -875,7 +884,7 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
     let absorbedSolar = u.environment.x * solarWeights(vec2<i32>(id.xy)).y * radiationBudget[0].x;
     var cover = surface[i];
     var liquid = fluids[i];
-    let height = (terrain[i].x + terrain[i].y + max(liquid.x, 0.0) + max(liquid.y, 0.0) + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
+    let height = (terrain[i].rock + terrain[i].soil + terrain[i].sand + max(liquid.x, 0.0) + max(liquid.y, 0.0) + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
     let sampleXY = (vec2<f32>(id.xy) + vec2<f32>(0.5)) * u.grid.xy / u.grid.w - vec2<f32>(0.5);
     // Use the same pre-phase surface emission gathered for the air budget.
     let netLongwave = surfaceDownwardLongwave(sampleXY) - longwaveEmission(cover.z);

@@ -1,3 +1,12 @@
+struct TerrainCell {
+    rock: f32,
+    sand: f32,
+    suspended_sand: f32,
+    avalanche: f32, // Packed independent flags: sand = 1, soil = 2.
+    soil: f32,
+    suspended_soil: f32,
+};
+
 struct Uniforms {
     inverse: mat4x4<f32>,
     settings: vec4<f32>, // surface size, height scale, air offset, opacity
@@ -10,7 +19,7 @@ struct Air { velocity: vec4<f32>, moisture: vec4<f32> };
 @group(0) @binding(2) var<storage, read> surface: array<vec4<f32>>;
 @group(0) @binding(3) var<storage, read> air: array<Air>;
 @group(0) @binding(4) var<storage, read> columns: array<vec4<f32>>;
-@group(0) @binding(5) var<storage, read> terrain: array<vec4<f32>>;
+@group(0) @binding(5) var<storage, read> terrain: array<TerrainCell>;
 @group(0) @binding(6) var<storage, read> fluids: array<vec4<f32>>;
 fn position(pixel: vec2<i32>) -> vec4<f32> {
     let size = vec2<i32>(textureDimensions(depth));
@@ -32,7 +41,7 @@ fn surface_at(xy: vec2<f32>) -> vec2<f32> {
             let c = clamp(base + vec2<i32>(x,y), vec2<i32>(0), vec2<i32>(i32(u.settings.x)-1));
             let i = c.y * i32(u.settings.x) + c.x;
             let s = surface[i];
-            let height = (terrain[i].x + terrain[i].y + max(fluids[i].x,0.0) + max(fluids[i].y,0.0) + max(s.x,0.0)*5.0 + max(s.y,0.0)/0.917) * u.settings.y;
+            let height = (terrain[i].rock + terrain[i].soil + terrain[i].sand + max(fluids[i].x,0.0) + max(fluids[i].y,0.0) + max(s.x,0.0)*5.0 + max(s.y,0.0)/0.917) * u.settings.y;
             let w = select(1.0-f.x,f.x,x==1) * select(1.0-f.y,f.y,y==1);
             value += vec2<f32>(s.z,height)*w;
         }

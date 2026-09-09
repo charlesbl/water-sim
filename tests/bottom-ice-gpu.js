@@ -1,3 +1,4 @@
+import { terrainFixture } from './terrain-fixture.js';
 import { config } from '../src/config.ts';
 import { AtmosphereSimulation, ATMOSPHERE_DIMENSIONS } from '../src/atmosphere.ts';
 import { GPGPUSimulation } from '../src/webgpuRenderer.ts';
@@ -54,13 +55,13 @@ async function run() {
   const terrainData = new Float32Array(n * n * 4);
   const fluidData = new Float32Array(terrainData.length);
   const surfaceData = new Float32Array(terrainData.length);
-  const make = (label) =>
+  const make = (label, bytes = terrainData.byteLength) =>
     device.createBuffer({
       label,
-      size: terrainData.byteLength,
+      size: bytes,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
-  const terrain = make('Bottom ice regression terrain');
+  const terrain = make('Bottom ice regression terrain', n * n * 24);
   const fluids = make('Bottom ice regression liquid');
   Object.assign(config, {
     atmosphereEnabled: true,
@@ -76,7 +77,7 @@ async function run() {
     heightScale: 18,
   });
   for (let i = 0; i < terrainData.length; i += 4) terrainData[i] = 0.05;
-  device.queue.writeBuffer(terrain, 0, terrainData);
+  device.queue.writeBuffer(terrain, 0, terrainFixture(terrainData));
   const sim = new AtmosphereSimulation(device, n);
   await sim.init();
   const step = (dt = 0.1) => {
@@ -284,6 +285,7 @@ async function run() {
     terrainType: 1,
     flatRockHeight: 0.1,
     terrainSandHeight: 0,
+    terrainSoilHeight: 0,
     renderResolution: 0.5,
     evaporation: 0,
     rainActive: false,
@@ -306,8 +308,8 @@ async function run() {
   const engineSurface = new Float32Array(engineFluid.length);
   const engineTerrain = new Float32Array(engineFluid.length);
   const upload = () => {
-    engine.device.queue.writeBuffer(engine.terrainBufferA, 0, engineTerrain);
-    engine.device.queue.writeBuffer(engine.terrainBufferB, 0, engineTerrain);
+    engine.device.queue.writeBuffer(engine.terrainBufferA, 0, terrainFixture(engineTerrain));
+    engine.device.queue.writeBuffer(engine.terrainBufferB, 0, terrainFixture(engineTerrain));
     engine.device.queue.writeBuffer(engine.fluidsBufferA, 0, engineFluid);
     engine.device.queue.writeBuffer(engine.fluidsBufferB, 0, engineFluid);
     engine.device.queue.writeBuffer(engine.atmosphere.surfaceBuffer, 0, engineSurface);
@@ -364,7 +366,7 @@ async function run() {
           engine.device,
           engine.pingPongToggle ? engine.terrainBufferB : engine.terrainBufferA
         ),
-        engineTerrain
+        terrainFixture(engineTerrain)
       ) === 0
   );
 

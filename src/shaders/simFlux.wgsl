@@ -2,7 +2,9 @@ struct TerrainCell {
     rock: f32,
     sand: f32,
     suspended_sand: f32,
-    avalanche: f32,
+    avalanche: f32, // Packed independent flags: sand = 1, soil = 2.
+    soil: f32,
+    suspended_soil: f32,
 };
 
 struct FluidCell {
@@ -25,7 +27,7 @@ struct SimUniforms {
     water_damping: f32,
     lava_gravity: f32,
     lava_damping: f32,
-    sand_slide_rate: f32,
+    sediment_slide_rate: f32,
     sand_static_repose_slope: f32,
     sand_dynamic_repose_slope: f32,
     erosion_rate: f32,
@@ -56,6 +58,10 @@ struct SimUniforms {
     fbm_octaves: f32,
     fbm_persistence: f32,
     min_water_depth: f32,
+    soil_static_repose_slope: f32,
+    soil_dynamic_repose_slope: f32,
+    terrain_soil_height: f32,
+    padding_0: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms : SimUniforms;
@@ -75,11 +81,11 @@ fn get_cell_solid_fluid(x: u32, y: u32, grid_size: u32, is_lava: bool) -> vec2<f
     let frozen = max(weather_surface[idx].xy, vec2<f32>(0.0));
     let frozen_height = frozen.x * 5.0 + frozen.y / 0.917;
     if (is_lava) {
-        let solid = cell_a.rock + cell_a.sand + frozen_height;
+        let solid = cell_a.rock + cell_a.soil + cell_a.sand + frozen_height;
         let fluid = cell_b.lava;
         return vec2<f32>(solid, fluid);
     } else {
-        let solid = cell_a.rock + cell_a.sand + cell_b.lava + frozen_height;
+        let solid = cell_a.rock + cell_a.soil + cell_a.sand + cell_b.lava + frozen_height;
         let fluid = cell_b.water;
         return vec2<f32>(solid, fluid);
     }

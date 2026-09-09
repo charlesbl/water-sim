@@ -2,7 +2,9 @@ struct TerrainCell {
     rock: f32,
     sand: f32,
     suspended_sand: f32,
-    avalanche: f32,
+    avalanche: f32, // Packed independent flags: sand = 1, soil = 2.
+    soil: f32,
+    suspended_soil: f32,
 };
 
 struct FluidCell {
@@ -36,7 +38,7 @@ struct RenderUniforms {
     smooth_rendering: f32,
     border_behavior: f32,
     border_water_height: f32,
-    padding_0: f32,
+    show_soil: f32,
     padding_1: f32,
     padding_2: f32,
 };
@@ -65,6 +67,8 @@ struct VertexOutput {
     @location(7) temp: f32,
     @location(8) steam: f32,
     @location(9) snow_ice: vec2<f32>,
+    @location(10) soil: f32,
+    @location(11) suspended_soil: f32,
 };
 
 // --- HEIGHT RETRIEVAL HELPERS ---
@@ -89,7 +93,7 @@ fn get_cell_ground_height(x: i32, y: i32, grid_size: i32) -> f32 {
     let cy = clamp(y, 0, grid_size - 1);
     let idx = cy * grid_size + cx;
     // Ice is a fixed bed beneath the remaining water, just like solid terrain.
-    return terrain_in[idx].rock + terrain_in[idx].sand + frozen_depth(idx);
+    return terrain_in[idx].rock + terrain_in[idx].soil + terrain_in[idx].sand + frozen_depth(idx);
 }
 
 fn get_ground_height_smooth(uv: vec2<f32>, grid_size: i32) -> f32 {
@@ -111,7 +115,7 @@ fn get_cell_total_height(x: i32, y: i32, grid_size: i32) -> f32 {
     let cx = clamp(x, 0, grid_size - 1);
     let cy = clamp(y, 0, grid_size - 1);
     let idx = cy * grid_size + cx;
-    return terrain_in[idx].rock + terrain_in[idx].sand + fluids_in[idx].water + fluids_in[idx].lava + frozen_depth(idx);
+    return terrain_in[idx].rock + terrain_in[idx].soil + terrain_in[idx].sand + fluids_in[idx].water + fluids_in[idx].lava + frozen_depth(idx);
 }
 
 fn get_total_height_smooth(uv: vec2<f32>, grid_size: i32) -> f32 {
@@ -145,6 +149,8 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 
     output.rock = cell_a.rock;
     output.sand = cell_a.sand;
+    output.soil = cell_a.soil;
+    output.suspended_soil = cell_a.suspended_soil;
     output.suspended_sand = cell_a.suspended_sand;
     output.water = cell_b.water;
     output.lava = cell_b.lava;
@@ -191,6 +197,101 @@ fn noise2D(p: vec2<f32>) -> f32 {
     let u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash2D(i + vec2<f32>(0.0, 0.0)), hash2D(i + vec2<f32>(1.0, 0.0)), u.x),
                mix(hash2D(i + vec2<f32>(0.0, 1.0)), hash2D(i + vec2<f32>(1.0, 1.0)), u.x), u.y);
+}
+
+// Static crystal cells in terrain space. The two nearest seeds define an
+// angular fracture; retaining their separation gives a consistent line width.
+fn ice_fracture(p: vec2<f32>) -> vec3<f32> {
+    let cell = floor(p);
+    let local = fract(p);
+    var nearest = vec2<f32>(0.0);
+    var runner_up = vec2<f32>(0.0);
+    var distances = vec2<f32>(100.0);
+    var crystal = 0.0;
+    var runner_up_crystal = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let offset = vec2<f32>(f32(x), f32(y));
+            let seed = vec2<f32>(hash2D(cell + offset), hash2D(cell + offset + vec2<f32>(19.7, 8.3)));
+            let delta = offset + seed - local;
+            let distance_sq = dot(delta, delta);
+            if (distance_sq < distances.x) {
+                distances.y = distances.x;
+                runner_up = nearest;
+                runner_up_crystal = crystal;
+                distances.x = distance_sq;
+                nearest = delta;
+                crystal = seed.x;
+            } else if (distance_sq < distances.y) {
+                distances.y = distance_sq;
+                runner_up = delta;
+                runner_up_crystal = seed.x;
+            }
+        }
+    }
+    let edge = (distances.y - distances.x) / max(2.0 * length(runner_up - nearest), 0.001);
+    // Both sides of a shared edge use the same strength. Only some crystal
+    // boundaries fracture visibly, avoiding a regular, tiled appearance.
+    let edge_seed = vec2<f32>(min(crystal, runner_up_crystal), max(crystal, runner_up_crystal));
+    return vec3<f32>(edge, crystal, hash2D(edge_seed * 71.3));
+}
+
+fn ice_line(distance: f32, width: f32, footprint: f32) -> f32 {
+    let aa = max(footprint, 0.0005);
+    // Fade subpixel lines instead of turning them into bright, flickering dots.
+    return (1.0 - smoothstep(max(0.0, width - aa), width + aa, distance)) * min(1.0, width / aa);
+}
+
+fn shade_ice(input: VertexOutput, normal: vec3<f32>, view_dir: vec3<f32>, ground_lit: vec3<f32>, footprint: f32) -> vec3<f32> {
+    let p = input.pos.xy;
+    let thickness = input.snow_ice.y / 0.917;
+    let mature = 1.0 - exp(-thickness * 16.0);
+    let exposed = 1.0 - smoothstep(0.001, 0.035, input.water);
+
+    let cloudiness = noise2D(p * 0.065 + vec2<f32>(7.1, 12.8));
+    let grain_visibility = 1.0 - smoothstep(0.15, 0.8, footprint);
+    let grain = (noise2D(p * 1.6) - 0.5) * grain_visibility;
+    let frost = clamp(smoothstep(0.48, 0.82, cloudiness) * mature
+        + (1.0 - smoothstep(0.006, 0.055, thickness)) * 0.3, 0.0, 1.0);
+
+    let warp = vec2<f32>(noise2D(p * 0.12), noise2D(p * 0.12 + vec2<f32>(34.2, 6.7))) - 0.5;
+    let fracture = ice_fracture(p * 0.075 + warp * 0.22);
+    let fracture_strength = smoothstep(0.25, 0.8, fracture.z) * (0.35 + 0.65 * noise2D(p * 0.3));
+    let crack_width = 0.003 + cloudiness * 0.004;
+    let crack = ice_line(fracture.x, crack_width, footprint * 0.095) * mature * fracture_strength;
+    let crack_halo = ice_line(fracture.x, 0.018, footprint * 0.095) * mature * fracture_strength;
+
+    // Small, stationary changes in the normal break up the polished highlight.
+    // Project the perturbation onto the surface so sloping ice stays coherent.
+    let relief = vec3<f32>(warp * 0.10 + vec2<f32>(grain, -grain) * 0.018, 0.0);
+    let ice_normal = normalize(normal + (relief - normal * dot(relief, normal)) * (1.0 - frost * 0.6));
+    let ndv = clamp(dot(ice_normal, view_dir), 0.0, 1.0);
+    let diffuse = max(0.0, dot(ice_normal, uniforms.sun_dir));
+    let lighting = uniforms.sun_color * (diffuse * 0.72) + vec3<f32>(0.20, 0.25, 0.30);
+
+    // Thin ice reveals the shaded ground. Longer optical paths absorb more red
+    // light, while thicker and cloudy regions scatter a pale blue into the body.
+    let optical_depth = thickness * (1.0 + frost * 1.8) / max(ndv, 0.35);
+    let transmission = exp(-vec3<f32>(8.0, 4.0, 2.4) * optical_depth);
+    let body_color = mix(vec3<f32>(0.28, 0.51, 0.62), vec3<f32>(0.72, 0.84, 0.89), frost * 0.72);
+    var body = ground_lit * transmission + body_color * lighting * (vec3<f32>(1.0) - transmission);
+    body += vec3<f32>(0.035, 0.055, 0.065) * (cloudiness - 0.5) * mature;
+    body += vec3<f32>(0.06, 0.12, 0.15) * crack_halo;
+    let fracture_color = vec3<f32>(0.72, 0.87, 0.92) * lighting;
+    body = mix(body, fracture_color, crack * (0.45 + fracture.y * 0.3));
+    body += vec3<f32>(grain * frost * 0.035);
+
+    // Ice/air Fresnel (IOR about 1.31), with a broader lobe on frosted areas.
+    // Submerged ice is lit through the water pass instead of reflecting sky twice.
+    let fresnel = (0.018 + 0.982 * pow(1.0 - ndv, 5.0)) * (1.0 - frost * 0.55) * exposed;
+    let reflected_view = reflect(-view_dir, ice_normal);
+    let sky = mix(vec3<f32>(0.72, 0.83, 0.90), vec3<f32>(0.23, 0.46, 0.73),
+        smoothstep(0.0, 0.85, reflected_view.z)) * (uniforms.sun_color + vec3<f32>(0.12));
+    let sun_alignment = max(0.0, dot(reflect(-uniforms.sun_dir, ice_normal), view_dir));
+    let polish = pow(sun_alignment, mix(180.0, 38.0, frost));
+    let sheen = pow(sun_alignment, 18.0) * 0.07;
+    let specular = (polish * mix(0.7, 0.18, frost) + sheen) * diffuse * exposed;
+    return mix(body, sky, fresnel) + uniforms.sun_color * specular;
 }
 
 fn mod289_3(x: vec3<f32>) -> vec3<f32> {
@@ -276,16 +377,15 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let grid_size = i32(uniforms.grid_size);
     let texel = vec2<f32>(1.0 / uniforms.grid_size);
     let view_dir = normalize(uniforms.local_camera_pos - input.pos);
+    // Derivatives must be evaluated before any nonuniform material branches.
+    let surface_footprint = max(length(dpdx(input.pos.xy)), length(dpdy(input.pos.xy)));
 
     if (uniforms.layer < 0.5) {
         // --- TERRAIN SHADING ---
-        if (uniforms.show_rock < 0.5 && uniforms.show_sand < 0.5) {
+        if (uniforms.show_rock < 0.5
+            && (uniforms.show_soil < 0.5 || input.soil <= 0.0001)
+            && (uniforms.show_sand < 0.5 || input.sand <= 0.0001)) {
             discard;
-        }
-        if (uniforms.show_rock < 0.5 && uniforms.show_sand > 0.5) {
-            if (input.sand <= 0.001) {
-                discard;
-            }
         }
 
         var hL: f32; var hR: f32; var hD: f32; var hU: f32;
@@ -323,30 +423,32 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         let s_noise = noise2D(input.uv * 200.0) * 0.04;
         let sand_color = sand_base + vec3<f32>(s_noise);
 
-        var ground_color = vec3<f32>(0.0);
-        if (uniforms.show_rock > 0.5 && uniforms.show_sand > 0.5) {
-            let sand_mask = smoothstep(0.0001, 0.05, input.sand);
-            ground_color = mix(rock_color, sand_color, sand_mask);
-        } else if (uniforms.show_rock > 0.5) {
-            ground_color = rock_color;
-        } else {
-            ground_color = sand_color;
+        let soil_noise = noise2D(input.uv * 155.0) * 0.06;
+        let soil_base = vec3<f32>(0.36, 0.20, 0.10) + vec3<f32>(soil_noise);
+        let wetness = smoothstep(0.0001, 0.02, input.water);
+        let soil_color = soil_base * (1.0 - wetness * 0.3);
+        var ground_color = rock_color;
+        if (uniforms.show_soil > 0.5) {
+            let soil_mask = select(1.0, smoothstep(0.0001, 0.03, input.soil), uniforms.show_rock > 0.5);
+            ground_color = mix(ground_color, soil_color, soil_mask);
+        }
+        if (uniforms.show_sand > 0.5) {
+            // Thin sand coats the upper face; steep eroded faces reveal the soil.
+            let has_bed = uniforms.show_rock > 0.5 || (uniforms.show_soil > 0.5 && input.soil > 0.0001);
+            let sand_mask = select(1.0, smoothstep(0.0001, 0.05, input.sand * normal.z), has_bed);
+            ground_color = mix(ground_color, sand_color, sand_mask);
         }
 
         var terrain_lit = ground_color * (diff * uniforms.sun_color + vec3<f32>(0.12));
         
         // Add glowing red/orange emission for hot rock (only where sand is not covering it)
         let rock_glow = vec3<f32>(1.0, 0.25, 0.0) * input.temp * 0.8;
-        terrain_lit += rock_glow * (1.0 - smoothstep(0.0001, 0.05, input.sand));
+        terrain_lit += rock_glow * (1.0 - smoothstep(0.0001, 0.05, input.sand + input.soil));
 
         let ice_cover = smoothstep(0.00001, 0.004, input.snow_ice.y);
         let snow_cover = smoothstep(0.00001, 0.008, input.snow_ice.x);
-        if (ice_cover > 0.0) {
-            let ice_fresnel = pow(1.0 - max(dot(normal, view_dir), 0.0), 3.0);
-            let ice_specular = pow(max(0.0, dot(reflect(-uniforms.sun_dir, normal), view_dir)), 110.0);
-            let cracks = 1.0 - smoothstep(0.008, 0.035, abs(snoise(input.uv * 130.0)));
-            let ice_body = mix(vec3<f32>(0.22, 0.49, 0.62), vec3<f32>(0.69, 0.87, 0.94), ice_fresnel * 0.7 + cracks * 0.25);
-            let ice_lit = ice_body * (diff * uniforms.sun_color + vec3<f32>(0.24)) + vec3<f32>(ice_specular * 0.65);
+        if (ice_cover > 0.0 && snow_cover < 1.0) {
+            let ice_lit = shade_ice(input, normal, view_dir, terrain_lit, surface_footprint);
             terrain_lit = mix(terrain_lit, ice_lit, ice_cover);
         }
         if (snow_cover > 0.0) {
@@ -363,7 +465,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         // --- FLUIDS SHADING ---
         let has_water = (input.water > 0.001 && uniforms.show_water > 0.5);
         let has_lava = (input.lava > 0.001 && uniforms.show_lava > 0.5);
-        let has_suspended = (input.suspended_sand > 0.0 && uniforms.show_suspended > 0.5);
+        let sediment_load = input.suspended_sand + input.suspended_soil;
+        let has_suspended = (sediment_load > 0.0 && uniforms.show_suspended > 0.5);
         let has_steam = (input.steam > 0.001);
 
         if (!has_water && !has_lava && !has_suspended && !has_steam) {
@@ -469,8 +572,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
                 var water_body_col = mix(deep_water_col, shallow_water_col, transmission);
 
                 if (has_suspended) {
-                    let mud_color = vec3<f32>(0.55, 0.43, 0.28);
-                    let mud_factor = clamp(input.suspended_sand * 250.0, 0.0, 1.0);
+                    let soil_fraction = input.suspended_soil / max(sediment_load, 0.00000001);
+                    let mud_color = mix(vec3<f32>(0.65, 0.51, 0.30), vec3<f32>(0.32, 0.18, 0.08), soil_fraction);
+                    let mud_factor = clamp(sediment_load * 250.0, 0.0, 1.0);
                     water_body_col = mix(water_body_col, mud_color, mud_factor);
                 }
 

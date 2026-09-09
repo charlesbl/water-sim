@@ -1,3 +1,4 @@
+import { terrainFixture } from './terrain-fixture.js';
 import * as THREE from 'three';
 import { config } from '../src/config.ts';
 import { AtmosphereSimulation, ATMOSPHERE_DIMENSIONS } from '../src/atmosphere.ts';
@@ -31,12 +32,12 @@ async function run() {
   device.addEventListener('uncapturederror', (e) => errors.push(e.error.message));
   // Both the 16-cell solar groups and the 96-cell atmospheric grid have partial edges.
   const n = 97;
-  const make = () =>
+  const make = (bytes = n * n * 16) =>
     device.createBuffer({
-      size: n * n * 16,
+      size: bytes,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
-  const terrain = make(),
+  const terrain = make(n * n * 24),
     fluids = make();
   const ground = new Float32Array(n * n * 4),
     liquid = new Float32Array(ground.length),
@@ -72,7 +73,7 @@ async function run() {
   };
   step(0);
   const seed = () => {
-    device.queue.writeBuffer(terrain, 0, ground);
+    device.queue.writeBuffer(terrain, 0, terrainFixture(ground));
     device.queue.writeBuffer(fluids, 0, liquid);
     device.queue.writeBuffer(sim.surfaceBuffer, 0, surface);
     device.queue.writeBuffer(sim.volumeBuffer, 0, air);

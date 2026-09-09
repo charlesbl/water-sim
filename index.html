@@ -390,6 +390,9 @@
               <button class="btn-brush" data-brush="1" title="Add lava">
                 <span class="icon">🌋</span> Lava
               </button>
+              <button class="btn-brush" data-brush="9" title="Add cohesive soil beneath the sand">
+                <span class="icon">🟤</span> Soil
+              </button>
               <button class="btn-brush" data-brush="2" title="Add sand">
                 <span class="icon">⏳</span> Sand
               </button>
@@ -402,7 +405,7 @@
               <button
                 class="btn-brush"
                 data-brush="5"
-                title="Erase water, lava, sand, snow and ice"
+                title="Erase water, lava, sand, soil, snow and ice"
               >
                 <span class="icon">🧹</span> Erase
               </button>
@@ -488,6 +491,21 @@
                 min="0.0"
                 max="0.5"
                 value="0.05"
+                step="0.01"
+              />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="terrain-soil-height">Soil Height</label>
+                <span id="terrain-soil-height-val" class="value-display">0.15</span>
+              </div>
+              <input
+                type="range"
+                id="terrain-soil-height"
+                min="0"
+                max="2"
+                value="0.15"
                 step="0.01"
               />
             </div>
@@ -642,7 +660,7 @@
               <select id="border-behavior" class="select-input">
                 <option value="0">Block all</option>
                 <option value="1" selected>Pass all</option>
-                <option value="2">Pass water but not sand</option>
+                <option value="2">Pass water but keep sediments</option>
               </select>
               <p
                 id="surface-boundary-help"
@@ -673,14 +691,56 @@
       <!-- Section: Sediment & Erosion -->
       <section class="hud-section collapsed">
         <button class="hud-section-header">
-          <h2><span>⏳</span> Hydrology & Sand</h2>
+          <h2><span>⏳</span> Hydrology & Sediments</h2>
           <span class="chevron">▼</span>
         </button>
         <div class="hud-section-content">
           <div class="hud-section-content-inner">
+            <p
+              id="repose-angle-help"
+              style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-bottom: 12px"
+            >
+              Repose angles are measured from horizontal. Lower the angle to spread a pile;
+              increasing it allows steeper slopes but does not rebuild an existing pile. Rock stays
+              fixed. For both materials, Static starts an avalanche and Dynamic stops it. Sliding,
+              erosion, transport and deposition rates are shared; only the angles differ.
+            </p>
+
             <div class="control-group">
               <div class="label-row">
-                <label for="erosion-rate">Erosion Rate</label>
+                <label for="soil-static-repose-slope">Soil Angle of Repose (Static)</label>
+                <span id="soil-static-repose-slope-val" class="value-display">70.0°</span>
+              </div>
+              <input
+                type="range"
+                id="soil-static-repose-slope"
+                min="0"
+                max="89"
+                value="70.0"
+                step="0.1"
+                aria-describedby="repose-angle-help"
+              />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="soil-dynamic-repose-slope">Soil Angle of Repose (Dynamic)</label>
+                <span id="soil-dynamic-repose-slope-val" class="value-display">55.0°</span>
+              </div>
+              <input
+                type="range"
+                id="soil-dynamic-repose-slope"
+                min="0"
+                max="89"
+                value="55.0"
+                step="0.1"
+                aria-describedby="repose-angle-help"
+              />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="erosion-rate">Sediment Erosion Rate</label>
                 <span id="erosion-rate-val" class="value-display">0.005</span>
               </div>
               <input
@@ -740,39 +800,48 @@
 
             <div class="control-group">
               <div class="label-row">
-                <label for="sand-slide">Sand Sliding Rate</label>
-                <span id="sand-slide-val" class="value-display">0.05</span>
-              </div>
-              <input type="range" id="sand-slide" min="0.01" max="0.2" value="0.05" step="0.01" />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="sand-static-repose-slope">Angle of Repose (Static)</label>
-                <span id="sand-static-repose-slope-val" class="value-display">0.0060</span>
+                <label for="sediment-slide">Sediment Sliding Rate</label>
+                <span id="sediment-slide-val" class="value-display">0.05</span>
               </div>
               <input
                 type="range"
-                id="sand-static-repose-slope"
-                min="0.0"
-                max="0.04"
-                value="0.006"
-                step="0.0005"
+                id="sediment-slide"
+                min="0.01"
+                max="0.2"
+                value="0.05"
+                step="0.01"
               />
             </div>
 
             <div class="control-group">
               <div class="label-row">
-                <label for="sand-dynamic-repose-slope">Angle of Repose (Dynamic)</label>
-                <span id="sand-dynamic-repose-slope-val" class="value-display">0.0015</span>
+                <label for="sand-static-repose-slope">Sand Angle of Repose (Static)</label>
+                <span id="sand-static-repose-slope-val" class="value-display">42.7°</span>
+              </div>
+              <input
+                type="range"
+                id="sand-static-repose-slope"
+                min="0"
+                max="89"
+                value="42.7"
+                step="0.1"
+                aria-describedby="repose-angle-help"
+              />
+            </div>
+
+            <div class="control-group">
+              <div class="label-row">
+                <label for="sand-dynamic-repose-slope">Sand Angle of Repose (Dynamic)</label>
+                <span id="sand-dynamic-repose-slope-val" class="value-display">20.2°</span>
               </div>
               <input
                 type="range"
                 id="sand-dynamic-repose-slope"
-                min="0.0"
-                max="0.04"
-                value="0.0015"
-                step="0.0005"
+                min="0"
+                max="89"
+                value="20.2"
+                step="0.1"
+                aria-describedby="repose-angle-help"
               />
             </div>
           </div>
@@ -847,6 +916,10 @@
                 <label for="chk-show-rock">⛰️ Rock</label>
               </div>
               <div class="checkbox-row" style="margin-bottom: 6px">
+                <input type="checkbox" id="chk-show-soil" checked />
+                <label for="chk-show-soil">🟤 Soil on ground</label>
+              </div>
+              <div class="checkbox-row" style="margin-bottom: 6px">
                 <input type="checkbox" id="chk-show-sand" checked />
                 <label for="chk-show-sand">⏳ Sand on ground</label>
               </div>
@@ -860,7 +933,7 @@
               </div>
               <div class="checkbox-row">
                 <input type="checkbox" id="chk-show-suspended" checked />
-                <label for="chk-show-suspended">🟫 Suspended sand (mud)</label>
+                <label for="chk-show-suspended">🟫 Suspended sand & soil (mud)</label>
               </div>
             </div>
 

@@ -29,12 +29,12 @@ async function run() {
   device.addEventListener('uncapturederror', (e) => errors.push(e.error.message));
   // Unequal fine/coarse areas exercise the paired heat budget.
   const n = 97;
-  const make = () =>
+  const make = (bytes = n * n * 16) =>
     device.createBuffer({
-      size: n * n * 16,
+      size: bytes,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
-  const terrain = make(),
+  const terrain = make(n * n * 24),
     fluids = make();
   const ground = new Float32Array(n * n * 4),
     liquid = new Float32Array(ground.length);

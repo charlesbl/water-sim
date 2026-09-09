@@ -2,7 +2,9 @@ struct TerrainCell {
     rock: f32,
     sand: f32,
     suspended_sand: f32,
-    avalanche: f32,
+    avalanche: f32, // Packed independent flags: sand = 1, soil = 2.
+    soil: f32,
+    suspended_soil: f32,
 };
 
 struct FluidCell {
@@ -25,7 +27,7 @@ struct SimUniforms {
     water_damping: f32,
     lava_gravity: f32,
     lava_damping: f32,
-    sand_slide_rate: f32,
+    sediment_slide_rate: f32,
     sand_static_repose_slope: f32,
     sand_dynamic_repose_slope: f32,
     erosion_rate: f32,
@@ -56,6 +58,10 @@ struct SimUniforms {
     fbm_octaves: f32,
     fbm_persistence: f32,
     min_water_depth: f32,
+    soil_static_repose_slope: f32,
+    soil_dynamic_repose_slope: f32,
+    terrain_soil_height: f32,
+    padding_0: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms : SimUniforms;
@@ -98,123 +104,104 @@ fn fbm(p_in: vec2<f32>, octaves: i32, persistence: f32) -> f32 {
     return v;
 }
 
-// --- HELPER FOR FULL CELL DATA ---
+// React locally before sliding. Every neighbor recomputes the same exchange
+// from the input buffers, so erosion and avalanches cannot spend the same grain.
 struct FullCellData {
     rock: f32,
     sand: f32,
-    suspended_sand: f32,
+    soil: f32,
+    suspended: vec2<f32>, // sand, soil; kept separate throughout transport
     water: f32,
-    lava: f32,
-    avalanche: f32,
+    avalanche: vec2<f32>, // Independent sand and soil collapse histories.
 };
 
 fn get_full_cell_data(x: u32, y: u32, grid_size: u32) -> FullCellData {
     let idx = y * grid_size + x;
-    let cell_a = terrain_in[idx];
-    let cell_b = fluids_in[idx];
-
-    var rock = cell_a.rock;
-    var sand = cell_a.sand;
-    let suspended_sand = cell_a.suspended_sand;
-    let avalanche = cell_a.avalanche;
-    var water = cell_b.water;
-    let lava = cell_b.lava;
-
-    // React lava + water to form rock
+    let terrain = terrain_in[idx];
+    let fluid = fluids_in[idx];
+    var rock = terrain.rock;
+    var ground = vec2<f32>(terrain.sand, terrain.soil);
+    var suspended = vec2<f32>(terrain.suspended_sand, terrain.suspended_soil);
     if (uniforms.paused < 0.5) {
-        if (water > 0.0001 && lava > 0.0001) {
-            let react = min(water, lava);
-            rock = rock + react * 2.0; // Perfect volume conservation prevents vacuum spikes!
+        if (fluid.water > 0.0001 && fluid.lava > 0.0001) {
+            rock += min(fluid.water, fluid.lava) * 2.0;
+        }
+        if (fluid.water <= 0.001) {
+            ground += suspended;
+            suspended = vec2<f32>(0.0);
+        } else {
+            let f = water_flux[idx];
+            let velocity = (f.left + f.right + f.bottom + f.top) / fluid.water;
+            var depth_multiplier = 1.0;
+            if (uniforms.min_water_depth > 0.0) {
+                depth_multiplier = smoothstep(uniforms.min_water_depth * 0.5, uniforms.min_water_depth * 1.5, fluid.water);
+            }
+            // One carrying capacity shared by both materials, never doubled.
+            let capacity = velocity * velocity * velocity * fluid.water * uniforms.capacity_factor * 2.0 * depth_multiplier;
+            let load = suspended.x + suspended.y;
+            let spare = capacity - load;
+            if (spare > 0.0) {
+                // One rate and one erosion budget; consume the exposed layer
+                // first, then spend the remainder on the soil directly beneath.
+                let erosion_budget = spare * clamp(uniforms.erosion_rate, 0.0, 1.0);
+                let eroded_sand = min(ground.x, erosion_budget);
+                let eroded_soil = min(ground.y, max(0.0, erosion_budget - eroded_sand));
+                let eroded = vec2<f32>(eroded_sand, eroded_soil);
+                ground -= eroded;
+                suspended += eroded;
+            } else if (load > 0.0) {
+                let rate = mix(1.0, clamp(uniforms.deposition_rate, 0.0, 1.0), clamp(velocity * 5.0, 0.0, 1.0));
+                let deposited = suspended * clamp(-spare * rate / load, 0.0, 1.0);
+                // Deposited soil joins the layer below the sand in this heightfield.
+                ground += deposited;
+                suspended -= deposited;
+            }
         }
     }
-
-    return FullCellData(rock, sand, suspended_sand, water, lava, avalanche);
+    let flags = u32(terrain.avalanche);
+    return FullCellData(rock, ground.x, ground.y, suspended, fluid.water,
+        vec2<f32>(f32(flags & 1u), f32((flags >> 1u) & 1u)));
 }
 
-// --- SAND SLIDING FLOW CALCULATION ---
-fn computeSandFlow(src_x: u32, src_y: u32, dst_x: u32, dst_y: u32, dist: f32, grid_size: u32) -> f32 {
+// Both flows are paired between cells. Soil can retain a near-vertical face;
+// sand rests on the combined rock/soil bed. Each material has its own hysteresis.
+fn computeGroundFlow(src_x: u32, src_y: u32, dst_x: u32, dst_y: u32, dist: f32, grid_size: u32) -> vec2<f32> {
     let src = get_full_cell_data(src_x, src_y, grid_size);
-    if (src.sand <= 0.0001) {
-        return 0.0;
-    }
-
+    if (src.sand <= 0.0 && src.soil <= 0.0) { return vec2<f32>(0.0); }
     let dst = get_full_cell_data(dst_x, dst_y, grid_size);
-    
-    let h_src = src.rock + src.sand;
-    let h_dst = dst.rock + dst.sand;
-
-    let diff = h_src - h_dst;
-    let current_repose = mix(uniforms.sand_static_repose_slope, uniforms.sand_dynamic_repose_slope, src.avalanche);
-    let threshold = current_repose * dist;
-
-    if (diff > threshold) {
-        var sum_excess = 0.0;
-        let excess_dst = diff - threshold;
-
-        let dirs_x = array<i32, 8>(-1, 1, 0, 0, -1, 1, -1, 1);
-        let dirs_y = array<i32, 8>(0, 0, -1, 1, -1, -1, 1, 1);
-        let dists = array<f32, 8>(1.0, 1.0, 1.0, 1.0, 1.414, 1.414, 1.414, 1.414);
-
-        for (var i = 0; i < 8; i = i + 1) {
-            let nx = u32(clamp(i32(src_x) + dirs_x[i], 0, i32(grid_size - 1u)));
-            let ny = u32(clamp(i32(src_y) + dirs_y[i], 0, i32(grid_size - 1u)));
-            let n_data = get_full_cell_data(nx, ny, grid_size);
-            
-            let h_n = n_data.rock + n_data.sand;
-            let n_diff = h_src - h_n;
-            let n_thresh = current_repose * dists[i];
-            if (n_diff > n_thresh) {
-                sum_excess = sum_excess + (n_diff - n_thresh);
-            }
-        }
-
-        if (sum_excess > 0.0) {
-            var total_slide = 0.0;
-            if (src.avalanche > 0.5) {
-                let rupture_speed = 0.008;
-                total_slide = min(rupture_speed, sum_excess * 0.25);
-            } else {
-                let effective_rate = min(0.11, uniforms.sand_slide_rate);
-                total_slide = sum_excess * effective_rate;
-            }
-            total_slide = min(src.sand * 0.25, total_slide);
-            return total_slide * (excess_dst / sum_excess);
-        }
+    let heights = vec2<f32>(src.rock + src.soil + src.sand, src.rock + src.soil);
+    let static_repose = vec2<f32>(uniforms.sand_static_repose_slope, uniforms.soil_static_repose_slope);
+    let dynamic_repose = min(static_repose,
+        vec2<f32>(uniforms.sand_dynamic_repose_slope, uniforms.soil_dynamic_repose_slope));
+    let repose = mix(static_repose, dynamic_repose, src.avalanche);
+    let excess = max(vec2<f32>(0.0), heights - (dst.rock + dst.soil + dst.sand) - repose * dist);
+    if (all(excess <= vec2<f32>(0.0))) { return vec2<f32>(0.0); }
+    var sum_excess = vec2<f32>(0.0);
+    let dirs_x = array<i32, 8>(-1, 1, 0, 0, -1, 1, -1, 1);
+    let dirs_y = array<i32, 8>(0, 0, -1, 1, -1, -1, 1, 1);
+    let dists = array<f32, 8>(1.0, 1.0, 1.0, 1.0, 1.41421356, 1.41421356, 1.41421356, 1.41421356);
+    for (var i = 0; i < 8; i++) {
+        let nx = i32(src_x) + dirs_x[i];
+        let ny = i32(src_y) + dirs_y[i];
+        if (nx < 0 || ny < 0 || nx >= i32(grid_size) || ny >= i32(grid_size)) { continue; }
+        let neighbor = get_full_cell_data(u32(nx), u32(ny), grid_size);
+        sum_excess += max(vec2<f32>(0.0), heights - (neighbor.rock + neighbor.soil + neighbor.sand) - repose * dists[i]);
     }
-    return 0.0;
+    var slide = sum_excess * clamp(uniforms.sediment_slide_rate, 0.0, 0.11);
+    if (uniforms.sediment_slide_rate > 0.0) {
+        slide = select(slide, min(vec2<f32>(0.008), sum_excess * 0.25),
+            src.avalanche > vec2<f32>(0.5));
+    }
+    let total_slide = min(vec2<f32>(src.sand, src.soil) * 0.25, slide);
+    return total_slide * excess / max(sum_excess, vec2<f32>(0.00000001));
 }
 
-// --- EROSION AND SEDIMENT CAPACITY ---
-fn getNewSuspended(x: u32, y: u32, grid_size: u32) -> f32 {
+fn incomingSediment(x: u32, y: u32, grid_size: u32, flux: f32) -> vec2<f32> {
     let cell = get_full_cell_data(x, y, grid_size);
-    if (cell.water <= 0.001) {
-        return 0.0;
-    }
-    
-    let idx = y * grid_size + x;
-    let f = water_flux[idx];
+    if (cell.water <= 0.001) { return vec2<f32>(0.0); }
+    let f = water_flux[y * grid_size + x];
     let total_flux = f.left + f.right + f.bottom + f.top;
-    let velocity = total_flux / cell.water;
-    
-    var depth_multiplier = 1.0;
-    if (uniforms.min_water_depth > 0.0) {
-        depth_multiplier = smoothstep(uniforms.min_water_depth * 0.5, uniforms.min_water_depth * 1.5, cell.water);
-    }
-    
-    let capacity = (velocity * velocity * velocity) * cell.water * uniforms.capacity_factor * 2.0 * depth_multiplier;
-    let diff = capacity - cell.suspended_sand;
-    
-    let active_dep_rate = mix(1.0, uniforms.deposition_rate, clamp(velocity * 5.0, 0.0, 1.0));
-    let active_rate = select(active_dep_rate, uniforms.erosion_rate, diff > 0.0);
-    
-    var change = diff * active_rate;
-    if (change > 0.0) {
-        change = min(cell.sand, change);
-    } else {
-        change = max(-cell.suspended_sand, change);
-    }
-    
-    return cell.suspended_sand + change;
+    return cell.suspended * flux / max(cell.water, total_flux);
 }
 
 @compute @workgroup_size(16, 16)
@@ -222,196 +209,95 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let grid_size = u32(uniforms.grid_size);
     let x = id.x;
     let y = id.y;
-
-    if (x >= grid_size || y >= grid_size) {
-        return;
-    }
-
+    if (x >= grid_size || y >= grid_size) { return; }
     let idx = y * grid_size + x;
 
-    // --- PROCEDURAL GENERATION PASS ---
     if (uniforms.initialized < 0.5) {
         var rock = 0.0;
         var sand = 0.0;
-        let uv = vec2<f32>(f32(x) / f32(grid_size), f32(y) / f32(grid_size));
-
+        let uv = vec2<f32>(f32(x), f32(y)) / f32(grid_size);
         if (uniforms.terrain_type < 0.5) {
             let p = uv * uniforms.terrain_scale + vec2<f32>(uniforms.seed);
             rock = fbm(p, i32(uniforms.fbm_octaves), uniforms.fbm_persistence);
             rock = pow(max(0.0, rock), uniforms.terrain_sharpness) * 2.1;
-            
-            // Add tilt
-            rock += (uv.x - 0.5) * uniforms.terrain_tilt;
-            rock = max(0.0, rock);
-            
-            // Place initial sand in valleys
+            rock = max(0.0, rock + (uv.x - 0.5) * uniforms.terrain_tilt);
             sand = max(0.0, 0.16 - rock) * 1.5 + uniforms.terrain_sand_height;
         } else {
-            rock = uniforms.flat_rock_height;
-            rock += (uv.x - 0.5) * uniforms.terrain_tilt;
-            rock = max(0.0, rock);
+            rock = max(0.0, uniforms.flat_rock_height + (uv.x - 0.5) * uniforms.terrain_tilt);
             sand = uniforms.terrain_sand_height;
         }
-        
-        terrain_out[idx] = TerrainCell(rock, sand, 0.0, 0.0);
+        terrain_out[idx] = TerrainCell(rock, sand, 0.0, 0.0, max(0.0, uniforms.terrain_soil_height), 0.0);
         return;
     }
 
-    // --- SIMULATION PASS ---
     let cell = get_full_cell_data(x, y, grid_size);
     var rock = cell.rock;
-    var sand = cell.sand;
-    var suspended_sand = cell.suspended_sand;
-    let water = cell.water;
+    var ground = vec2<f32>(cell.sand, cell.soil);
+    var suspended = cell.suspended;
     var avalanche = cell.avalanche;
-
     if (uniforms.paused < 0.5) {
-        // 1. Calculate Sand sliding incoming/outgoing (Avalanches)
-        var sand_in = 0.0;
-        var sand_out = 0.0;
-        
-        let h_center = rock + sand;
-        var max_slope = 0.0;
-
+        var ground_in = vec2<f32>(0.0);
+        var ground_out = vec2<f32>(0.0);
+        let h_center = vec2<f32>(rock + cell.soil + cell.sand, rock + cell.soil);
+        var max_slope = vec2<f32>(0.0);
         let dirs_x = array<i32, 8>(-1, 1, 0, 0, -1, 1, -1, 1);
         let dirs_y = array<i32, 8>(0, 0, -1, 1, -1, -1, 1, 1);
-        let dists = array<f32, 8>(1.0, 1.0, 1.0, 1.0, 1.414, 1.414, 1.414, 1.414);
-
-        for (var i = 0; i < 8; i = i + 1) {
-            let nx = u32(clamp(i32(x) + dirs_x[i], 0, i32(grid_size - 1u)));
-            let ny = u32(clamp(i32(y) + dirs_y[i], 0, i32(grid_size - 1u)));
-            
-            sand_in += computeSandFlow(nx, ny, x, y, dists[i], grid_size);
-            sand_out += computeSandFlow(x, y, nx, ny, dists[i], grid_size);
-            
-            let n_data = get_full_cell_data(nx, ny, grid_size);
-            let h_n = n_data.rock + n_data.sand;
-            max_slope = max(max_slope, (h_center - h_n) / dists[i]);
+        let dists = array<f32, 8>(1.0, 1.0, 1.0, 1.0, 1.41421356, 1.41421356, 1.41421356, 1.41421356);
+        for (var i = 0; i < 8; i++) {
+            let nx = i32(x) + dirs_x[i];
+            let ny = i32(y) + dirs_y[i];
+            if (nx < 0 || ny < 0 || nx >= i32(grid_size) || ny >= i32(grid_size)) { continue; }
+            ground_in += computeGroundFlow(u32(nx), u32(ny), x, y, dists[i], grid_size);
+            ground_out += computeGroundFlow(x, y, u32(nx), u32(ny), dists[i], grid_size);
+            let neighbor = get_full_cell_data(u32(nx), u32(ny), grid_size);
+            max_slope = max(max_slope, (h_center - neighbor.rock - neighbor.soil - neighbor.sand) / dists[i]);
         }
-        
-        // Avalanche hysteresis
-        let noise_uv = vec2<f32>(f32(x), f32(y));
-        let local_static = uniforms.sand_static_repose_slope + (noise(noise_uv + uniforms.time * 0.1) - 0.5) * 0.0005;
-        if (max_slope > local_static) {
-            avalanche = 1.0;
-        } else if (max_slope < uniforms.sand_dynamic_repose_slope) {
-            avalanche = 0.0;
-        }
+        ground = max(vec2<f32>(0.0), ground - ground_out + ground_in);
+        let local_static = vec2<f32>(uniforms.sand_static_repose_slope, uniforms.soil_static_repose_slope)
+            + (noise(vec2<f32>(f32(x), f32(y)) + uniforms.time * 0.1) - 0.5) * 0.0005;
+        if (max_slope.x > local_static.x) { avalanche.x = 1.0; }
+        else if (max_slope.x <= min(uniforms.sand_dynamic_repose_slope, uniforms.sand_static_repose_slope)) { avalanche.x = 0.0; }
+        if (max_slope.y > local_static.y) { avalanche.y = 1.0; }
+        else if (max_slope.y <= min(uniforms.soil_dynamic_repose_slope, uniforms.soil_static_repose_slope)) { avalanche.y = 0.0; }
+        if (ground.x <= 0.0) { avalanche.x = 0.0; }
+        if (ground.y <= 0.0) { avalanche.y = 0.0; }
 
-        // 2. Erosion / Deposition reaction
-        var ground_sand_change = 0.0;
-        var local_susp = suspended_sand;
-        
-        if (water <= 0.001) {
-            ground_sand_change = suspended_sand; // Evaporated, dump suspended sand
-            local_susp = 0.0;
-        } else {
+        // The same outgoing fractions are used by every receiving neighbor.
+        var susp_out = vec2<f32>(0.0);
+        if (cell.water > 0.001) {
             let f = water_flux[idx];
-            let total_flux = f.left + f.right + f.bottom + f.top;
-            let velocity = total_flux / water;
-            
-            var depth_multiplier = 1.0;
-            if (uniforms.min_water_depth > 0.0) {
-                depth_multiplier = smoothstep(uniforms.min_water_depth * 0.5, uniforms.min_water_depth * 1.5, water);
-            }
-            
-            let capacity = (velocity * velocity * velocity) * water * uniforms.capacity_factor * 2.0 * depth_multiplier;
-            let diff = capacity - suspended_sand;
-            
-            let active_dep_rate = mix(1.0, uniforms.deposition_rate, clamp(velocity * 5.0, 0.0, 1.0));
-            let active_rate = select(active_dep_rate, uniforms.erosion_rate, diff > 0.0);
-            
-            var change = diff * active_rate;
-            if (change > 0.0) {
-                change = min(sand, change);
-            } else {
-                change = max(-suspended_sand, change);
-            }
-            
-            ground_sand_change = -change;
-            local_susp = suspended_sand + change;
+            susp_out = suspended * min(1.0, (f.left + f.right + f.bottom + f.top) / cell.water);
         }
-        
-        sand = max(0.0, sand - sand_out + sand_in + ground_sand_change);
-        
-        // 3. Advection: Suspended sand transport
-        var susp_out = 0.0;
-        if (water > 0.001) {
-            let f = water_flux[idx];
-            let total_flux = f.left + f.right + f.bottom + f.top;
-            susp_out = local_susp * min(1.0, total_flux / water);
+        var susp_in = vec2<f32>(0.0);
+        if (x > 0u) { susp_in += incomingSediment(x - 1u, y, grid_size, water_flux[idx - 1u].right); }
+        if (x + 1u < grid_size) { susp_in += incomingSediment(x + 1u, y, grid_size, water_flux[idx + 1u].left); }
+        if (y > 0u) { susp_in += incomingSediment(x, y - 1u, grid_size, water_flux[idx - grid_size].top); }
+        if (y + 1u < grid_size) { susp_in += incomingSediment(x, y + 1u, grid_size, water_flux[idx + grid_size].bottom); }
+        suspended = max(vec2<f32>(0.0), suspended - susp_out + susp_in);
+        if (uniforms.border_behavior == 1.0 && (x == 0u || y == 0u || x == grid_size - 1u || y == grid_size - 1u)) {
+            suspended = vec2<f32>(0.0);
         }
-
-        var susp_in = 0.0;
-        // Left neighbor
-        if (x > 0u) {
-            let n_idx = y * grid_size + (x - 1u);
-            let n_w = fluids_in[n_idx].water;
-            if (n_w > 0.001) {
-                susp_in += getNewSuspended(x - 1u, y, grid_size) * min(1.0, water_flux[n_idx].right / n_w);
-            }
-        }
-        // Right neighbor
-        if (x < grid_size - 1u) {
-            let n_idx = y * grid_size + (x + 1u);
-            let n_w = fluids_in[n_idx].water;
-            if (n_w > 0.001) {
-                susp_in += getNewSuspended(x + 1u, y, grid_size) * min(1.0, water_flux[n_idx].left / n_w);
-            }
-        }
-        // Bottom neighbor
-        if (y > 0u) {
-            let n_idx = (y - 1u) * grid_size + x;
-            let n_w = fluids_in[n_idx].water;
-            if (n_w > 0.001) {
-                susp_in += getNewSuspended(x, y - 1u, grid_size) * min(1.0, water_flux[n_idx].top / n_w);
-            }
-        }
-        // Top neighbor
-        if (y < grid_size - 1u) {
-            let n_idx = (y + 1u) * grid_size + x;
-            let n_w = fluids_in[n_idx].water;
-            if (n_w > 0.001) {
-                susp_in += getNewSuspended(x, y + 1u, grid_size) * min(1.0, water_flux[n_idx].bottom / n_w);
-            }
-        }
-
-        // Boundary drainage for sand (if behavior allows pass-all)
-        if (uniforms.border_behavior == 1.0) {
-            if (x == 0u || x == grid_size - 1u || y == 0u || y == grid_size - 1u) {
-                sand_in = 0.0;
-                susp_in = 0.0;
-                local_susp = 0.0;
-            }
-        }
-
-        suspended_sand = max(0.0, local_susp - susp_out + susp_in);
     }
 
-    // --- BRUSH PAINTING INTERFACE ---
     if (uniforms.brush_active > 0.5) {
-        let uv = vec2<f32>(f32(x) / f32(grid_size), f32(y) / f32(grid_size));
+        let uv = vec2<f32>(f32(x), f32(y)) / f32(grid_size);
         let dist = distance(uv, vec2<f32>(uniforms.brush_x, uniforms.brush_y));
         if (dist < uniforms.brush_radius) {
             let falloff = 1.0 - smoothstep(uniforms.brush_radius * 0.2, uniforms.brush_radius, dist);
             let amount = falloff * uniforms.brush_strength * 0.015;
-
-            if (uniforms.brush_type == 2.0) { // Add Sand
-                sand += amount * 1.5;
-            } else if (uniforms.brush_type == 3.0) { // Raise Rock
-                rock += amount;
-            } else if (uniforms.brush_type == 4.0) { // Dig Rock
-                rock = max(0.0, rock - amount);
-            } else if (uniforms.brush_type == 5.0) { // Clear Sand
-                sand = max(0.0, sand - amount * 4.0);
+            if (uniforms.brush_type == 2.0) { ground.x += amount * 1.5; }
+            else if (uniforms.brush_type == 9.0) { ground.y += amount * 1.5; }
+            else if (uniforms.brush_type == 3.0) { rock += amount; }
+            else if (uniforms.brush_type == 4.0) { rock = max(0.0, rock - amount); }
+            else if (uniforms.brush_type == 5.0) {
+                // Erase the upper sand layer before reaching the soil beneath.
+                let removed_sand = min(ground.x, amount * 4.0);
+                ground.x -= removed_sand;
+                ground.y = max(0.0, ground.y - (amount * 4.0 - removed_sand));
             }
         }
     }
-
-    rock = clamp(rock, 0.0, 10.0);
-    sand = clamp(sand, 0.0, 10.0);
-    suspended_sand = clamp(suspended_sand, 0.0, 10.0);
-    avalanche = clamp(avalanche, 0.0, 1.0);
-
-    terrain_out[idx] = TerrainCell(rock, sand, suspended_sand, avalanche);
+    let flags = u32(avalanche.x) | (u32(avalanche.y) << 1u);
+    terrain_out[idx] = TerrainCell(clamp(rock, 0.0, 10.0), ground.x, suspended.x,
+        f32(flags), ground.y, suspended.y);
 }

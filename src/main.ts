@@ -3,6 +3,7 @@ import { config } from './config';
 import { ATMOSPHERE_DIMENSIONS } from './atmosphere';
 import { GPGPUSimulation } from './webgpuRenderer';
 import { setupWeatherControls } from './weatherControls';
+import { setupReposeControls } from './reposeControls';
 
 // Core variables
 let canvas: HTMLCanvasElement;
@@ -261,8 +262,7 @@ function setupUI() {
   // Update footer text dynamically with actual grid size
   const perfDisplay = document.getElementById('perf-display');
   if (perfDisplay) {
-    perfDisplay.textContent =
-      `Surface: ${config.gridSize}×${config.gridSize} · Atmosphere: ${ATMOSPHERE_DIMENSIONS.join('×')}`;
+    perfDisplay.textContent = `Surface: ${config.gridSize}×${config.gridSize} · Atmosphere: ${ATMOSPHERE_DIMENSIONS.join('×')}`;
   }
 
   // 0. Collapsible HUD Sections Toggle
@@ -300,9 +300,8 @@ function setupUI() {
       | 'waterDamping'
       | 'lavaGravity'
       | 'lavaDamping'
-      | 'sandSlideRate'
-      | 'sandStaticReposeSlope'
-      | 'sandDynamicReposeSlope'
+      | 'terrainSoilHeight'
+      | 'sedimentSlideRate'
       | 'erosionRate'
       | 'capacityFactor'
       | 'depositionRate'
@@ -352,6 +351,7 @@ function setupUI() {
           'terrainSharpness',
           'terrainTilt',
           'terrainSandHeight',
+          'terrainSoilHeight',
           'flatRockHeight',
           'fbmOctaves',
           'fbmPersistence',
@@ -372,13 +372,9 @@ function setupUI() {
   bindSlider('water-damping', 'waterDamping', 'water-damping-val');
   bindSlider('lava-gravity', 'lavaGravity', 'lava-gravity-val');
   bindSlider('lava-damping', 'lavaDamping', 'lava-damping-val');
-  bindSlider('sand-slide', 'sandSlideRate', 'sand-slide-val');
-  bindSlider('sand-static-repose-slope', 'sandStaticReposeSlope', 'sand-static-repose-slope-val');
-  bindSlider(
-    'sand-dynamic-repose-slope',
-    'sandDynamicReposeSlope',
-    'sand-dynamic-repose-slope-val'
-  );
+  bindSlider('terrain-soil-height', 'terrainSoilHeight', 'terrain-soil-height-val');
+  bindSlider('sediment-slide', 'sedimentSlideRate', 'sediment-slide-val');
+  setupReposeControls();
   bindSlider('erosion-rate', 'erosionRate', 'erosion-rate-val');
   bindSlider('capacity-factor', 'capacityFactor', 'capacity-factor-val');
   bindSlider('deposition-rate', 'depositionRate', 'deposition-rate-val');
@@ -443,7 +439,7 @@ function setupUI() {
   // 6. Render Layer Checkboxes
   const bindCheckbox = (
     id: string,
-    configKey: 'showRock' | 'showSand' | 'showWater' | 'showLava' | 'showSuspendedSand'
+    configKey: 'showRock' | 'showSoil' | 'showSand' | 'showWater' | 'showLava' | 'showSuspendedSand'
   ) => {
     const chk = document.getElementById(id) as HTMLInputElement;
     if (!chk) return;
@@ -454,6 +450,7 @@ function setupUI() {
   };
 
   bindCheckbox('chk-show-rock', 'showRock');
+  bindCheckbox('chk-show-soil', 'showSoil');
   bindCheckbox('chk-show-sand', 'showSand');
   bindCheckbox('chk-show-water', 'showWater');
   bindCheckbox('chk-show-lava', 'showLava');

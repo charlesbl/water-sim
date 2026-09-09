@@ -2,7 +2,7 @@
 
 🚀 **Live Demo:** [https://charlesbl.github.io/water-sim/](https://charlesbl.github.io/water-sim/)
 
-An interactive GPU sandbox inspired by _From Dust_, with a **volumetric 3D atmosphere** coupled to water, sand, lava, and terrain. Weather evolves in a separate **96 × 96 × 64 grid (589,824 cells)** using WebGPU compute shaders. The existing terrain and surface fluids remain a 2.5D heightfield.
+An interactive GPU sandbox inspired by _From Dust_, with a **volumetric 3D atmosphere** coupled to water, sand, soil, lava, and terrain. Weather evolves in a separate **96 × 96 × 64 grid (589,824 cells)** using WebGPU compute shaders. The existing terrain and surface fluids remain a 2.5D heightfield.
 
 This is a qualitative miniature weather model for experimentation, with simplified units and physical processes. It is not a calibrated forecasting model. The live demo above reflects the latest deployed version and may differ from the current working tree.
 
@@ -12,14 +12,14 @@ This is a qualitative miniature weather model for experimentation, with simplifi
 
 - **Interactive Brushes:**
   - **Water & Lava:** Paint dynamic, physics-based fluids.
-  - **Sand:** Deposit sand that interacts with fluid flows.
+  - **Sand & Soil:** Paint sand or brown soil. The layers are rock → soil → sand. Both materials use exactly the same physics and shared rates; only their static and dynamic repose angles differ.
   - **Terrain Editing:** Dynamically raise or dig the terrain.
   - **Eraser:** Clear fluids instantly.
 - **Fluid & Erosion Simulation:**
   - Dynamic shallow water equation solver.
   - Ice forms a solid layer on the bed, and the remaining liquid flows above it in the existing 2.5D solver.
   - Cooling freezes available water progressively; melting returns the same water-equivalent mass to the liquid reservoir.
-  - Sediment transport, erosion, and deposition model.
+  - Water erodes exposed sand first, then the underlying soil. Both materials share a carrying capacity, travel separately with the flow, and settle back into their own layers; dry cells deposit all remaining sediment. Closed and water-only borders conserve each sediment inventory.
   - Interactive sliders for fluid parameters (gravity, damping, evaporation).
   - Map border behaviors (block all, pass all, pass water only).
 - **3D Atmosphere:**
@@ -40,7 +40,7 @@ This is a qualitative miniature weather model for experimentation, with simplifi
   - Manual rain and open surface edges remain available when the closed cycle is disabled.
 - **Visuals & Customization:**
   - Beautiful glassmorphic UI overlay.
-  - Layer visibility toggles (Rock, Sand, Water, Lava, Suspended Sand/Mud).
+  - Layer visibility toggles (Rock, Soil, Sand, Water, Lava, Suspended Sand & Soil/Mud).
   - Free camera and smooth rendering modes.
   - Built-in real-time performance indicator (FPS).
 
@@ -143,3 +143,11 @@ Painting, erasing and camera controls remain available with the overlay visible.
 The overlay returns to the
 normal cloud view; selecting an atmospheric slice disables the overlay. Pausing
 or disabling weather keeps the stored temperatures available for inspection.
+
+### Soil and sand regression
+
+Open `/water-sim/tests/sediments.html` on the Vite server, or run `node tests/run-gpu.mjs sediments` with Chrome installed, to exercise the production GPU shaders: layered generation, soil painting and erasing, steep slope stability, protected soil, identical erosion rates, separate transport and deposition, and sediment conservation. The suite also checks hydraulic rest above a varying soil bed and the atmospheric surface elevation. Set `CHROME_PATH` or `TEST_BASE_URL` if needed.
+
+Terrain cells use six floats (rock, sand, suspended sand, avalanche flags, soil, suspended soil); fluid and weather surface cells still use four. The controls display all repose angles in degrees on the same 0–89° range: 70° static / 55° dynamic for soil, and 43° static / 20° dynamic for sand at the default grid and height scale. The GPU stores height differences per cell; the UI converts using the grid spacing and height scale. Lowering the angle lets an existing pile spread. Increasing it permits steeper slopes without rebuilding the pile, and it cannot flatten the underlying rock. Each material’s dynamic angle cannot exceed its static angle. Both retain independent avalanche histories: a pile starts moving above its static threshold and continues toward its dynamic threshold. The existing avalanche channel packs the two flags (sand = 1, soil = 2), without enlarging terrain buffers.
+
+Run `node tests/run-gpu.mjs repose sediments` to check the production angle controls, their conversion to GPU parameters, the response of an existing soil pile when the angle changes, independent sand/soil hysteresis, and identical behavior when both materials have matching angles.

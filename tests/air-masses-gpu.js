@@ -1,3 +1,4 @@
+import { terrainFixture } from './terrain-fixture.js';
 import { config } from '../src/config.ts';
 import { AtmosphereSimulation, ATMOSPHERE_DIMENSIONS } from '../src/atmosphere.ts';
 
@@ -42,7 +43,7 @@ async function run() {
       size,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
-  const terrain = make(n * n * 16),
+  const terrain = make(n * n * 24),
     fluids = make(n * n * 16);
   const ground = new Float32Array(n * n * 4),
     liquid = new Float32Array(ground.length);
@@ -66,7 +67,7 @@ async function run() {
     evaporationRate: 0.25,
     heightScale: 18,
   });
-  device.queue.writeBuffer(terrain, 0, ground);
+  device.queue.writeBuffer(terrain, 0, terrainFixture(ground));
   device.queue.writeBuffer(fluids, 0, liquid);
   const sim = new AtmosphereSimulation(device, n);
   await sim.init();
@@ -214,7 +215,7 @@ async function run() {
   liquid.fill(0);
   ground.fill(0);
   device.queue.writeBuffer(fluids, 0, liquid);
-  device.queue.writeBuffer(terrain, 0, ground);
+  device.queue.writeBuffer(terrain, 0, terrainFixture(ground));
   const air = new Float32Array(atmoX * atmoY * atmoZ * 8);
   for (let z = 0; z < atmoZ; z++)
     for (let y = 0; y < atmoY; y++)
@@ -223,7 +224,14 @@ async function run() {
         air[i] = 6;
         air[i + 3] = 8;
         air[i + 4] = 0.008 * Math.exp(0.065 * 8);
-        if (x >= cloudStartX && x < cloudEndX && y >= cloudStartY && y < cloudEndY && z >= cloudStartZ && z < cloudEndZ)
+        if (
+          x >= cloudStartX &&
+          x < cloudEndX &&
+          y >= cloudStartY &&
+          y < cloudEndY &&
+          z >= cloudStartZ &&
+          z < cloudEndZ
+        )
           air[i + 5] = 0.006;
       }
   device.queue.writeBuffer(sim.volumeBuffer, 0, air);

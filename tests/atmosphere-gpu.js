@@ -1,3 +1,4 @@
+import { terrainFixture } from './terrain-fixture.js';
 import { config } from '../src/config.ts';
 import { AtmosphereSimulation, ATMOSPHERE_DIMENSIONS } from '../src/atmosphere.ts';
 import { GPGPUSimulation } from '../src/webgpuRenderer.ts';
@@ -22,13 +23,13 @@ async function run() {
   device.addEventListener('uncapturederror', (event) => validationErrors.push(event.error.message));
   const size = 96;
   const data = new Float32Array(size * size * 4);
-  const createBuffer = (label) =>
+  const createBuffer = (label, bytes = data.byteLength) =>
     device.createBuffer({
       label,
-      size: data.byteLength,
+      size: bytes,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
-  const terrain = createBuffer('test terrain');
+  const terrain = createBuffer('test terrain', size * size * 24);
   const fluids = createBuffer('test fluids');
   const read = async (buffer) => {
     const staging = device.createBuffer({
@@ -59,7 +60,7 @@ async function run() {
     evaporationRate: 0, // Isolate phase transfers; the closed-cycle suite tests evaporation.
   });
   for (let i = 0; i < data.length; i += 4) data[i] = 0.05;
-  device.queue.writeBuffer(terrain, 0, data);
+  device.queue.writeBuffer(terrain, 0, terrainFixture(data));
   device.queue.writeBuffer(fluids, 0, data);
   const atmosphere = new AtmosphereSimulation(device, size);
   await atmosphere.init();
@@ -77,7 +78,9 @@ async function run() {
   check(
     'Cold air starts without a seeded temperature pattern',
     coldInitial.every(
-      (v, i) => i % 8 !== 3 || v === coldInitial[Math.floor(i / (atmoX * atmoY * 8)) * atmoX * atmoY * 8 + 3]
+      (v, i) =>
+        i % 8 !== 3 ||
+        v === coldInitial[Math.floor(i / (atmoX * atmoY * 8)) * atmoX * atmoY * 8 + 3]
     )
   );
   await tick(60);
@@ -273,7 +276,7 @@ async function run() {
   );
   const fine = 257;
   const depositionTerrain = depositionDevice.createBuffer({
-    size: fine * fine * 16,
+    size: fine * fine * 24,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
   const depositionFluid = depositionDevice.createBuffer({

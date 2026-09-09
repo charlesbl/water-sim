@@ -153,11 +153,11 @@ export class GPGPUSimulation {
 
     // 1. Create storage buffers
     this.terrainBufferA = this.device.createBuffer({
-      size: bufferSize,
+      size: numCells * 24, // 6 floats: rock, sand, suspended sand, avalanche, soil, suspended soil
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
     this.terrainBufferB = this.device.createBuffer({
-      size: bufferSize,
+      size: numCells * 24,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
 
@@ -204,7 +204,7 @@ export class GPGPUSimulation {
 
     // 2. Create uniform buffers
     this.computeUniformBuffer = this.device.createBuffer({
-      size: 144, // 36 floats * 4 bytes
+      size: 160, // 39 parameters + 1 padding float
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -703,13 +703,13 @@ export class GPGPUSimulation {
     if (!config.paused) this.time += 1 / 60;
 
     // Write Compute Uniform Buffer
-    const computeUniforms = new Float32Array(36);
+    const computeUniforms = new Float32Array(40);
     computeUniforms[0] = this.size;
     computeUniforms[1] = config.waterGravity;
     computeUniforms[2] = config.waterDamping;
     computeUniforms[3] = config.lavaGravity;
     computeUniforms[4] = config.lavaDamping;
-    computeUniforms[5] = config.sandSlideRate;
+    computeUniforms[5] = config.sedimentSlideRate;
     computeUniforms[6] = config.sandStaticReposeSlope;
     computeUniforms[7] = config.sandDynamicReposeSlope;
     computeUniforms[8] = config.erosionRate;
@@ -740,6 +740,9 @@ export class GPGPUSimulation {
     computeUniforms[33] = config.fbmOctaves;
     computeUniforms[34] = config.fbmPersistence;
     computeUniforms[35] = config.minWaterDepth;
+    computeUniforms[36] = config.soilStaticReposeSlope;
+    computeUniforms[37] = config.soilDynamicReposeSlope;
+    computeUniforms[38] = config.terrainSoilHeight;
     if (
       this.brushActive &&
       (this.brushType === 0 || this.brushType === 5 || this.brushType === 6)
@@ -845,7 +848,7 @@ export class GPGPUSimulation {
     renderUniforms[34] = config.smoothRendering ? 1.0 : 0.0;
     renderUniforms[35] = config.closedWaterCycle ? 0 : config.borderBehavior;
     renderUniforms[36] = config.borderWaterHeight;
-    renderUniforms[37] = 0; // padding 0
+    renderUniforms[37] = config.showSoil ? 1.0 : 0.0;
     renderUniforms[38] = 0; // padding 1
     renderUniforms[39] = 0; // padding 2
 
@@ -985,6 +988,7 @@ export class GPGPUSimulation {
     renderUniforms[34] = config.smoothRendering ? 1.0 : 0.0;
     renderUniforms[35] = config.closedWaterCycle ? 0 : config.borderBehavior;
     renderUniforms[36] = config.borderWaterHeight;
+    renderUniforms[37] = config.showSoil ? 1.0 : 0.0;
 
     this.device.queue.writeBuffer(this.renderUniformBufferTerrain!, 0, renderUniforms);
 
