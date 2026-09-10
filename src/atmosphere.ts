@@ -17,6 +17,8 @@ type PassName =
   | 'radiateColumns'
   | 'prepareSolar'
   | 'normalizeSolar'
+  | 'prepareSurfaceMapping'
+  | 'prepareCourant'
   | 'advect'
   | 'divergence'
   | 'cgApply'
@@ -40,6 +42,8 @@ interface AtmosphericBindings {
   radiateColumns: [GPUBindGroup, GPUBindGroup];
   prepareSolar: GPUBindGroup;
   normalizeSolar: GPUBindGroup;
+  prepareSurfaceMapping: GPUBindGroup;
+  prepareCourant: [GPUBindGroup, GPUBindGroup];
   advect: [GPUBindGroup, GPUBindGroup];
   divergence: [GPUBindGroup, GPUBindGroup];
   cgApply: GPUBindGroup;
@@ -78,6 +82,8 @@ export class AtmosphereSimulation {
 
   private readonly volumes: [GPUBuffer, GPUBuffer];
   private readonly pressureBuffer: GPUBuffer;
+  private readonly pressureGeometry: GPUBuffer;
+  private readonly outgoingCourants: GPUBuffer;
   public readonly columns: GPUBuffer;
   private readonly precipitation: GPUBuffer;
   private readonly divergenceBuffer: GPUBuffer;
@@ -94,6 +100,7 @@ export class AtmosphereSimulation {
   private readonly depositionWeights: GPUBuffer;
   private readonly depositionWeightValues: [Float32Array, Float32Array];
   private depositionBoundary = -1;
+  private surfaceMappingBoundary = -1;
   private readonly uniforms: GPUBuffer;
   private readonly uniformValues = new Float32Array(32);
   private readonly bindCache = new WeakMap<GPUBuffer, WeakMap<GPUBuffer, AtmosphericBindings>>();
@@ -119,6 +126,8 @@ export class AtmosphereSimulation {
       storage('Atmosphere volume B', volumeCells * 32),
     ];
     this.pressureBuffer = storage('Atmosphere pressure', volumeCells * 4);
+    this.pressureGeometry = storage('Pressure face mask and diagonal', volumeCells * 8);
+    this.outgoingCourants = storage('Outgoing atmospheric Courant numbers', volumeCells * 4);
     this.surfaceBuffer = storage(
       'Snow, ice, surface temperature, evaporated water',
       surfaceSize * surfaceSize * 16
@@ -153,8 +162,8 @@ export class AtmosphereSimulation {
     // Share the radiation budget binding to keep surfaceExchange within the
     // default WebGPU limit of eight storage buffers per shader stage.
     this.solarNormalization = storage(
-      'Solar normalization and column infrared fluxes',
-      (1 + nx * ny) * 16
+      'Solar normalization, column infrared fluxes and surface mapping',
+      (1 + nx * ny) * 16 + surfaceSize * 32
     );
     this.depositionWeights = storage('Conservative smooth precipitation weights', nx * ny * 4);
     // Geometry-only quadrature weights. Physics and deposition remain on GPU.
@@ -220,6 +229,8 @@ export class AtmosphereSimulation {
       'radiateColumns',
       'prepareSolar',
       'normalizeSolar',
+      'prepareSurfaceMapping',
+      'prepareCourant',
       'advect',
       'divergence',
       'cgApply',
@@ -318,6 +329,18 @@ export class AtmosphereSimulation {
       dispatch(name, group, Math.ceil(nx / 4), Math.ceil(ny / 4), Math.ceil(nz / 4));
     const surfaceGroups = Math.ceil(this.surfaceSize / 16);
 
+    // Dimensions are fixed for this instance. Rebuild only when horizontal
+    // boundaries change, including resets at zero dt before the first exchange.
+    if (this.surfaceMappingBoundary !== boundary) {
+      dispatch(
+        'prepareSurfaceMapping',
+        groups.prepareSurfaceMapping,
+        Math.ceil(this.surfaceSize / 64),
+        1
+      );
+      this.surfaceMappingBoundary = boundary;
+    }
+
     if (this.needsSurfaceClear) {
       dispatch('initializeSurface', groups.initializeSurface, surfaceGroups, surfaceGroups);
       this.needsSurfaceClear = false;
@@ -346,6 +369,7 @@ export class AtmosphereSimulation {
     dispatch('exchangeHeat', groups.exchangeHeat, surfaceGroups, surfaceGroups);
     dispatch('gatherHeat', groups.gatherHeat, nx, ny);
     dispatch('radiateColumns', groups.radiateColumns[source], Math.ceil(nx / 8), Math.ceil(ny / 8));
+    volumePass('prepareCourant', groups.prepareCourant[source]);
     volumePass('advect', groups.advect[source]);
     volumePass('divergence', groups.divergence[advected]);
     // Preconditioned conjugate gradients resolve broad circulation modes that
@@ -379,6 +403,8 @@ export class AtmosphereSimulation {
     for (const buffer of [
       ...this.volumes,
       this.pressureBuffer,
+      this.pressureGeometry,
+      this.outgoingCourants,
       this.surfaceBuffer,
       this.columns,
       this.precipitation,
@@ -466,6 +492,7 @@ export class AtmosphereSimulation {
         [6, this.surfaceBuffer],
         [19, this.heatProfiles],
         [20, this.heatTransfers],
+        [18, this.solarNormalization],
       ]),
       gatherHeat: group('gatherHeat', [
         [6, this.surfaceBuffer],
@@ -489,10 +516,18 @@ export class AtmosphereSimulation {
         [6, this.surfaceBuffer],
         [17, this.solarPartials],
       ]),
+      prepareSurfaceMapping: group('prepareSurfaceMapping', [[18, this.solarNormalization]]),
       normalizeSolar: group('normalizeSolar', [
         [17, this.solarPartials],
         [18, this.solarNormalization],
       ]),
+      prepareCourant: pair((i) =>
+        group('prepareCourant', [
+          [1, this.volumes[i]],
+          [3, this.columns],
+          [24, this.outgoingCourants],
+        ])
+      ),
       advect: pair((i) =>
         group('advect', [
           [1, this.volumes[i]],
@@ -501,6 +536,7 @@ export class AtmosphereSimulation {
           [12, this.layerMeans],
           [16, this.surfaceHeat],
           [22, this.longwaveHeating],
+          [24, this.outgoingCourants],
         ])
       ),
       divergence: pair((i) =>
@@ -510,23 +546,24 @@ export class AtmosphereSimulation {
           [8, this.pressureBuffer],
           [9, this.divergenceBuffer],
           [13, this.conjugateState],
+          [23, this.pressureGeometry],
         ])
       ),
       cgApply: group('cgApply', [
-        [3, this.columns],
         [13, this.conjugateState],
         [14, this.conjugatePartials],
+        [23, this.pressureGeometry],
       ]),
       cgReduceBefore: group('cgReduceBefore', [
         [14, this.conjugatePartials],
         [15, this.conjugateCoefficients],
       ]),
       cgUpdate: group('cgUpdate', [
-        [3, this.columns],
         [8, this.pressureBuffer],
         [13, this.conjugateState],
         [14, this.conjugatePartials],
         [15, this.conjugateCoefficients],
+        [23, this.pressureGeometry],
       ]),
       cgReduceAfter: group('cgReduceAfter', [
         [14, this.conjugatePartials],

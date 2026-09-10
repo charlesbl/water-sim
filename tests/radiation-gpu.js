@@ -176,7 +176,10 @@ async function run() {
       );
       check(
         'Disabling radiation clears surface and space infrared fluxes',
-        (await read(device, sim.solarNormalization)).slice(4).every((v) => v === 0)
+        // The buffer tail contains geometric mappings, not infrared fluxes.
+        (await read(device, sim.solarNormalization))
+          .slice(4, (1 + nx * ny) * 4)
+          .every((v) => v === 0)
       );
 
       // A cloud emits and absorbs infrared even in a motionless column.

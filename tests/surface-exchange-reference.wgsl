@@ -1,3 +1,7 @@
+// Frozen atmosphere before optimization 3; optimizations 1 and 2 retained.
+// Source SHA-256: 9beb0e1cac14247e33ad3b17ef824f2e6c83873165391654c18de1878d38ae81
+// Test-only module: only surface/radiation pipelines are used as reference.
+
 struct TerrainCell {
     rock: f32,
     sand: f32,
@@ -48,8 +52,6 @@ struct WeatherUniforms {
 @group(0) @binding(17) var<storage, read_write> solarPartials: array<vec2<f32>>;
 // Entry 0: solar normalization and mean fluxes. Entries 1..nx*ny: mean surface
 // IR emission, downwelling surface flux, escaping top flux, unused.
-// Tail: two entries per fine coordinate, one per axis (lower column, upper
-// column, interpolation fraction, unused). Built once per boundary mode.
 @group(0) @binding(18) var<storage, read_write> radiationBudget: array<vec4<f32>>;
 // Air temperature intercept, vertical gradient, speed, inverse footprint capacity.
 @group(0) @binding(19) var<storage, read_write> heatProfiles: array<vec4<f32>>;
@@ -82,36 +84,6 @@ fn index(p: vec3<i32>) -> u32 {
 fn columnIndex(p: vec3<i32>) -> u32 {
     let q = wrap(p);
     return u32(q.y) * u32(u.grid.x) + u32(q.x);
-}
-
-struct SurfaceMapping {
-    columns: vec4<u32>, // 00, 10, 01, 11, in the original accumulation order.
-    fraction: vec2<f32>,
-};
-
-fn surfaceMapping(xy: vec2<u32>) -> SurfaceMapping {
-    let start = 1u + u32(u.grid.x) * u32(u.grid.y);
-    let x = radiationBudget[start + 2u * xy.x];
-    let y = radiationBudget[start + 2u * xy.y + 1u];
-    let rows = vec2<u32>(y.xy) * u32(u.grid.x);
-    let columns = vec2<u32>(x.xy);
-    return SurfaceMapping(vec4<u32>(columns.x + rows.x, columns.y + rows.x,
-        columns.x + rows.y, columns.y + rows.y), vec2<f32>(x.z, y.z));
-}
-
-// Compute the original GPU expressions, including f32 rounding, once for each
-// coordinate. The table depends only on grid dimensions and horizontal borders.
-@compute @workgroup_size(64)
-fn prepareSurfaceMapping(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= u32(u.grid.w)) { return; }
-    let xy = (vec2<f32>(f32(id.x)) + 0.5) * u.grid.xy / u.grid.w - 0.5;
-    let base = vec2<i32>(floor(xy));
-    let fraction = fract(xy);
-    let lower = wrap(vec3<i32>(base, 0)).xy;
-    let upper = wrap(vec3<i32>(base + vec2<i32>(1), 0)).xy;
-    let start = 1u + u32(u.grid.x) * u32(u.grid.y) + 2u * id.x;
-    radiationBudget[start] = vec4<f32>(f32(lower.x), f32(upper.x), fraction.x, 0.0);
-    radiationBudget[start + 1u] = vec4<f32>(f32(lower.y), f32(upper.y), fraction.y, 0.0);
 }
 
 fn inside(id: vec3<u32>) -> bool {
@@ -644,25 +616,27 @@ fn sediment(@builtin(global_invocation_id) id: vec3<u32>) {
 // Continuous reconstruction across coarse column boundaries. The separate
 // normalization accounts for each tent kernel's discrete footprint, so smoothing
 // changes the distribution of precipitation, never the amount transferred.
-fn surfaceWeather(mapping: SurfaceMapping, height: f32) -> vec4<f32> {
-    let f = mapping.fraction;
+fn surfaceWeather(xy: vec2<f32>, height: f32) -> vec4<f32> {
+    let base = vec2<i32>(floor(xy));
+    let f = fract(xy);
     var result = vec4<f32>(0.0); // local air temperature, vapor, rain, snow
     for (var y = 0; y < 2; y++) {
         for (var x = 0; x < 2; x++) {
-            let ci = mapping.columns[y * 2 + x];
+            let p = vec3<i32>(base + vec2<i32>(x, y), 0);
+            let ci = columnIndex(p);
             let column = columns[ci];
             let firstZ = max(0, i32(floor(column.x / u.spacingTime.z - 0.5)) + 1);
             let w = select(1.0 - f, f, vec2<bool>(x == 1, y == 1));
             let weight = w.x * w.y;
             if (firstZ < i32(u.grid.z)) {
-                let cell = volumeIn[u32(firstZ) * u32(u.grid.x) * u32(u.grid.y) + ci];
+                let cell = volumeIn[index(vec3<i32>(p.xy, firstZ))];
                 let airHeight = (f32(firstZ) + 0.5) * u.spacingTime.z;
                 // Reconstruct the current profile, not the initialization
                 // lapse. A fixed lapse warmed an isothermal surface/air pair
                 // repeatedly even with every external energy source disabled.
                 var temperatureGradient = 0.0;
                 if (firstZ + 1 < i32(u.grid.z)) {
-                    let above = volumeIn[u32(firstZ + 1) * u32(u.grid.x) * u32(u.grid.y) + ci].velocityTemperature.w;
+                    let above = volumeIn[index(vec3<i32>(p.xy, firstZ + 1))].velocityTemperature.w;
                     temperatureGradient = clamp((above - cell.velocityTemperature.w) / u.spacingTime.z, -0.4, 0.4);
                 }
                 result.x += (cell.velocityTemperature.w + temperatureGradient * (height - airHeight)) * weight;
@@ -788,12 +762,13 @@ fn exchangeHeat(@builtin(global_invocation_id) id: vec3<u32>) {
         + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
     let capacity = surfaceHeatCapacity(i, liquid, cover.y, cover.x);
     let insulation = 1.0 + cover.x * 5.0 * u.environment.y * 5.0;
-    let mapping = surfaceMapping(id.xy);
-    let f = mapping.fraction;
+    let xy = (vec2<f32>(id.xy) + 0.5) * u.grid.xy / u.grid.w - 0.5;
+    let base = vec2<i32>(floor(xy));
+    let f = fract(xy);
     var transfers = vec4<f32>(0.0);
     for (var y = 0; y < 2; y++) {
         for (var x = 0; x < 2; x++) {
-            let profile = heatProfiles[mapping.columns[y * 2 + x]];
+            let profile = heatProfiles[columnIndex(vec3<i32>(base + vec2<i32>(x, y), 0))];
             if (profile.w <= 0.0) { continue; }
             let weight = select(1.0 - f, f, vec2<bool>(x == 1, y == 1));
             let difference = cover.z - (profile.x + profile.y * height);
@@ -836,13 +811,14 @@ fn gatherHeat(@builtin(workgroup_id) id: vec3<u32>, @builtin(local_invocation_in
     for (var k = i32(lane); k < extent.x * extent.y; k += 64) {
         let unfolded = start + vec2<i32>(k % extent.x, k / extent.x);
         let q = ((unfolded % vec2<i32>(fine)) + vec2<i32>(fine)) % vec2<i32>(fine);
-        let mapping = surfaceMapping(vec2<u32>(q));
+        let xy = (vec2<f32>(q) + 0.5) * u.grid.xy / u.grid.w - 0.5;
+        let base = vec2<i32>(floor(xy));
         let transfers = heatTransfers[q.y * fine + q.x];
         let emission = longwaveEmission(surface[q.y * fine + q.x].z);
-        let f = mapping.fraction;
+        let f = fract(xy);
         for (var y = 0; y < 2; y++) {
             for (var x = 0; x < 2; x++) {
-                if (mapping.columns[y * 2 + x] == ci) {
+                if (columnIndex(vec3<i32>(base + vec2<i32>(x, y), 0)) == ci) {
                     let weight = select(1.0 - f, f, vec2<bool>(x == 1, y == 1));
                     heat += vec2<f32>(transfers[y * 2 + x], emission * weight.x * weight.y);
                 }
@@ -906,13 +882,14 @@ fn radiateColumns(@builtin(global_invocation_id) id: vec3<u32>) {
     radiationBudget[ci + 1u].z = upward;
 }
 
-fn surfaceDownwardLongwave(mapping: SurfaceMapping) -> f32 {
-    let f = mapping.fraction;
+fn surfaceDownwardLongwave(xy: vec2<f32>) -> f32 {
+    let base = vec2<i32>(floor(xy));
+    let f = fract(xy);
     var flux = 0.0;
     for (var y = 0; y < 2; y++) {
         for (var x = 0; x < 2; x++) {
             let weight = select(1.0 - f, f, vec2<bool>(x == 1, y == 1));
-            flux += weight.x * weight.y * radiationBudget[mapping.columns[y * 2 + x] + 1u].y;
+            flux += weight.x * weight.y * radiationBudget[columnIndex(vec3<i32>(base + vec2<i32>(x, y), 0)) + 1u].y;
         }
     }
     return flux;
@@ -937,10 +914,10 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
     var cover = surface[i];
     var liquid = fluids[i];
     let height = (terrain[i].rock + terrain[i].soil + terrain[i].sand + max(liquid.x, 0.0) + max(liquid.y, 0.0) + cover.x * 5.0 + cover.y / 0.917) * u.environment.y;
-    let mapping = surfaceMapping(id.xy);
+    let sampleXY = (vec2<f32>(id.xy) + vec2<f32>(0.5)) * u.grid.xy / u.grid.w - vec2<f32>(0.5);
     // Use the same pre-phase surface emission gathered for the air budget.
-    let netLongwave = surfaceDownwardLongwave(mapping) - longwaveEmission(cover.z);
-    let weather = surfaceWeather(mapping, height);
+    let netLongwave = surfaceDownwardLongwave(sampleXY) - longwaveEmission(cover.z);
+    let weather = surfaceWeather(sampleXY, height);
     let airTemperature = weather.x;
     let vapor = weather.y;
     let fallen = weather.zw;

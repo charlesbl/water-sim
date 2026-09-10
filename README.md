@@ -123,6 +123,28 @@ With the Vite server running, open these pages in a WebGPU browser:
 
 Each page reports individual results and stops at a failure. `npm run typecheck`, `npm run lint`, and `npm run build` complement these runtime checks; shader execution must be checked in a WebGPU browser.
 
+The pressure geometry cache has dedicated A/B checks:
+
+- `node tests/run-gpu.mjs pressure-cache` compares the cached solver with the original pressure kernels after 1, 100, and 1,000 weather ticks, with both boundary modes and changing terrain, water, snow, and ice. It also checks every cached face mask against an independent CPU calculation.
+- `node tests/run-gpu.mjs pressure-performance` compares both versions on the full 2048² surface with a 1280 × 720 canvas and maximum mesh resolution. It measures one surface tick, two weather ticks, and rendering from identical GPU snapshots, then replays the application's ×4 weather clock. This benchmark requires GPU timestamp queries and substantial GPU memory for snapshots. Set `TEST_VERBOSE=1` in the environment to print timings and samples.
+
+See [the pressure-cache implementation and measured results](docs/optimisation-meteo/01-geometrie-pression.md). The A/B reference contains the three changed pre-cache kernels; all other simulation passes are shared with production. Timing tools and reference switching exist only in the test pages.
+
+The shared water/heat transport and per-cell Courant cache have corresponding checks:
+
+- `node tests/run-gpu.mjs transport` compares face fluxes around the CFL reconstruction threshold, then complete states after 1, 100, and 1,000 ticks, including boundary and terrain changes.
+- `node tests/run-gpu.mjs transport-performance` uses the same full-scene benchmark, with the pressure optimization retained in both versions. The reference uses the original transport; optimized timings include Courant preparation as well as advection. Set `TEST_VERBOSE=1` to retain detailed measurements.
+- `node tests/run-gpu.mjs transport-courant-performance` isolates the benefit of the Courant cache against shared transport with local Courant calculation.
+
+See [the transport implementation and measured results](docs/optimisation-meteo/02-calculs-transport.md). The frozen reference and all A/B instrumentation are confined to the test pages.
+
+The fine-surface to atmospheric-column mapping table has dedicated checks:
+
+- `node tests/run-gpu.mjs surface-exchange-cache` compares cached neighbors and interpolation fractions with the original GPU expressions, then complete states and energy budgets after 1, 100, and 1,000 ticks with changing boundaries and terrain.
+- `node tests/run-gpu.mjs surface-exchange-performance` compares the full 2048² scene against optimizations 1 and 2 alone. It also measures the occasional mapping-table rebuild and checks bit-identical coupled states. Set `TEST_VERBOSE=1` for detailed samples.
+
+See [the surface-exchange implementation and measured results](docs/optimisation-meteo/03-echanges-sol-atmosphere.md). The retained table adds 64 KiB at 2048² and is rebuilt at initialization or when horizontal boundaries change. The larger solar/infrared caches evaluated during this work were removed after performance regressions.
+
 ---
 
 ## Deployment
