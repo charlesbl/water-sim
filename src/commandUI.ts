@@ -1,4 +1,5 @@
 import { config } from './config';
+import { preferences, savePreferences, resetPreferences } from './preferences';
 
 /** Covers HTML and SVG descendants of all overlay surfaces. */
 export function isUIEventTarget(target: EventTarget | null): boolean {
@@ -38,10 +39,26 @@ export function setupCommandUI(): void {
   let currentDomain: string | null = null;
   let highlightTimer: ReturnType<typeof setTimeout> | undefined;
 
+  const savedUI = { ...preferences };
+  let restoring = true;
+  const persistUI = () => {
+    if (!restoring)
+      savePreferences({
+        domain: currentDomain,
+        advanced: inspector.classList.contains('advanced'),
+        search: search.value,
+        scrollTop: body.scrollTop,
+      });
+  };
+  body.addEventListener('scroll', persistUI);
+  window.addEventListener('pagehide', persistUI);
+  document.getElementById('btn-reset-defaults')?.addEventListener('click', resetPreferences);
+
   const setAdvanced = (advanced: boolean) => {
     inspector.classList.toggle('advanced', advanced);
     advancedButton.setAttribute('aria-pressed', String(advanced));
     mode.textContent = advanced ? 'All parameters' : 'Essential controls';
+    persistUI();
   };
   const openDomain = (name: string | null, focus = false) => {
     currentDomain = name;
@@ -60,6 +77,7 @@ export function setupCommandUI(): void {
     }
     body.scrollTop = 0;
     placeLegend();
+    persistUI();
     if (focus && name) document.getElementById('close-inspector')!.focus();
   };
   const closeInspector = () => {
@@ -111,6 +129,11 @@ export function setupCommandUI(): void {
     });
     const state = document.getElementById('runtime-state')!;
     state.textContent = config.paused ? 'Paused' : 'Running';
+    const pause = document.getElementById('btn-pause')!;
+    pause.querySelector('span')!.textContent = config.paused ? 'Resume' : 'Pause';
+    pause.querySelector('use')!.setAttribute('href', config.paused ? '#i-play' : '#i-pause');
+    pause.setAttribute('aria-pressed', String(config.paused));
+    pause.classList.toggle('active', config.paused);
     state.dataset.paused = String(config.paused);
     document
       .getElementById('thermal-controls')!
@@ -135,6 +158,7 @@ export function setupCommandUI(): void {
     document.getElementById('view-options')!.dataset.reveal = config.thermalOverlay
       ? 'thermal-mode'
       : 'atmosphere-slice';
+    persistUI();
   };
 
   for (const { number, range } of numbers) {
@@ -293,6 +317,15 @@ export function setupCommandUI(): void {
   });
   layoutObserver.observe(dock);
   layoutObserver.observe(navigation);
-  openDomain(null);
+  openDomain(
+    navButtons.some((button) => button.dataset.domain === savedUI.domain) ? savedUI.domain! : null
+  );
+  setAdvanced(savedUI.advanced === true);
+  search.value = typeof savedUI.search === 'string' ? savedUI.search : '';
+  if (search.value) showResults();
   sync();
+  requestAnimationFrame(() => {
+    body.scrollTop = typeof savedUI.scrollTop === 'number' ? savedUI.scrollTop : 0;
+    restoring = false;
+  });
 }

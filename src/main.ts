@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { preferences, restoreConfig, savePreferences } from './preferences';
 import { config } from './config';
 import { GPGPUSimulation } from './webgpuRenderer';
 import { setupWeatherControls } from './weatherControls';
@@ -57,6 +58,8 @@ function init() {
   const container = document.getElementById('canvas-container');
   if (!container) return;
 
+  restoreConfig();
+
   // 1. Create native HTMLCanvasElement for WebGPU
   canvas = document.createElement('canvas');
   canvas.width = window.innerWidth;
@@ -70,6 +73,30 @@ function init() {
   camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(185, 155, 215);
   camera.lookAt(0, 35, 0);
+  const savedCamera = preferences.camera;
+  const validVector = (value: unknown, length: number): value is number[] =>
+    Array.isArray(value) && value.length === length && value.every(Number.isFinite);
+  if (
+    savedCamera &&
+    validVector(savedCamera.position, 3) &&
+    validVector(savedCamera.quaternion, 4) &&
+    savedCamera.quaternion.some((v) => v !== 0)
+  ) {
+    camera.position.fromArray(savedCamera.position);
+    camera.quaternion.fromArray(savedCamera.quaternion).normalize();
+  }
+  const saveCamera = () =>
+    savePreferences({
+      camera: {
+        position: camera.position.toArray(),
+        quaternion: camera.quaternion.toArray(),
+      },
+    });
+  window.setInterval(saveCamera, 250);
+  window.addEventListener('pagehide', saveCamera);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) saveCamera();
+  });
 
   // 4. WebGPU Simulation & Rendering Engine
   gpgpu = new GPGPUSimulation(canvas, config.gridSize);
