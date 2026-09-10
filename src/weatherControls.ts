@@ -15,6 +15,7 @@ type WeatherNumberKey =
   | 'radiativeCooling'
   | 'atmosphereTimeScale'
   | 'atmosphereSlice'
+  | 'cloudOpacity'
   | 'thermalOpacity'
   | 'thermalHeight';
 
@@ -131,10 +132,11 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
   bindSlider('radiative-cooling', 'radiativeCooling', (value) => `${value.toFixed(1)}×`);
   bindSlider('atmosphere-time-scale', 'atmosphereTimeScale', (value) => `${value.toFixed(2)}×`);
   bindSlider('atmosphere-slice', 'atmosphereSlice', (value) => `${Math.round(value * 100)}%`, 100);
+  bindSlider('cloud-opacity', 'cloudOpacity', (value) => `${Math.round(value * 100)}%`, 100);
   bindSlider('thermal-opacity', 'thermalOpacity', (value) => `${Math.round(value * 100)}%`, 100);
   bindSlider('thermal-height', 'thermalHeight', (value) => `${value.toFixed(2)} u`);
 
-  const bindCheckbox = (id: string, key: 'atmosphereEnabled' | 'showClouds' | 'showWind') => {
+  const bindCheckbox = (id: string, key: 'atmosphereEnabled' | 'showWind') => {
     const checkbox = document.getElementById(id) as HTMLInputElement | null;
     if (!checkbox) return;
     syncControls.push(() => {
@@ -147,7 +149,6 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
   };
 
   bindCheckbox('atmosphere-enabled', 'atmosphereEnabled');
-  bindCheckbox('show-clouds', 'showClouds');
   bindCheckbox('show-wind', 'showWind');
 
   const dynamics = document.getElementById('weather-dynamics') as HTMLSelectElement;
@@ -265,15 +266,14 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
     }
   };
   syncControls.push(syncView);
-  const thermalToggle = document.getElementById('thermal-overlay') as HTMLInputElement;
+  const thermalOpacity = document.getElementById('thermal-opacity') as HTMLInputElement;
   const thermalMode = document.getElementById('thermal-mode') as HTMLSelectElement;
   const syncThermal = () => {
-    thermalToggle.checked = config.thermalOverlay;
+    config.thermalOverlay = config.thermalOpacity > 0;
+    thermalOpacity.value = String(config.thermalOpacity * 100);
     thermalMode.value = config.thermalAir ? 'air' : 'surface';
     document.getElementById('thermal-controls')!.hidden = false;
-    thermalMode.disabled = !config.thermalOverlay;
-    (document.getElementById('thermal-opacity') as HTMLInputElement).disabled =
-      !config.thermalOverlay;
+    thermalMode.disabled = false;
     (document.getElementById('thermal-height') as HTMLInputElement).disabled =
       !config.thermalOverlay || !config.thermalAir;
     document.getElementById('thermal-legend')!.hidden = !config.thermalOverlay;
@@ -282,8 +282,8 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
       : 'Surface temperature · °C';
   };
   syncControls.push(syncThermal);
-  thermalToggle.addEventListener('change', () => {
-    config.thermalOverlay = thermalToggle.checked;
+  thermalOpacity.addEventListener('input', () => {
+    config.thermalOverlay = config.thermalOpacity > 0;
     if (config.thermalOverlay) {
       config.atmosphereView = 0;
       syncView();
@@ -300,6 +300,7 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
     if (![0, 1, 2, 3].includes(selected)) return;
     config.atmosphereView = selected;
     if (selected !== 0) {
+      config.thermalOpacity = 0;
       config.thermalOverlay = false;
       syncThermal();
     }

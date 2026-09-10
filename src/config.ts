@@ -70,7 +70,7 @@ export interface Config {
   sunAzimuth: number; // Sun direction in terrain coordinates, degrees
   radiativeCooling: number; // Longwave heat loss multiplier
   atmosphereTimeScale: number; // Weather time multiplier
-  showClouds: boolean;
+  cloudOpacity: number;
   showWind: boolean;
   atmosphereView: number; // 0: volume, 1: temperature, 2: humidity, 3: wind
   atmosphereSlice: number; // Normalized altitude of the diagnostic slice
@@ -87,7 +87,7 @@ export interface Config {
 export const config: Config = {
   thermalOverlay: false,
   thermalAir: false,
-  thermalOpacity: 0.45,
+  thermalOpacity: 0,
   thermalHeight: 6.25,
   gridSize: 2048,
   waterGravity: 9.81,
@@ -153,7 +153,7 @@ export const config: Config = {
   sunAzimuth: 135,
   radiativeCooling: 1,
   atmosphereTimeScale: 1,
-  showClouds: true,
+  cloudOpacity: 1,
   showWind: false,
   atmosphereView: 0,
   atmosphereSlice: 0.5,

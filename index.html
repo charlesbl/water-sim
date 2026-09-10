@@ -108,59 +108,7 @@
               ><span>Pause</span>
             </button>
           </div>
-          <div
-            class="control-group"
-            data-control="sim-speed"
-            data-keywords="Simulation Speed (ticks/frame)"
-          >
-            <div class="label-row"><label for="sim-speed">World speed</label></div>
-            <div class="range-row">
-              <input type="range" id="sim-speed" min="0.1" max="10.0" value="1.0" step="0.1" />
-              <div class="number-box">
-                <input
-                  type="number"
-                  id="sim-speed-number"
-                  data-number-for="sim-speed"
-                  aria-label="World speed exact value"
-                  min="0.1"
-                  max="10.0"
-                  step="0.1"
-                  value="1.0"
-                /><span class="unit">×</span>
-              </div>
-            </div>
-            <span class="value-display sr-only" id="sim-speed-val">1.0</span>
-          </div>
-          <div
-            class="control-group"
-            data-control="atmosphere-time-scale"
-            data-keywords="Weather speed"
-          >
-            <div class="label-row"><label for="atmosphere-time-scale">Weather speed</label></div>
-            <div class="range-row">
-              <input
-                type="range"
-                id="atmosphere-time-scale"
-                min="0.25"
-                max="4"
-                value="1"
-                step="0.25"
-              />
-              <div class="number-box">
-                <input
-                  type="number"
-                  id="atmosphere-time-scale-number"
-                  data-number-for="atmosphere-time-scale"
-                  aria-label="Weather speed exact value"
-                  min="0.25"
-                  max="4"
-                  step="0.25"
-                  value="1"
-                /><span class="unit">×</span>
-              </div>
-            </div>
-            <span class="value-display sr-only" id="atmosphere-time-scale-val">1.00×</span>
-          </div>
+          <div id="quick-controls" class="quick-controls"></div>
         </div>
         <div class="search-area">
           <label class="search-box" for="command-search"
@@ -290,6 +238,32 @@
             data-description="Shape the foundation"
             hidden
           >
+            <section class="setting-block">
+              <div class="block-heading"><h3>Simulation time</h3></div>
+              <div
+                class="control-group"
+                data-control="sim-speed"
+                data-keywords="Simulation Speed (ticks/frame)"
+              >
+                <div class="label-row"><label for="sim-speed">World speed</label></div>
+                <div class="range-row">
+                  <input type="range" id="sim-speed" min="0.1" max="10.0" value="1.0" step="0.1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="sim-speed-number"
+                      data-number-for="sim-speed"
+                      aria-label="World speed exact value"
+                      min="0.1"
+                      max="10.0"
+                      step="0.1"
+                      value="1.0"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="sim-speed-val">1.0</span>
+              </div>
+            </section>
             <section class="setting-block">
               <div class="block-heading"><h3>Landscape</h3></div>
               <div
@@ -638,6 +612,41 @@
             data-description="Set the atmosphere in motion"
             hidden
           >
+            <section class="setting-block">
+              <div class="block-heading"><h3>Simulation time</h3></div>
+              <div
+                class="control-group"
+                data-control="atmosphere-time-scale"
+                data-keywords="Weather speed"
+              >
+                <div class="label-row">
+                  <label for="atmosphere-time-scale">Weather speed</label>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="atmosphere-time-scale"
+                    min="0.25"
+                    max="4"
+                    value="1"
+                    step="0.25"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="atmosphere-time-scale-number"
+                      data-number-for="atmosphere-time-scale"
+                      aria-label="Weather speed exact value"
+                      min="0.25"
+                      max="4"
+                      step="0.25"
+                      value="1"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="atmosphere-time-scale-val">1.00×</span>
+              </div>
+            </section>
             <section class="setting-block">
               <div class="block-heading"><h3>Atmosphere</h3></div>
               <div
@@ -1863,16 +1872,29 @@
               </div>
               <div
                 class="control-group"
-                data-control="show-clouds"
-                data-keywords="Show volumetric clouds"
+                data-control="cloud-opacity"
+                data-keywords="Cloud opacity volumetric clouds"
               >
-                <label class="toggle-row" for="show-clouds"
-                  ><span>Show volumetric clouds</span
-                  ><input type="checkbox" id="show-clouds" checked /><span
-                    class="toggle-track"
-                    aria-hidden="true"
-                  ></span
-                ></label>
+                <div class="label-row">
+                  <label for="cloud-opacity">Cloud opacity</label
+                  ><span class="effect-badge">View</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="cloud-opacity" min="0" max="100" step="1" value="100" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="cloud-opacity-number"
+                      data-number-for="cloud-opacity"
+                      aria-label="Cloud opacity exact value"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value="100"
+                    /><span class="unit">%</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="cloud-opacity-val">100%</span>
               </div>
               <div
                 class="control-group"
@@ -1889,20 +1911,7 @@
             </section>
             <section class="setting-block">
               <div class="block-heading"><h3>Temperature overlay</h3></div>
-              <div
-                class="control-group"
-                data-control="thermal-overlay"
-                data-keywords="Temperature overlay"
-              >
-                <label class="toggle-row" for="thermal-overlay"
-                  ><span>Temperature overlay</span
-                  ><input type="checkbox" id="thermal-overlay" /><span
-                    class="toggle-track"
-                    aria-hidden="true"
-                  ></span
-                ></label>
-              </div>
-              <div id="thermal-controls" data-advanced>
+              <div id="thermal-controls">
                 <div class="control-group" data-control="thermal-mode" data-keywords="Measure">
                   <div class="label-row">
                     <label for="thermal-mode">Measure</label><span class="effect-badge">View</span>
@@ -1912,15 +1921,15 @@
                     <option value="air">Air above surface</option>
                   </select>
                   <p class="availability" data-availability>
-                    Enable the temperature overlay to choose a measurement.
-                    <button type="button" class="text-button" data-reveal="thermal-overlay">
+                    Increase temperature opacity to show the overlay.
+                    <button type="button" class="text-button" data-reveal="thermal-opacity">
                       Change mode
                     </button>
                   </p>
                 </div>
                 <div class="control-group" data-control="thermal-opacity" data-keywords="Opacity">
                   <div class="label-row">
-                    <label for="thermal-opacity">Opacity</label
+                    <label for="thermal-opacity">Temperature opacity</label
                     ><span class="effect-badge">View</span>
                   </div>
                   <div class="range-row">
@@ -1947,8 +1956,8 @@
                   </div>
                   <span class="value-display sr-only" id="thermal-opacity-val">45%</span>
                   <p class="availability" data-availability>
-                    Enable the temperature overlay to adjust opacity.
-                    <button type="button" class="text-button" data-reveal="thermal-overlay">
+                    Set opacity to 0 to hide the temperature overlay.
+                    <button type="button" class="text-button" data-reveal="thermal-opacity">
                       Change mode
                     </button>
                   </p>

@@ -6,6 +6,26 @@ export function isUIEventTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('[data-ui]') !== null;
 }
 
+/** Only editable text consumes camera shortcuts; buttons and toggles do not. */
+export function isTextInputTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable || target instanceof HTMLTextAreaElement) return true;
+  return (
+    target instanceof HTMLInputElement &&
+    ![
+      'checkbox',
+      'radio',
+      'range',
+      'button',
+      'submit',
+      'reset',
+      'color',
+      'file',
+      'hidden',
+    ].includes(target.type)
+  );
+}
+
 function isEditing(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
@@ -97,6 +117,34 @@ export function setupCommandUI(): void {
     setAdvanced(!inspector.classList.contains('advanced'));
   });
 
+  // Forward shortcut edits to the inspector controls, which own the bindings.
+  const shortcuts = ['sim-speed', 'atmosphere-time-scale', 'thermal-opacity', 'cloud-opacity'].map(
+    (id) => {
+      const range = document.getElementById(id) as HTMLInputElement;
+      const group = range.closest<HTMLElement>('.control-group')!.cloneNode(true) as HTMLElement;
+      group.removeAttribute('data-control');
+      group
+        .querySelectorAll('.availability, .effect-badge, .value-display')
+        .forEach((element) => element.remove());
+      group.querySelectorAll<HTMLElement>('[id]').forEach((element) => {
+        element.id = 'quick-' + element.id;
+      });
+      group.querySelectorAll<HTMLLabelElement>('label[for]').forEach((label) => {
+        label.htmlFor = 'quick-' + label.htmlFor;
+      });
+      group.querySelectorAll<HTMLElement>('[data-number-for]').forEach((number) => {
+        number.dataset.numberFor = 'quick-' + id;
+      });
+      const shortcut = group.querySelector<HTMLInputElement>('input[type="range"]')!;
+      shortcut.addEventListener('input', () => {
+        range.value = shortcut.value;
+        range.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      document.getElementById('quick-controls')!.append(group);
+      return { range, shortcut };
+    }
+  );
+
   const numbers = Array.from(ui.querySelectorAll<HTMLInputElement>('[data-number-for]')).map(
     (number) => ({
       number,
@@ -104,6 +152,10 @@ export function setupCommandUI(): void {
     })
   );
   const sync = () => {
+    for (const { range, shortcut } of shortcuts) {
+      shortcut.value = range.value;
+      shortcut.disabled = range.disabled;
+    }
     for (const { number, range } of numbers) {
       if (document.activeElement !== number) number.value = range.value;
       number.disabled = range.disabled;
@@ -304,19 +356,24 @@ export function setupCommandUI(): void {
       search.focus();
     }
   });
-  // Measure both toolbars, including wrapped labels and larger touch controls.
+  // Measure the toolbars, including wrapped labels and larger touch controls.
   const dock = document.getElementById('power-dock')!;
   const navigation = ui.querySelector<HTMLElement>('.domain-nav')!;
   const layoutObserver = new ResizeObserver((entries) => {
     for (const entry of entries) {
       document.documentElement.style.setProperty(
-        entry.target === dock ? '--dock-height' : '--nav-height',
+        entry.target === dock
+          ? '--dock-height'
+          : entry.target === navigation
+            ? '--nav-height'
+            : '--top-measured-height',
         entry.target.getBoundingClientRect().height + 'px'
       );
     }
   });
   layoutObserver.observe(dock);
   layoutObserver.observe(navigation);
+  layoutObserver.observe(ui.querySelector<HTMLElement>('.topbar')!);
   openDomain(
     navButtons.some((button) => button.dataset.domain === savedUI.domain) ? savedUI.domain! : null
   );

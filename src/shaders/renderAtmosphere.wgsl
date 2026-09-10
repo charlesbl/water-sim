@@ -121,7 +121,8 @@ fn fs_volume(input: VolumeVertex) -> @location(0) vec4<f32> {
         return vec4<f32>(color * 0.77, 0.77);
     }
 
-    if (uniforms.view_slice_clouds_wind.z < 0.5) { discard; }
+    let opacity = clamp(uniforms.view_slice_clouds_wind.z, 0.0, 1.0);
+    if (opacity <= 0.0) { discard; }
     // Spatially stable jitter keeps the paused scene completely stationary.
     let step_length = max(1.6, (end - start) / 64.0);
     let jitter = hash3(vec3<f32>(floor(input.position.xy), 0.0));
@@ -144,7 +145,8 @@ fn fs_volume(input: VolumeVertex) -> @location(0) vec4<f32> {
         }
         t += step_length;
     }
-    return vec4<f32>(color, 1.0 - transmittance);
+    // Scale premultiplied color and alpha together to fade the whole volume.
+    return vec4<f32>(color * opacity, (1.0 - transmittance) * opacity);
 }
 
 struct ParticleVertex {

@@ -101,7 +101,7 @@ export class AtmosphereRenderer {
       [
         config.atmosphereView,
         config.atmosphereSlice,
-        config.showClouds ? 1 : 0,
+        config.cloudOpacity,
         config.showWind || config.atmosphereView === 3 ? 1 : 0,
       ],
       40

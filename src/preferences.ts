@@ -35,6 +35,8 @@ export function restoreConfig(): void {
     if (typeof value === 'number' && !Number.isFinite(value)) continue;
     Object.assign(config, { [key]: value });
   }
+  if (saved.thermalOverlay === false) config.thermalOpacity = 0;
+  config.thermalOverlay = config.thermalOpacity > 0;
 }
 
 /** Store the source values, including settings temporarily disabled by another mode. */
