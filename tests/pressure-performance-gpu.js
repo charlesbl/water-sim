@@ -61,7 +61,7 @@ async function run() {
     windSpeed: 8,
     relativeHumidity: 0.9,
     airTemperature: 8,
-    showClouds: true,
+    cloudOpacity: 1,
     showWind: false,
     thermalOverlay: false,
     atmosphereView: 0,

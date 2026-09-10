@@ -61,6 +61,8 @@ export class GPGPUSimulation {
   private simTerrainPipeline: GPUComputePipeline | null = null;
   private renderTerrainPipeline: GPURenderPipeline | null = null;
   private renderFluidsPipeline: GPURenderPipeline | null = null;
+  private brushPreviewPipeline: GPURenderPipeline | null = null;
+  private brushPreview = new Float32Array(4);
   private thermalFluidsPipeline: GPURenderPipeline | null = null;
 
   // Bind groups
@@ -209,11 +211,11 @@ export class GPGPUSimulation {
     });
 
     this.renderUniformBufferTerrain = this.device.createBuffer({
-      size: 160, // 40 floats * 4 bytes
+      size: 176, // Render uniforms including brush preview
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.renderUniformBufferFluids = this.device.createBuffer({
-      size: 160, // 40 floats * 4 bytes
+      size: 176, // Render uniforms including brush preview
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -367,6 +369,15 @@ export class GPGPUSimulation {
       depthStencil: { depthWriteEnabled: false, depthCompare: 'less', format: 'depth24plus' },
     };
     this.renderFluidsPipeline = this.device.createRenderPipeline(fluidDescriptor);
+    this.brushPreviewPipeline = this.device.createRenderPipeline({
+      ...fluidDescriptor,
+      fragment: { ...fluidDescriptor.fragment!, entryPoint: 'fs_brush_preview' },
+      depthStencil: {
+        depthWriteEnabled: false,
+        depthCompare: 'less-equal',
+        format: 'depth24plus',
+      },
+    });
     this.thermalFluidsPipeline = this.device.createRenderPipeline({
       ...fluidDescriptor,
       depthStencil: { depthWriteEnabled: true, depthCompare: 'less', format: 'depth24plus' },
@@ -642,6 +653,10 @@ export class GPGPUSimulation {
     this.isPaused = config.paused ? 1.0 : 0.0;
   }
 
+  public setBrushPreview(uv: THREE.Vector2 | null, radius: number, type: number) {
+    this.brushPreview.set([uv?.x ?? 0, uv?.y ?? 0, uv ? radius / this.size : 0, type]);
+  }
+
   /**
    * Clears liquids and fluxes back to zero states
    */
@@ -805,7 +820,7 @@ export class GPGPUSimulation {
     this.isPickingMapInProgress = true;
 
     // Set viewport offset in Three camera to render only the 1x1 window under cursor
-    camera.setViewOffset(window.innerWidth, window.innerHeight, x, y, 1, 1);
+    camera.setViewOffset(this.canvas.width, this.canvas.height, x, y, 1, 1);
     camera.updateProjectionMatrix();
 
     // WebGPU NDC Z correction matrix: maps Z from [-1, 1] to [0, 1]
@@ -831,7 +846,7 @@ export class GPGPUSimulation {
     const localCameraPos = new THREE.Vector3().copy(camera.position).applyMatrix4(invModel);
 
     // Write Render Uniform buffer for picking
-    const renderUniforms = new Float32Array(40);
+    const renderUniforms = new Float32Array(44);
     renderUniforms.set(mvp.elements, 0); // 0-15
     renderUniforms.set([localSun.x, localSun.y, localSun.z], 16); // 16-18
     renderUniforms[19] = config.heightScale; // 19
@@ -971,7 +986,8 @@ export class GPGPUSimulation {
     const skyColor = { r: 0.2, g: 0.45, b: 0.75, a: 1.0 };
 
     // Write Render Uniforms for Terrain layer
-    const renderUniforms = new Float32Array(40);
+    const renderUniforms = new Float32Array(44);
+    renderUniforms.set(this.brushPreview, 40);
     renderUniforms.set(mvp.elements, 0); // 0-15
     renderUniforms.set([localSun.x, localSun.y, localSun.z], 16); // 16-18
     renderUniforms[19] = config.heightScale; // 19
@@ -1065,6 +1081,24 @@ export class GPGPUSimulation {
       mvp,
       localCameraPos
     );
+
+    if (this.brushPreview[2] > 0) {
+      const preview = commandEncoder.beginRenderPass({
+        colorAttachments: [{ view: canvasTextureView, loadOp: 'load', storeOp: 'store' }],
+        depthStencilAttachment: {
+          view: this.depthTexture!.createView(),
+          depthLoadOp: 'load',
+          depthStoreOp: 'store',
+        },
+      });
+      preview.setPipeline(this.brushPreviewPipeline!);
+      // Use the same displaced ground mesh as picking, so the footprint follows relief.
+      preview.setBindGroup(0, activeRenderTerrainBindGroup);
+      preview.setVertexBuffer(0, this.vertexBuffer!);
+      preview.setIndexBuffer(this.indexBuffer!, 'uint32');
+      preview.drawIndexed(this.indexCount);
+      preview.end();
+    }
 
     this.device.queue.submit([commandEncoder.finish()]);
   }

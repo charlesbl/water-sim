@@ -4,7 +4,7 @@ import { config } from './config';
 import { GPGPUSimulation } from './webgpuRenderer';
 import { setupWeatherControls } from './weatherControls';
 import { setupSimulationControls } from './simulationControls';
-import { setupCommandUI, isUIEventTarget } from './commandUI';
+import { setupCommandUI, isUIEventTarget, isTextInputTarget } from './commandUI';
 
 // Core variables
 let canvas: HTMLCanvasElement;
@@ -12,6 +12,9 @@ let camera: THREE.PerspectiveCamera;
 let gpgpu: GPGPUSimulation;
 let isPointerDown = false;
 let pointerUV: THREE.Vector2 | null = null;
+let pointerPosition: { x: number; y: number } | null = null;
+let pointerRevision = 0;
+let pickingPending = false;
 let activeBrushType: number = 0;
 
 // Performance timing variables
@@ -137,7 +140,10 @@ function init() {
   }) as EventListener);
 
   window.addEventListener('keydown', (e) => {
-    if (isUIEventTarget(e.target)) return;
+    if (isTextInputTarget(e.target)) return;
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space'].includes(e.code)) {
+      e.preventDefault();
+    }
     switch (e.code) {
       case 'KeyW':
         keys.w = true;
@@ -159,7 +165,7 @@ function init() {
         break;
       case 'Space':
         keys.space = true;
-        if (e.target === document.body) e.preventDefault();
+        e.preventDefault();
         break;
       case 'ShiftLeft':
       case 'ShiftRight':
@@ -169,6 +175,8 @@ function init() {
   });
 
   window.addEventListener('keyup', (e) => {
+    // Space activates focused buttons/checkboxes on keyup in some browsers.
+    if (e.code === 'Space' && !isTextInputTarget(e.target)) e.preventDefault();
     switch (e.code) {
       case 'KeyW':
         keys.w = false;
@@ -207,21 +215,23 @@ function init() {
     isPointerDown = false;
     isFPSLooking = false;
     pointerUV = null;
+    pointerPosition = null;
+    pointerRevision++;
   };
   window.addEventListener('blur', releaseInputs);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) releaseInputs();
   });
   document.addEventListener('focusin', (e) => {
-    if (isUIEventTarget(e.target)) releaseInputs();
+    if (isTextInputTarget(e.target)) releaseInputs();
   });
 
   // Interactive painting event listeners
   window.addEventListener('pointerdown', onPointerDown);
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);
-  window.addEventListener('pointercancel', onPointerUp);
-  window.addEventListener('pointerleave', onPointerUp);
+  window.addEventListener('pointercancel', releaseInputs);
+  canvas.addEventListener('pointerleave', releaseInputs);
 }
 
 /**
@@ -238,13 +248,11 @@ function onWindowResize() {
  * Pointer raycast calculation using WebGPU GPU picking
  */
 function updatePointerUV(e: PointerEvent) {
-  const x = Math.floor(e.clientX);
-  const y = Math.floor(e.clientY);
-
-  if (gpgpu) {
-    gpgpu.performPicking(camera, x, y);
-    pointerUV = gpgpu.pointerUV;
-  }
+  const rect = canvas.getBoundingClientRect();
+  pointerPosition = {
+    x: Math.floor(((e.clientX - rect.left) / rect.width) * canvas.width),
+    y: Math.floor(((e.clientY - rect.top) / rect.height) * canvas.height),
+  };
 }
 
 let isFPSLooking = false;
@@ -256,6 +264,7 @@ function onPointerDown(e: PointerEvent) {
 
   if (e.button === 1) {
     isFPSLooking = true;
+    pointerUV = null;
     previousMousePosition = { x: e.clientX, y: e.clientY };
     e.preventDefault();
     return;
@@ -274,8 +283,11 @@ function onPointerDown(e: PointerEvent) {
 }
 
 function onPointerMove(e: PointerEvent) {
-  if (isUIEventTarget(e.target)) {
+  if (e.target !== canvas || isUIEventTarget(e.target)) {
     onPointerUp(e);
+    pointerPosition = null;
+    pointerUV = null;
+    pointerRevision++;
     return;
   }
   if (isFPSLooking) {
@@ -297,7 +309,6 @@ function onPointerMove(e: PointerEvent) {
     return;
   }
 
-  if (!isPointerDown) return;
   updatePointerUV(e);
 }
 
@@ -308,7 +319,6 @@ function onPointerUp(_e: PointerEvent) {
 
   if (isPointerDown) {
     isPointerDown = false;
-    pointerUV = null;
   }
 }
 
@@ -348,6 +358,28 @@ function animate() {
 
   // Ensure camera matrices are updated for WebGPU
   camera.updateMatrixWorld();
+
+  // Read the actual GPU hit after completion, including when the mouse is still.
+  // Ignore results after leaving the canvas; keep accepting hits during motion.
+  if (pointerPosition && !isFPSLooking && !pickingPending) {
+    const revision = pointerRevision;
+    pickingPending = true;
+    void gpgpu
+      .performPicking(camera, pointerPosition.x, pointerPosition.y)
+      .then(() => {
+        if (revision === pointerRevision && pointerPosition && !isFPSLooking) {
+          pointerUV = gpgpu.pointerUV?.clone() ?? null;
+        }
+      })
+      .finally(() => {
+        pickingPending = false;
+      });
+  }
+  gpgpu.setBrushPreview(
+    isFPSLooking ? null : pointerUV,
+    config.brushRadius,
+    isPointerDown ? activeBrushType : config.brushType
+  );
 
   // Run GPGPU physical simulation ticks
   if (!config.paused) {

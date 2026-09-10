@@ -265,7 +265,7 @@ async function run() {
   // Exercise the real ray marcher, not a CPU copy of its opacity formula.
   const renderer = new AtmosphereRenderer(device, 'rgba8unorm', sim);
   await renderer.init();
-  Object.assign(config, { atmosphereView: 0, showClouds: true, showWind: false });
+  Object.assign(config, { atmosphereView: 0, cloudOpacity: 1, showWind: false });
   const color = device.createTexture({
     size: [64, 64],
     format: 'rgba8unorm',

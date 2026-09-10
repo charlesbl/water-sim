@@ -292,7 +292,7 @@ async function run() {
     erosionRate: 0,
     paused: false,
     smoothRendering: false,
-    showClouds: false,
+    cloudOpacity: 0,
     showWind: false,
   });
   const engine = new GPGPUSimulation(document.querySelector('canvas'), 96);

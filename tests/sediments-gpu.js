@@ -338,7 +338,7 @@ async function run() {
     terrainSandHeight: 0.05,
     atmosphereEnabled: false,
     paused: false,
-    showClouds: false,
+    cloudOpacity: 0,
   });
   const engine = new GPGPUSimulation(document.querySelector('canvas'), 96);
   check('Full engine compiles all six-channel terrain consumers', await engine.initWebGPU());

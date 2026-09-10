@@ -123,6 +123,23 @@ try {
       throw new Error(await evaluate('document.getElementById("simulation-alert").textContent'));
   } while (state !== 'Running' && Date.now() < deadline);
   check('Production app initializes WebGPU and the command UI', state === 'Running');
+  const shortcutState = await evaluate(`(async () => {
+    const { config } = await import('/water-sim/src/config.ts');
+    for (const [id, value] of [['sim-speed', '2'], ['atmosphere-time-scale', '2'], ['thermal-opacity', '60'], ['cloud-opacity', '30']]) {
+      const source = document.getElementById(id);
+      const shortcut = document.getElementById('quick-' + id);
+      if (!source.closest('#inspector') || !shortcut.closest('.topbar')) return false;
+      const original = source.value;
+      shortcut.value = value;
+      shortcut.dispatchEvent(new Event('input', { bubbles: true }));
+      if (source.value !== value || (id === 'thermal-opacity' && !config.thermalOverlay)) return false;
+      source.value = original;
+      source.dispatchEvent(new Event('input', { bubbles: true }));
+      if (shortcut.value !== original) return false;
+    }
+    return !config.thermalOverlay && config.thermalOpacity === 0 && !document.getElementById('thermal-overlay');
+  })()`);
+  check('Top bar shortcuts sync both ways and zero opacity disables temperature', shortcutState);
   await click('#btn-pause');
   await screenshot('desktop-1920-closed');
   await click('[data-domain="climate"]');
@@ -204,7 +221,9 @@ try {
         JSON.stringify(overflowing)
       );
       if (domain === 'observe') {
-        await evaluate('document.getElementById("thermal-overlay").click()');
+        await evaluate(
+          '(() => { const e=document.getElementById("quick-thermal-opacity"); e.value="45"; e.dispatchEvent(new Event("input", {bubbles:true})); })()'
+        );
         await settle();
         const legend = await evaluate(
           '(() => { const e=document.getElementById("view-legend"); const r=e.getBoundingClientRect();return {visible:!e.hidden&&getComputedStyle(e).visibility!=="hidden",inInspector:!!e.closest("#inspector"),right:r.right,width:innerWidth};})()'
@@ -215,7 +234,9 @@ try {
           JSON.stringify(legend)
         );
         await screenshot('observe-' + width + '-legend');
-        await evaluate('document.getElementById("thermal-overlay").click()');
+        await evaluate(
+          '(() => { const e=document.getElementById("thermal-opacity"); e.value="0"; e.dispatchEvent(new Event("input", {bubbles:true})); })()'
+        );
       } else if (domain === 'sediments') await screenshot('sediments-' + width);
     }
   }
@@ -256,7 +277,75 @@ try {
     JSON.stringify(cameraBefore) === JSON.stringify(cameraAfter)
   );
   check('Editing inspector controls never starts a brush', !(await evaluate('window.uiAnyPaint')));
+  // Real browser key events must move the camera without reactivating focused UI.
+  await click('[data-domain="observe"]');
+  const checkboxSelector = await evaluate(`(() => {
+    const box = [...document.querySelectorAll('#domain-observe input[type="checkbox"]')]
+      .find(e => !e.disabled && e.getBoundingClientRect().height > 0);
+    return '#' + box.id;
+  })()`);
+  await click(checkboxSelector);
+  const checkboxBefore = await evaluate(
+    `document.querySelector(${JSON.stringify(checkboxSelector)}).checked`
+  );
+  const movement = await evaluate(`(async () => {
+    const start = window.uiCamera.position.clone();
+    return start.toArray();
+  })()`);
+  await call('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: ' ',
+    code: 'Space',
+    windowsVirtualKeyCode: 32,
+  });
+  await call('Input.dispatchKeyEvent', {
+    type: 'keyDown',
+    key: 'w',
+    code: 'KeyW',
+    windowsVirtualKeyCode: 87,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  await call('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: 'w',
+    code: 'KeyW',
+    windowsVirtualKeyCode: 87,
+  });
+  await call('Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key: ' ',
+    code: 'Space',
+    windowsVirtualKeyCode: 32,
+  });
+  check(
+    'WASD still moves the camera after clicking a checkbox',
+    JSON.stringify(movement) !==
+      JSON.stringify(await evaluate('window.uiCamera.position.toArray()'))
+  );
+  check(
+    'Space does not toggle the focused checkbox',
+    checkboxBefore ===
+      (await evaluate(`document.querySelector(${JSON.stringify(checkboxSelector)}).checked`))
+  );
   await click('#close-inspector');
+  await evaluate(`(async () => {
+    const { GPGPUSimulation } = await import('/water-sim/src/webgpuRenderer.ts');
+    const original = GPGPUSimulation.prototype.setBrushPreview;
+    GPGPUSimulation.prototype.setBrushPreview = function(uv, radius, type) {
+      window.uiPreview = uv ? { x: uv.x, y: uv.y, radius, type } : null;
+      return original.call(this, uv, radius, type);
+    };
+  })()`);
+  await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 683, y: 380 });
+  const hoverDeadline = Date.now() + 10000;
+  while (!(await evaluate('Boolean(window.uiPreview)')) && Date.now() < hoverDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  check(
+    'Hovering terrain previews the selected brush before clicking',
+    await evaluate('window.uiPreview?.type === 1 && !window.uiPaintActive')
+  );
+  await screenshot('desktop-brush-preview');
   // Click the visible terrain, then cross into the dock while still dragging.
   await call('Input.dispatchMouseEvent', {
     type: 'mousePressed',
@@ -278,6 +367,10 @@ try {
   check(
     'Dragging from the world into the dock stops painting',
     !(await evaluate('window.uiPaintActive'))
+  );
+  check(
+    'Crossing into the dock also hides the brush preview',
+    await evaluate('window.uiPreview === null')
   );
   await call('Input.dispatchMouseEvent', {
     type: 'mouseReleased',

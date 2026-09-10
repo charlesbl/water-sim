@@ -41,6 +41,7 @@ struct RenderUniforms {
     show_soil: f32,
     padding_1: f32,
     padding_2: f32,
+    brush_preview: vec4<f32>, // UV center, radius in UV, tool type; zero radius hides it.
 };
 
 @group(0) @binding(0) var<uniform> uniforms : RenderUniforms;
@@ -670,6 +671,28 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 }
 
 // --- PICKING FRAGMENT SHADER ---
+@fragment
+fn fs_brush_preview(input: VertexOutput) -> @location(0) vec4<f32> {
+    let brush = uniforms.brush_preview;
+    let distance_to_center = distance(input.uv, brush.xy);
+    let pixel = max(fwidth(distance_to_center), 0.000001);
+    let edge = abs(distance_to_center - brush.z) / pixel;
+    let outline = 1.0 - smoothstep(0.65, 1.25, edge);
+    let ring = 1.0 - smoothstep(0.15, 0.65, edge);
+    let center = 1.0 - smoothstep(0.5, 1.0, distance_to_center / pixel);
+    var color = vec3<f32>(0.96, 0.96, 0.90);
+    switch i32(brush.w) {
+        case 0: { color = vec3<f32>(0.25, 0.85, 1.0); }
+        case 1, 7: { color = vec3<f32>(1.0, 0.40, 0.18); }
+        case 2: { color = vec3<f32>(1.0, 0.80, 0.35); }
+        case 6, 8: { color = vec3<f32>(0.65, 0.90, 1.0); }
+        case 9: { color = vec3<f32>(0.85, 0.60, 0.36); }
+        default: {}
+    }
+    if (outline + center <= 0.0 || brush.z <= 0.0) { discard; }
+    return vec4<f32>(mix(vec3<f32>(0.035), color, max(ring, center)), max(outline * 0.95, center));
+}
+
 @fragment
 fn fs_picking(input: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(input.uv.x, input.uv.y, 0.0, 1.0);

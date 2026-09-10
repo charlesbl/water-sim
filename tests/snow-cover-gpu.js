@@ -52,7 +52,7 @@ async function run() {
     paused: false,
     smoothRendering: true,
     renderResolution: 1,
-    showClouds: false,
+    cloudOpacity: 0,
     showWind: false,
   });
   const n = 257;
