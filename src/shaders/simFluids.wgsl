@@ -240,15 +240,17 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     water = max(water, 0.0);
     lava = clamp(lava, 0.0, 10.0);
 
-    // Flooded snow joins the liquid even when atmospheric evolution is disabled.
+    // Submerged snow joins the liquid/ice even when weather is disabled.
     // Each invocation owns its surface cell; neighbor fluxes have already run.
     // Match surfaceExchange's heat capacity and fusion energy accounting.
     if ((uniforms.paused < 0.5 || uniforms.brush_active > 0.5) && water > 0.0 && weather_surface[idx].x > 0.0) {
         var frozen = weather_surface[idx];
         let capacity = materialHeatCapacity(cell_a.sand, cell_a.soil, water, frozen.y, frozen.x);
-        let energy = capacity * frozen.z - 80.0 * frozen.x;
-        water += frozen.x;
-        frozen.x = 0.0;
+        let transfer = wetSnowTransfer(water, frozen.x, capacity * frozen.z);
+        let energy = capacity * frozen.z - 80.0 * transfer.x;
+        water += transfer.x;
+        frozen.x -= transfer.x + transfer.y;
+        frozen.y += transfer.y;
         frozen.z = energy / materialHeatCapacity(cell_a.sand, cell_a.soil, water, frozen.y, frozen.x);
         weather_surface[idx] = frozen;
     }

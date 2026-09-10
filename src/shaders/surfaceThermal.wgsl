@@ -11,6 +11,17 @@ fn materialHeatCapacity(sand: f32, soil: f32, liquid: f32, ice: f32, snow: f32) 
         + max(ice, 0.0) * 5.0 + max(snow, 0.0) * 2.0;
 }
 
+// Snow occupies five times its water-equivalent depth. Only the submerged
+// portion interacts with liquid: a trace of rain or meltwater must not collapse
+// the entire snowpack. Warm water melts this portion using available sensible
+// energy; without that heat it compacts into the anchored ice bed, staying solid.
+// Return water-equivalent transfers to liquid and ice respectively.
+fn wetSnowTransfer(liquid: f32, snow: f32, energy: f32) -> vec2<f32> {
+    let submerged = min(max(snow, 0.0), max(liquid, 0.0) / 5.0);
+    let melted = min(submerged, max(energy, 0.0) / 80.0);
+    return vec2<f32>(melted, submerged - melted);
+}
+
 fn materialAlbedo(sand: f32, soil: f32, liquid: f32, ice: f32, snow: f32) -> f32 {
     var albedo = mix(0.18, 0.38, sedimentCoverage(sand + soil));
     albedo = mix(albedo, 0.55, smoothstep(0.0, 0.01, max(ice, 0.0)));

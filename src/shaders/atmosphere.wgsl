@@ -952,14 +952,15 @@ fn surfaceExchange(@builtin(global_invocation_id) id: vec3<u32>) {
     liquid.x += fallen.x;
     cover.x += fallen.y;
     energy += fallen.x * 8.0 * airTemperature + fallen.y * 2.0 * min(airTemperature, 0.0);
-    // The water model has one liquid reservoir above a fixed bed of ice.
-    // Snow meeting this water melts into that reservoir, removing latent heat.
-    // It never becomes a floating solid lid; sufficiently cold water can then
-    // freeze progressively into the bed below it.
+    // Resolve only the submerged snow. Traces of rain/meltwater cannot erase
+    // a whole cell's cover, and cold submerged snow compacts into bottom ice
+    // instead of melting without an available heat source.
     if (liquid.x > 0.0 && cover.x > 0.0) {
-        energy -= cover.x * latentFusion;
-        liquid.x += cover.x;
-        cover.x = 0.0;
+        let transfer = wetSnowTransfer(liquid.x, cover.x, energy);
+        energy -= transfer.x * latentFusion;
+        liquid.x += transfer.x;
+        cover.x -= transfer.x + transfer.y;
+        cover.y += transfer.y;
     }
     cover.z = energy / surfaceHeatCapacity(i, liquid.x, cover.y, cover.x);
     // Sensible heat was exchanged conservatively before atmospheric transport.
