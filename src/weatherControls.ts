@@ -83,8 +83,6 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
           ([key, value]) => config[key as keyof WeatherForcing] === value
         );
       button.setAttribute('aria-pressed', String(selected));
-      button.style.borderColor = selected ? '#4a90e2' : '';
-      button.style.backgroundColor = selected ? 'rgba(74, 144, 226, 0.15)' : '';
     });
   };
 
@@ -105,7 +103,7 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
     syncControls.push(sync);
     slider.addEventListener('input', () => {
       const parsedValue = Number(slider.value);
-      if (!Number.isFinite(parsedValue)) return;
+      if (!Number.isFinite(parsedValue) || slider.disabled) return;
       config[key] =
         Math.max(Number(slider.min), Math.min(Number(slider.max), parsedValue)) / displayScale;
       sync();
@@ -165,12 +163,18 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
       const element = document.querySelector(`label[for="${id}"]`);
       if (element) {
         const initialOnly =
-          config.emergentWeather || (id === 'relative-humidity' && config.closedWaterCycle);
+          id === 'air-stability' ||
+          config.emergentWeather ||
+          (id === 'relative-humidity' && config.closedWaterCycle);
         element.textContent = `${initialOnly ? 'Initial' : 'Imposed'} ${label}`;
+        const effect = element.closest('.control-group')?.querySelector('.effect-badge');
+        if (effect) effect.textContent = initialOnly ? 'Initial conditions' : 'Live';
       }
     }
-    document.getElementById('restart-air-group')!.hidden =
-      !config.emergentWeather && !config.closedWaterCycle;
+    const restartDisabled = !config.emergentWeather && !config.closedWaterCycle;
+    (document.getElementById('btn-weather-restart-air') as HTMLButtonElement).disabled =
+      restartDisabled;
+    document.getElementById('restart-air-availability')!.hidden = !restartDisabled;
     document.getElementById('weather-dynamics-help')!.textContent = config.emergentWeather
       ? 'Air starts horizontally uniform and evolves freely. Initial values apply on Restart air or a preset; snow and water are preserved. Convection response, sunlight and cooling remain live.'
       : config.closedWaterCycle
@@ -210,14 +214,12 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
     for (const id of ['rain-quantity', 'rain-size', 'border-water-height']) {
       const input = document.getElementById(id) as HTMLInputElement;
       input.disabled = config.closedWaterCycle;
-      input.style.opacity = config.closedWaterCycle ? '0.45' : '';
     }
     const border = document.getElementById('border-behavior') as HTMLSelectElement;
     border.disabled = config.closedWaterCycle;
     border.value = config.closedWaterCycle ? '0' : String(config.borderBehavior);
-    border.style.opacity = config.closedWaterCycle ? '0.6' : '';
-    document.getElementById('border-water-height-group')!.style.display =
-      !config.closedWaterCycle && config.borderBehavior > 0 ? 'block' : 'none';
+    const borderHeight = document.getElementById('border-water-height') as HTMLInputElement;
+    borderHeight.disabled = config.closedWaterCycle || config.borderBehavior === 0;
     document.getElementById('surface-boundary-help')!.textContent = config.closedWaterCycle
       ? 'Surface edges are sealed by Closed water cycle. Your open-mode border settings are retained.'
       : 'These surface settings may exchange water with the outside. Atmospheric boundaries are configured separately.';
@@ -249,7 +251,9 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
   const legend = document.getElementById('atmosphere-legend');
   const syncView = () => {
     if (view) view.value = String(config.atmosphereView);
-    if (sliceGroup) sliceGroup.hidden = config.atmosphereView === 0;
+    if (sliceGroup) sliceGroup.hidden = false;
+    const slice = document.getElementById('atmosphere-slice') as HTMLInputElement;
+    slice.disabled = config.atmosphereView === 0;
     if (legend) {
       legend.textContent =
         [
@@ -266,7 +270,12 @@ export function setupWeatherControls(resetWeather: (clearSurface?: boolean) => v
   const syncThermal = () => {
     thermalToggle.checked = config.thermalOverlay;
     thermalMode.value = config.thermalAir ? 'air' : 'surface';
-    document.getElementById('thermal-controls')!.hidden = !config.thermalOverlay;
+    document.getElementById('thermal-controls')!.hidden = false;
+    thermalMode.disabled = !config.thermalOverlay;
+    (document.getElementById('thermal-opacity') as HTMLInputElement).disabled =
+      !config.thermalOverlay;
+    (document.getElementById('thermal-height') as HTMLInputElement).disabled =
+      !config.thermalOverlay || !config.thermalAir;
     document.getElementById('thermal-legend')!.hidden = !config.thermalOverlay;
     document.getElementById('thermal-legend-title')!.textContent = config.thermalAir
       ? `Air +${config.thermalHeight.toFixed(2)} u above surface · °C`

@@ -1,0 +1,469 @@
+{
+  "controls": [
+    {
+      "id": "thermal-overlay",
+      "type": "checkbox",
+      "label": "Temperature overlay"
+    },
+    {
+      "id": "thermal-mode",
+      "label": "Measure",
+      "options": ["surface", "air"]
+    },
+    {
+      "id": "thermal-opacity",
+      "type": "range",
+      "min": "0",
+      "max": "100",
+      "step": "5",
+      "label": "Opacity"
+    },
+    {
+      "id": "thermal-height",
+      "type": "range",
+      "min": "1.5625",
+      "max": "25",
+      "step": "1.5625",
+      "label": "Air height above surface"
+    },
+    {
+      "id": "atmosphere-enabled",
+      "type": "checkbox",
+      "label": "Simulate weather"
+    },
+    {
+      "id": "weather-dynamics",
+      "label": "Atmospheric dynamics",
+      "options": ["emergent", "forced"]
+    },
+    {
+      "id": "closed-water-cycle",
+      "type": "checkbox",
+      "label": "Closed water cycle"
+    },
+    {
+      "id": "atmosphere-boundary",
+      "label": "Atmosphere boundaries",
+      "options": ["0", "1"]
+    },
+    {
+      "id": "air-temperature",
+      "type": "range",
+      "min": "-25",
+      "max": "35",
+      "step": "1",
+      "label": "Air temperature"
+    },
+    {
+      "id": "relative-humidity",
+      "type": "range",
+      "min": "0",
+      "max": "140",
+      "step": "1",
+      "label": "Relative humidity"
+    },
+    {
+      "id": "wind-speed",
+      "type": "range",
+      "min": "0",
+      "max": "30",
+      "step": "1",
+      "label": "Wind speed"
+    },
+    {
+      "id": "wind-direction",
+      "type": "range",
+      "min": "0",
+      "max": "360",
+      "step": "5",
+      "label": "Wind heading"
+    },
+    {
+      "id": "air-stability",
+      "type": "range",
+      "min": "0",
+      "max": "100",
+      "step": "0.5",
+      "label": "Initial lower-air stability"
+    },
+    {
+      "id": "convection-strength",
+      "type": "range",
+      "min": "0",
+      "max": "8",
+      "step": "0.5",
+      "label": "Convection response"
+    },
+    {
+      "id": "solar-heating",
+      "type": "range",
+      "min": "0",
+      "max": "3",
+      "step": "0.1",
+      "label": "Solar heating"
+    },
+    {
+      "id": "heating-contrast",
+      "type": "range",
+      "min": "1",
+      "max": "10",
+      "step": "0.5",
+      "label": "Surface heating contrast"
+    },
+    {
+      "id": "evaporation-rate",
+      "type": "range",
+      "min": "0",
+      "max": "1",
+      "step": "0.05",
+      "label": "Solar evaporation"
+    },
+    {
+      "id": "sun-elevation",
+      "type": "range",
+      "min": "0",
+      "max": "90",
+      "step": "1",
+      "label": "Sun elevation"
+    },
+    {
+      "id": "sun-azimuth",
+      "type": "range",
+      "min": "0",
+      "max": "360",
+      "step": "1",
+      "label": "Sun direction"
+    },
+    {
+      "id": "radiative-cooling",
+      "type": "range",
+      "min": "0",
+      "max": "3",
+      "step": "0.1",
+      "label": "Radiative cooling"
+    },
+    {
+      "id": "atmosphere-time-scale",
+      "type": "range",
+      "min": "0.25",
+      "max": "4",
+      "step": "0.25",
+      "label": "Weather speed"
+    },
+    {
+      "id": "atmosphere-view",
+      "label": "Explore atmosphere",
+      "options": ["0", "1", "2", "3"]
+    },
+    {
+      "id": "atmosphere-slice",
+      "type": "range",
+      "min": "0",
+      "max": "100",
+      "step": "1",
+      "label": "Slice altitude"
+    },
+    {
+      "id": "show-clouds",
+      "type": "checkbox",
+      "label": "Show volumetric clouds"
+    },
+    {
+      "id": "show-wind",
+      "type": "checkbox",
+      "label": "Show 3D wind vectors"
+    },
+    {
+      "id": "brush-radius",
+      "type": "range",
+      "min": "2",
+      "max": "200",
+      "step": "1",
+      "label": "Brush Size"
+    },
+    {
+      "id": "brush-strength",
+      "type": "range",
+      "min": "0.1",
+      "max": "2.0",
+      "step": "0.05",
+      "label": "Strength"
+    },
+    {
+      "id": "terrain-generation",
+      "label": "Generation Type",
+      "options": ["realistic", "flat"]
+    },
+    {
+      "id": "flat-rock-height",
+      "type": "range",
+      "min": "0.0",
+      "max": "0.5",
+      "step": "0.01",
+      "label": "Rock Height"
+    },
+    {
+      "id": "terrain-sand-height",
+      "type": "range",
+      "min": "0.0",
+      "max": "0.5",
+      "step": "0.01",
+      "label": "Sand Height"
+    },
+    {
+      "id": "terrain-soil-height",
+      "type": "range",
+      "min": "0",
+      "max": "2",
+      "step": "0.01",
+      "label": "Soil Height"
+    },
+    {
+      "id": "terrain-tilt",
+      "type": "range",
+      "min": "-5.0",
+      "max": "5.0",
+      "step": "0.1",
+      "label": "Tilt"
+    },
+    {
+      "id": "terrain-scale",
+      "type": "range",
+      "min": "1.0",
+      "max": "10.0",
+      "step": "0.1",
+      "label": "Scale (Zoom)"
+    },
+    {
+      "id": "terrain-sharpness",
+      "type": "range",
+      "min": "0.5",
+      "max": "3.0",
+      "step": "0.05",
+      "label": "Sharpness / Relief"
+    },
+    {
+      "id": "fbm-octaves",
+      "type": "range",
+      "min": "1",
+      "max": "8",
+      "step": "1",
+      "label": "Details (Octaves)"
+    },
+    {
+      "id": "fbm-persistence",
+      "type": "range",
+      "min": "0.10",
+      "max": "0.90",
+      "step": "0.01",
+      "label": "Persistence"
+    },
+    {
+      "id": "sim-speed",
+      "type": "range",
+      "min": "0.1",
+      "max": "10.0",
+      "step": "0.1",
+      "label": "Simulation Speed (ticks/frame)"
+    },
+    {
+      "id": "water-gravity",
+      "type": "range",
+      "min": "1.0",
+      "max": "25.0",
+      "step": "0.1",
+      "label": "Water Gravity (Waves)"
+    },
+    {
+      "id": "water-damping",
+      "type": "range",
+      "min": "0.90",
+      "max": "1.0",
+      "step": "0.001",
+      "label": "Water Friction"
+    },
+    {
+      "id": "evaporation",
+      "type": "range",
+      "min": "0.0",
+      "max": "0.00003",
+      "step": "0.000001",
+      "label": "Water Evaporation"
+    },
+    {
+      "id": "lava-gravity",
+      "type": "range",
+      "min": "0.1",
+      "max": "25.0",
+      "step": "0.1",
+      "label": "Lava Gravity"
+    },
+    {
+      "id": "lava-damping",
+      "type": "range",
+      "min": "0.50",
+      "max": "1.0",
+      "step": "0.001",
+      "label": "Lava Friction"
+    },
+    {
+      "id": "border-behavior",
+      "label": "Border Behavior",
+      "options": ["0", "1", "2"]
+    },
+    {
+      "id": "border-water-height",
+      "type": "range",
+      "min": "0.0",
+      "max": "3.0",
+      "step": "0.05",
+      "label": "Border Water Height"
+    },
+    {
+      "id": "soil-static-repose-slope",
+      "type": "range",
+      "min": "0",
+      "max": "89",
+      "step": "0.1",
+      "label": "Soil Angle of Repose (Static)"
+    },
+    {
+      "id": "soil-dynamic-repose-slope",
+      "type": "range",
+      "min": "0",
+      "max": "89",
+      "step": "0.1",
+      "label": "Soil Angle of Repose (Dynamic)"
+    },
+    {
+      "id": "erosion-rate",
+      "type": "range",
+      "min": "0.0",
+      "max": "0.1",
+      "step": "0.001",
+      "label": "Sediment Erosion Rate"
+    },
+    {
+      "id": "capacity-factor",
+      "type": "range",
+      "min": "0.0",
+      "max": "0.5",
+      "step": "0.005",
+      "label": "Carrying Capacity"
+    },
+    {
+      "id": "deposition-rate",
+      "type": "range",
+      "min": "0.0",
+      "max": "1.0",
+      "step": "0.01",
+      "label": "Deposition Rate"
+    },
+    {
+      "id": "min-water-depth",
+      "type": "range",
+      "min": "0.0",
+      "max": "0.5",
+      "step": "0.01",
+      "label": "Min Water Depth for Transport"
+    },
+    {
+      "id": "sediment-slide",
+      "type": "range",
+      "min": "0.01",
+      "max": "0.2",
+      "step": "0.01",
+      "label": "Sediment Sliding Rate"
+    },
+    {
+      "id": "sand-static-repose-slope",
+      "type": "range",
+      "min": "0",
+      "max": "89",
+      "step": "0.1",
+      "label": "Sand Angle of Repose (Static)"
+    },
+    {
+      "id": "sand-dynamic-repose-slope",
+      "type": "range",
+      "min": "0",
+      "max": "89",
+      "step": "0.1",
+      "label": "Sand Angle of Repose (Dynamic)"
+    },
+    {
+      "id": "rain-active",
+      "type": "checkbox",
+      "label": "⛈️ Add manual rain"
+    },
+    {
+      "id": "rain-quantity",
+      "type": "range",
+      "min": "0.0001",
+      "max": "0.0010",
+      "step": "0.0001",
+      "label": "Raindrop Quantity"
+    },
+    {
+      "id": "rain-size",
+      "type": "range",
+      "min": "0.001",
+      "max": "0.010",
+      "step": "0.001",
+      "label": "Raindrop Size"
+    },
+    {
+      "id": "chk-show-rock",
+      "type": "checkbox",
+      "label": "⛰️ Rock"
+    },
+    {
+      "id": "chk-show-soil",
+      "type": "checkbox",
+      "label": "🟤 Soil on ground"
+    },
+    {
+      "id": "chk-show-sand",
+      "type": "checkbox",
+      "label": "⏳ Sand on ground"
+    },
+    {
+      "id": "chk-show-water",
+      "type": "checkbox",
+      "label": "🌊 Water"
+    },
+    {
+      "id": "chk-show-lava",
+      "type": "checkbox",
+      "label": "🌋 Lava"
+    },
+    {
+      "id": "chk-show-suspended",
+      "type": "checkbox",
+      "label": "🟫 Suspended sand & soil (mud)"
+    },
+    {
+      "id": "render-resolution",
+      "type": "range",
+      "min": "0.05",
+      "max": "1.0",
+      "step": "0.05",
+      "label": "Mesh Resolution"
+    },
+    {
+      "id": "smooth-rendering",
+      "type": "checkbox",
+      "label": "Smooth Rendering"
+    }
+  ],
+  "brushes": ["0", "1", "9", "2", "3", "4", "5", "6", "7", "8"],
+  "presets": ["mild", "snow", "thaw", "storm"],
+  "actions": [
+    "btn-weather-restart-air",
+    "btn-weather-reset",
+    "btn-pause",
+    "btn-clear",
+    "btn-reset",
+    "btn-new-terrain"
+  ]
+}

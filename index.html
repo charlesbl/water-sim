@@ -3,322 +3,141 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TerraGPU - 3D Weather &amp; Terrain Simulation</title>
-    <!-- Google Fonts: Outfit -->
+    <meta name="theme-color" content="#0b1420" />
+    <title>TerraGPU — World Observatory</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <!-- 3D Canvas Container -->
-    <div id="canvas-container"></div>
-
-    <!-- Sleek Glassmorphic HUD -->
-    <div id="hud" class="glass-panel">
-      <header>
-        <h1>TERRA<span>GPU</span></h1>
-        <p class="subtitle">3D Atmosphere · GPU Terrain &amp; Fluids</p>
-      </header>
-
-      <!-- Section: Volumetric Atmosphere -->
-      <section id="atmosphere-panel" class="hud-section">
-        <button class="hud-section-header" type="button">
-          <h2><span>🌤️</span> 3D Atmosphere</h2>
-          <span class="chevron">▼</span>
-        </button>
-        <div class="hud-section-content">
-          <div class="hud-section-content-inner">
-            <div class="control-group">
-              <div class="checkbox-row">
-                <input type="checkbox" id="thermal-overlay" />
-                <label for="thermal-overlay">Temperature overlay</label>
-              </div>
-              <div id="thermal-controls" hidden>
-                <label for="thermal-mode">Measure</label>
-                <select id="thermal-mode" class="select-input">
-                  <option value="surface">Surface</option>
-                  <option value="air">Air above surface</option>
-                </select>
-                <div class="label-row">
-                  <label for="thermal-opacity">Opacity</label
-                  ><span id="thermal-opacity-val">45%</span>
-                </div>
-                <input type="range" id="thermal-opacity" min="0" max="100" step="5" value="45" />
-                <div class="label-row">
-                  <label for="thermal-height">Air height above surface</label
-                  ><span id="thermal-height-val">6.25 u</span>
-                </div>
+    <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <symbol id="i-world" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <ellipse cx="12" cy="12" rx="4" ry="9" />
+          <path d="M3 12h18M5 6h14M5 18h14" />
+        </symbol>
+        <symbol id="i-climate" viewBox="0 0 24 24">
+          <path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 8a5 5 0 0 0 1 10Z" />
+        </symbol>
+        <symbol id="i-water" viewBox="0 0 24 24">
+          <path d="M12 3C10 7 5 11 5 15a7 7 0 0 0 14 0c0-4-5-8-7-12Z" />
+          <path d="M8 15a4 4 0 0 0 4 4" />
+        </symbol>
+        <symbol id="i-sediments" viewBox="0 0 24 24">
+          <path d="m3 8 9-5 9 5-9 5-9-5Zm0 5 9 5 9-5M3 18l9 5 9-5" />
+        </symbol>
+        <symbol id="i-observe" viewBox="0 0 24 24">
+          <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" />
+          <circle cx="12" cy="12" r="3" />
+        </symbol>
+        <symbol id="i-settings" viewBox="0 0 24 24">
+          <path d="M4 6h16M4 12h16M4 18h16" />
+          <circle cx="9" cy="6" r="2" />
+          <circle cx="16" cy="12" r="2" />
+          <circle cx="8" cy="18" r="2" />
+        </symbol>
+        <symbol id="i-lava" viewBox="0 0 24 24">
+          <path d="M13 2c1 7 6 9 6 14a7 7 0 0 1-14 0c0-3 2-6 5-9-1 5 3 6 3 6s3-4 0-11Z" />
+        </symbol>
+        <symbol id="i-soil" viewBox="0 0 24 24">
+          <path d="m3 7 9-4 9 4-9 4-9-4Zm0 5 9 4 9-4M3 17l9 4 9-4" />
+        </symbol>
+        <symbol id="i-sand" viewBox="0 0 24 24">
+          <path
+            d="M6 3h12M6 21h12M7 3c0 5 1 6 5 9-4 3-5 4-5 9M17 3c0 5-1 6-5 9 4 3 5 4 5 9M8 18h8"
+          />
+        </symbol>
+        <symbol id="i-raise" viewBox="0 0 24 24">
+          <path d="m3 20 7-12 4 6 3-4 4 10H3ZM12 7V2M9 5l3-3 3 3" />
+        </symbol>
+        <symbol id="i-dig" viewBox="0 0 24 24">
+          <path d="M3 16h4l5 5 5-5h4M12 3v11M8 10l4 4 4-4" />
+        </symbol>
+        <symbol id="i-erase" viewBox="0 0 24 24">
+          <path d="m4 12 9-9 8 8-10 10H6l-4-5 2-4Zm3-3 9 8M11 21h11" />
+        </symbol>
+        <symbol id="i-ice" viewBox="0 0 24 24">
+          <path
+            d="M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M9 4l3 3 3-3M9 20l3-3 3 3M4 10l4-1-1-4M20 14l-4 1 1 4M4 14l4 1-1 4M20 10l-4-1 1-4"
+          />
+        </symbol>
+        <symbol id="i-heat" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" />
+        </symbol>
+        <symbol id="i-cool" viewBox="0 0 24 24">
+          <path d="M10 14V5a3 3 0 0 1 6 0v9a5 5 0 1 1-6 0ZM13 8v10M3 6h4M5 4v4" />
+        </symbol>
+        <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" /></symbol>
+        <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8V4Z" /></symbol>
+        <symbol id="i-search" viewBox="0 0 24 24">
+          <circle cx="10.5" cy="10.5" r="6.5" />
+          <path d="m16 16 5 5" />
+        </symbol>
+        <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6" /></symbol>
+        <symbol id="i-expand" viewBox="0 0 24 24">
+          <path d="M8 3H3v5M3 3l6 6M16 21h5v-5M21 21l-6-6" />
+        </symbol>
+        <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 2 8M3 4v6h6" /></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16" /></symbol>
+        <symbol id="i-help" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M9 9a3 3 0 1 1 5 2c-2 1-2 2-2 3M12 17v.2" />
+        </symbol>
+      </defs>
+    </svg>
+    <main id="canvas-container" aria-label="Interactive terrain and atmosphere simulation"></main>
+    <div id="command-ui">
+      <header class="topbar ui-surface" data-ui>
+        <a class="brand" href="#" aria-label="TerraGPU observatory"
+          ><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-world"></use></svg
+          ><span
+            >TERRA<span class="brand-accent">GPU</span><small>WORLD OBSERVATORY</small></span
+          ></a
+        >
+        <div class="time-controls" aria-label="Simulation time">
+          <div class="action-entry" data-control="btn-pause" data-keywords="⏸️ Pause">
+            <button type="button" id="btn-pause" class="btn-action" aria-pressed="false">
+              <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                <use href="#i-pause"></use></svg
+              ><span>Pause</span>
+            </button>
+          </div>
+          <div
+            class="control-group"
+            data-control="sim-speed"
+            data-keywords="Simulation Speed (ticks/frame)"
+          >
+            <div class="label-row"><label for="sim-speed">World speed</label></div>
+            <div class="range-row">
+              <input type="range" id="sim-speed" min="0.1" max="10.0" value="1.0" step="0.1" />
+              <div class="number-box">
                 <input
-                  type="range"
-                  id="thermal-height"
-                  min="1.5625"
-                  max="25"
-                  step="1.5625"
-                  value="6.25"
-                />
-                <p class="thermal-help">
-                  Height follows the landscape. Air is interpolated on a coarser grid (1.5625 u per
-                  layer); near ground, the first available air layer is used.
-                </p>
+                  type="number"
+                  id="sim-speed-number"
+                  data-number-for="sim-speed"
+                  aria-label="World speed exact value"
+                  min="0.1"
+                  max="10.0"
+                  step="0.1"
+                  value="1.0"
+                /><span class="unit">×</span>
               </div>
             </div>
-            <div class="checkbox-row" style="margin-top: 0; margin-bottom: 12px">
-              <input type="checkbox" id="atmosphere-enabled" checked />
-              <label for="atmosphere-enabled">Simulate weather</label>
-            </div>
-            <div class="control-group">
-              <label for="weather-dynamics">Atmospheric dynamics</label>
-              <select id="weather-dynamics" class="select-input">
-                <option value="emergent" selected>Emergent · solar driven</option>
-                <option value="forced">Imposed weather conditions</option>
-              </select>
-              <p
-                id="weather-dynamics-help"
-                style="font-size: 11px; line-height: 1.5; color: var(--text-secondary)"
-              >
-                Air evolves freely from its initial state. Sunlight, cooling and terrain drive
-                circulation.
-              </p>
-            </div>
-            <div class="checkbox-row" style="margin-bottom: 8px">
-              <input type="checkbox" id="closed-water-cycle" checked />
-              <label for="closed-water-cycle">Closed water cycle</label>
-            </div>
-            <p
-              id="water-cycle-help"
-              style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-bottom: 12px"
-            >
-              Water circulates between air, clouds, precipitation, surface water, snow and ice.
-              Surface edges are sealed and manual rain is suspended.
-            </p>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="atmosphere-boundary">Atmosphere boundaries</label>
-              </div>
-              <select
-                id="atmosphere-boundary"
-                class="select-input"
-                aria-describedby="atmosphere-boundary-help"
-              >
-                <option value="0" selected>Periodic · wrap to opposite edge</option>
-                <option value="1">Closed walls · no flow through edges</option>
-              </select>
-              <p
-                id="atmosphere-boundary-help"
-                style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-top: 6px"
-              >
-                Air leaving one horizontal edge returns at the opposite edge. Ground and ceiling are
-                closed.
-              </p>
-            </div>
-            <div class="control-group">
-              <div class="label-row"><span>Water inventory</span></div>
-              <p
-                id="water-budget"
-                role="status"
-                style="font-size: 12px; line-height: 1.5; color: #bde7fa"
-              >
-                Measuring water inventory…
-              </p>
-              <p
-                id="water-budget-detail"
-                style="font-size: 11px; line-height: 1.5; color: #a4a4b5"
-              ></p>
-              <p style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-top: 6px">
-                Adding or erasing water, applying presets and resetting start a new water balance.
-              </p>
-            </div>
-            <div class="brush-grid" role="group" aria-label="Weather presets">
-              <button
-                type="button"
-                class="btn-action"
-                data-weather-preset="mild"
-                aria-pressed="false"
-              >
-                🌤️ Mild
-              </button>
-              <button
-                type="button"
-                class="btn-action"
-                data-weather-preset="snow"
-                aria-pressed="false"
-              >
-                ❄️ Snow
-              </button>
-              <button
-                type="button"
-                class="btn-action"
-                data-weather-preset="thaw"
-                aria-pressed="false"
-              >
-                ☀️ Thaw
-              </button>
-              <button
-                type="button"
-                class="btn-action"
-                data-weather-preset="storm"
-                aria-pressed="false"
-              >
-                ⛈️ Storm
-              </button>
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="air-temperature">Air temperature</label>
-                <span id="air-temperature-val" class="value-display">8 °C</span>
-              </div>
-              <input type="range" id="air-temperature" min="-25" max="35" value="8" step="1" />
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="relative-humidity">Relative humidity</label>
-                <span id="relative-humidity-val" class="value-display">75%</span>
-              </div>
-              <input type="range" id="relative-humidity" min="0" max="140" value="75" step="1" />
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="wind-speed">Wind speed</label>
-                <span id="wind-speed-val" class="value-display">0 u/s</span>
-              </div>
-              <input type="range" id="wind-speed" min="0" max="30" value="0" step="1" />
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="wind-direction">Wind heading</label>
-                <span id="wind-direction-val" class="value-display">45°</span>
-              </div>
-              <input type="range" id="wind-direction" min="0" max="360" value="45" step="5" />
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="air-stability">Initial lower-air stability</label>
-                <span id="air-stability-val" class="value-display">12.5%</span>
-              </div>
-              <input
-                type="range"
-                id="air-stability"
-                min="0"
-                max="100"
-                value="12.5"
-                step="0.5"
-                aria-describedby="air-stability-help"
-              />
-              <p
-                id="air-stability-help"
-                style="
-                  font-size: 11px;
-                  line-height: 1.5;
-                  color: var(--text-secondary);
-                  margin: 5px 0 0;
-                "
-              >
-                0%: easy to lift · 100%: resists lifting. Starts with a more stable upper layer.
-              </p>
-            </div>
-            <div class="btn-row" id="restart-air-group" style="margin-bottom: 14px">
-              <button id="btn-weather-restart-air" type="button" class="btn-action">
-                Restart air from these values
-              </button>
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="convection-strength">Convection response</label>
-                <span id="convection-strength-val" class="value-display">4.0×</span>
-              </div>
-              <input
-                type="range"
-                id="convection-strength"
-                min="0"
-                max="8"
-                value="4"
-                step="0.5"
-                aria-describedby="convection-strength-help"
-              />
-              <p
-                id="convection-strength-help"
-                style="
-                  font-size: 11px;
-                  line-height: 1.5;
-                  color: var(--text-secondary);
-                  margin: 5px 0 0;
-                "
-              >
-                How strongly air accelerates from heat and moisture differences. Applies live.
-              </p>
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="solar-heating">Solar heating</label>
-                <span id="solar-heating-val" class="value-display">1.0×</span>
-              </div>
-              <input type="range" id="solar-heating" min="0" max="3" value="1" step="0.1" />
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="heating-contrast">Surface heating contrast</label>
-                <span id="heating-contrast-val" class="value-display">3.0×</span>
-              </div>
-              <input
-                type="range"
-                id="heating-contrast"
-                min="1"
-                max="10"
-                value="3"
-                step="0.5"
-                aria-describedby="heating-contrast-help"
-              />
-              <p
-                id="heating-contrast-help"
-                style="
-                  font-size: 11px;
-                  line-height: 1.5;
-                  color: var(--text-secondary);
-                  margin: 5px 0 0;
-                "
-              >
-                Concentrates heating on responsive, sunlit surfaces while keeping the same total
-                solar energy. Applies live.
-              </p>
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="evaporation-rate">Solar evaporation</label>
-                <span id="evaporation-rate-val" class="value-display">0.25×</span>
-              </div>
-              <input type="range" id="evaporation-rate" min="0" max="1" value="0.25" step="0.05" />
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="sun-elevation">Sun elevation</label
-                ><span id="sun-elevation-val" class="value-display">40°</span>
-              </div>
-              <input type="range" id="sun-elevation" min="0" max="90" value="40" step="1" />
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="sun-azimuth">Sun direction</label
-                ><span id="sun-azimuth-val" class="value-display">135°</span>
-              </div>
-              <input type="range" id="sun-azimuth" min="0" max="360" value="135" step="1" />
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="radiative-cooling">Radiative cooling</label
-                ><span id="radiative-cooling-val" class="value-display">1.0×</span>
-              </div>
-              <input type="range" id="radiative-cooling" min="0" max="3" value="1" step="0.1" />
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="atmosphere-time-scale">Weather speed</label>
-                <span id="atmosphere-time-scale-val" class="value-display">1.00×</span>
-              </div>
+            <span class="value-display sr-only" id="sim-speed-val">1.0</span>
+          </div>
+          <div
+            class="control-group"
+            data-control="atmosphere-time-scale"
+            data-keywords="Weather speed"
+          >
+            <div class="label-row"><label for="atmosphere-time-scale">Weather speed</label></div>
+            <div class="range-row">
               <input
                 type="range"
                 id="atmosphere-time-scale"
@@ -327,667 +146,2257 @@
                 value="1"
                 step="0.25"
               />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row"><label for="atmosphere-view">Explore atmosphere</label></div>
-              <select id="atmosphere-view" class="select-input">
-                <option value="0" selected>3D cloud volume</option>
-                <option value="1">Temperature slice</option>
-                <option value="2">Humidity slice</option>
-                <option value="3">Wind speed slice</option>
-              </select>
-            </div>
-            <div class="control-group" id="atmosphere-slice-group" hidden>
-              <div class="label-row">
-                <label for="atmosphere-slice">Slice altitude</label>
-                <span id="atmosphere-slice-val" class="value-display">50%</span>
+              <div class="number-box">
+                <input
+                  type="number"
+                  id="atmosphere-time-scale-number"
+                  data-number-for="atmosphere-time-scale"
+                  aria-label="Weather speed exact value"
+                  min="0.25"
+                  max="4"
+                  step="0.25"
+                  value="1"
+                /><span class="unit">×</span>
               </div>
-              <input type="range" id="atmosphere-slice" min="0" max="100" value="50" step="1" />
-              <p
-                id="atmosphere-legend"
-                class="subtitle"
-                style="line-height: 1.5; letter-spacing: 0; text-transform: none"
-              ></p>
             </div>
-            <div class="checkbox-row">
-              <input type="checkbox" id="show-clouds" checked />
-              <label for="show-clouds">Show volumetric clouds</label>
-            </div>
-            <div class="checkbox-row">
-              <input type="checkbox" id="show-wind" />
-              <label for="show-wind">Show 3D wind vectors</label>
-            </div>
-            <div class="btn-row" style="margin-top: 14px">
-              <button id="btn-weather-reset" type="button" class="btn-action">
-                ↻ Reset Weather
-              </button>
-            </div>
-            <p
-              id="weather-status"
-              class="subtitle"
-              aria-live="polite"
-              style="line-height: 1.5; margin-top: 10px; letter-spacing: 0; text-transform: none"
-            >
-              96 × 96 × 64 cells · live GPU weather
-            </p>
+            <span class="value-display sr-only" id="atmosphere-time-scale-val">1.00×</span>
           </div>
         </div>
-      </section>
-
-      <!-- Section: Brushes -->
-      <section class="hud-section collapsed">
-        <button class="hud-section-header">
-          <h2><span>🖌️</span> Interactive Brush</h2>
-          <span class="chevron">▼</span>
-        </button>
-        <div class="hud-section-content">
-          <div class="hud-section-content-inner">
-            <div class="brush-grid">
-              <button class="btn-brush active" data-brush="0" title="Add water">
-                <span class="icon">🌊</span> Water
-              </button>
-              <button class="btn-brush" data-brush="1" title="Add lava">
-                <span class="icon">🌋</span> Lava
-              </button>
-              <button class="btn-brush" data-brush="9" title="Add cohesive soil beneath the sand">
-                <span class="icon">🟤</span> Soil
-              </button>
-              <button class="btn-brush" data-brush="2" title="Add sand">
-                <span class="icon">⏳</span> Sand
-              </button>
-              <button class="btn-brush" data-brush="3" title="Raise terrain">
-                <span class="icon">⛰️</span> Raise
-              </button>
-              <button class="btn-brush" data-brush="4" title="Dig terrain">
-                <span class="icon">🕳️</span> Dig
-              </button>
-              <button
-                class="btn-brush"
-                data-brush="5"
-                title="Erase water, lava, sand, soil, snow and ice"
-              >
-                <span class="icon">🧹</span> Erase
-              </button>
-              <button class="btn-brush" data-brush="6" title="Add solid ice beneath the water">
-                <span class="icon">🧊</span> Ice
-              </button>
-              <button
-                class="btn-brush"
-                data-brush="7"
-                title="Heat the surface; weather evolution melts snow and ice"
-              >
-                <span class="icon">🔥</span> Heat
-              </button>
-              <button
-                class="btn-brush"
-                data-brush="8"
-                title="Cool the surface; weather evolution freezes available water"
-              >
-                <span class="icon">❄️</span> Cool
-              </button>
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="brush-radius">Brush Size</label>
-                <span id="brush-radius-val" class="value-display">15</span>
-              </div>
-              <input type="range" id="brush-radius" min="2" max="200" value="15" step="1" />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="brush-strength">Strength</label>
-                <span id="brush-strength-val" class="value-display">1.0</span>
-              </div>
-              <input type="range" id="brush-strength" min="0.1" max="2.0" value="1.0" step="0.05" />
-            </div>
-          </div>
+        <div class="search-area">
+          <label class="search-box" for="command-search"
+            ><svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+              <use href="#i-search"></use></svg
+            ><input
+              id="command-search"
+              type="search"
+              placeholder="Find a setting…"
+              autocomplete="off"
+              aria-controls="search-results"
+              aria-expanded="false"
+            /><kbd>/</kbd></label
+          >
+          <div
+            id="search-results"
+            class="search-results"
+            hidden
+            aria-label="Matching settings"
+          ></div>
+          <span id="search-status" class="sr-only" role="status"></span>
         </div>
-      </section>
-
-      <!-- Section: Terrain Generation -->
-      <section class="hud-section collapsed">
-        <button class="hud-section-header">
-          <h2><span>⛰️</span> Terrain Generation</h2>
-          <span class="chevron">▼</span>
-        </button>
-        <div class="hud-section-content">
-          <div class="hud-section-content-inner">
-            <div class="control-group">
-              <div class="label-row">
-                <label for="terrain-generation">Generation Type</label>
-              </div>
-              <select id="terrain-generation" class="select-input">
-                <option value="realistic" selected>Realistic</option>
-                <option value="flat">Flat</option>
-              </select>
-            </div>
-
-            <div class="control-group" id="flat-rock-height-group">
-              <div class="label-row">
-                <label for="flat-rock-height">Rock Height</label>
-                <span id="flat-rock-height-val" class="value-display">0.05</span>
-              </div>
-              <input
-                type="range"
-                id="flat-rock-height"
-                min="0.0"
-                max="0.5"
-                value="0.05"
-                step="0.01"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="terrain-sand-height">Sand Height</label>
-                <span id="terrain-sand-height-val" class="value-display">0.05</span>
-              </div>
-              <input
-                type="range"
-                id="terrain-sand-height"
-                min="0.0"
-                max="0.5"
-                value="0.05"
-                step="0.01"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="terrain-soil-height">Soil Height</label>
-                <span id="terrain-soil-height-val" class="value-display">0.15</span>
-              </div>
-              <input
-                type="range"
-                id="terrain-soil-height"
-                min="0"
-                max="2"
-                value="0.15"
-                step="0.01"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="terrain-tilt">Tilt</label>
-                <span id="terrain-tilt-val" class="value-display">0.0</span>
-              </div>
-              <input type="range" id="terrain-tilt" min="-5.0" max="5.0" value="0.0" step="0.1" />
-            </div>
-
-            <div id="terrain-noise-settings">
-              <div class="control-group">
-                <div class="label-row">
-                  <label for="terrain-scale">Scale (Zoom)</label>
-                  <span id="terrain-scale-val" class="value-display">4.0</span>
-                </div>
-                <input
-                  type="range"
-                  id="terrain-scale"
-                  min="1.0"
-                  max="10.0"
-                  value="4.0"
-                  step="0.1"
-                />
-              </div>
-
-              <div class="control-group">
-                <div class="label-row">
-                  <label for="terrain-sharpness">Sharpness / Relief</label>
-                  <span id="terrain-sharpness-val" class="value-display">1.4</span>
-                </div>
-                <input
-                  type="range"
-                  id="terrain-sharpness"
-                  min="0.5"
-                  max="3.0"
-                  value="1.4"
-                  step="0.05"
-                />
-              </div>
-
-              <div class="control-group">
-                <div class="label-row">
-                  <label for="fbm-octaves">Details (Octaves)</label>
-                  <span id="fbm-octaves-val" class="value-display">4</span>
-                </div>
-                <input type="range" id="fbm-octaves" min="1" max="8" value="4" step="1" />
-              </div>
-
-              <div class="control-group">
-                <div class="label-row">
-                  <label for="fbm-persistence">Persistence</label>
-                  <span id="fbm-persistence-val" class="value-display">0.44</span>
-                </div>
-                <input
-                  type="range"
-                  id="fbm-persistence"
-                  min="0.10"
-                  max="0.90"
-                  value="0.44"
-                  step="0.01"
-                />
-              </div>
-            </div>
-          </div>
+        <div class="performance">
+          <span class="status-dot" aria-hidden="true"></span
+          ><span id="runtime-state" role="status">Starting</span
+          ><span class="fps"><strong id="fps-val">—</strong> FPS</span>
         </div>
-      </section>
-
-      <!-- Section: Fluid Physics -->
-      <section class="hud-section collapsed">
-        <button class="hud-section-header">
-          <h2><span>💧</span> Fluid Behavior</h2>
-          <span class="chevron">▼</span>
+      </header>
+      <nav class="domain-nav ui-surface" data-ui aria-label="World domains">
+        <button
+          type="button"
+          class="domain-button"
+          data-domain="world"
+          aria-controls="inspector"
+          aria-expanded="false"
+        >
+          <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-world"></use></svg
+          ><span>World</span></button
+        ><button
+          type="button"
+          class="domain-button"
+          data-domain="climate"
+          aria-controls="inspector"
+          aria-expanded="false"
+        >
+          <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+            <use href="#i-climate"></use></svg
+          ><span>Climate</span></button
+        ><button
+          type="button"
+          class="domain-button"
+          data-domain="water"
+          aria-controls="inspector"
+          aria-expanded="false"
+        >
+          <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-water"></use></svg
+          ><span>Water & Lava</span></button
+        ><button
+          type="button"
+          class="domain-button"
+          data-domain="sediments"
+          aria-controls="inspector"
+          aria-expanded="false"
+        >
+          <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+            <use href="#i-sediments"></use></svg
+          ><span>Sediments</span></button
+        ><button
+          type="button"
+          class="domain-button"
+          data-domain="observe"
+          aria-controls="inspector"
+          aria-expanded="false"
+        >
+          <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+            <use href="#i-observe"></use></svg
+          ><span>Observe</span></button
+        ><button
+          type="button"
+          class="domain-button"
+          data-domain="settings"
+          aria-controls="inspector"
+          aria-expanded="false"
+        >
+          <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+            <use href="#i-settings"></use></svg
+          ><span>Settings</span>
         </button>
-        <div class="hud-section-content">
-          <div class="hud-section-content-inner">
-            <div class="control-group">
-              <div class="label-row">
-                <label for="sim-speed">Simulation Speed (ticks/frame)</label>
-                <span id="sim-speed-val" class="value-display">1.0</span>
-              </div>
-              <input type="range" id="sim-speed" min="0.1" max="10.0" value="1.0" step="0.1" />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="water-gravity">Water Gravity (Waves)</label>
-                <span id="water-gravity-val" class="value-display">9.81</span>
-              </div>
-              <input type="range" id="water-gravity" min="1.0" max="25.0" value="9.81" step="0.1" />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="water-damping">Water Friction</label>
-                <span id="water-damping-val" class="value-display">0.998</span>
-              </div>
-              <input
-                type="range"
-                id="water-damping"
-                min="0.90"
-                max="1.0"
-                value="0.998"
-                step="0.001"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="evaporation">Water Evaporation</label>
-                <span id="evaporation-val" class="value-display">0.000000</span>
-              </div>
-              <input
-                type="range"
-                id="evaporation"
-                min="0.0"
-                max="0.00003"
-                value="0.0"
-                step="0.000001"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="lava-gravity">Lava Gravity</label>
-                <span id="lava-gravity-val" class="value-display">6.0</span>
-              </div>
-              <input type="range" id="lava-gravity" min="0.1" max="25.0" value="6.0" step="0.1" />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="lava-damping">Lava Friction</label>
-                <span id="lava-damping-val" class="value-display">0.950</span>
-              </div>
-              <input
-                type="range"
-                id="lava-damping"
-                min="0.50"
-                max="1.0"
-                value="0.95"
-                step="0.001"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="border-behavior">Border Behavior</label>
-              </div>
-              <select id="border-behavior" class="select-input">
-                <option value="0">Block all</option>
-                <option value="1" selected>Pass all</option>
-                <option value="2">Pass water but keep sediments</option>
-              </select>
-              <p
-                id="surface-boundary-help"
-                style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-top: 6px"
+      </nav>
+      <aside
+        id="inspector"
+        class="inspector ui-surface"
+        data-ui
+        hidden
+        aria-labelledby="inspector-title"
+      >
+        <header class="inspector-header">
+          <div>
+            <span class="eyebrow">WORLD PARAMETERS</span>
+            <h2 id="inspector-title">World</h2>
+            <p id="inspector-description"></p>
+          </div>
+          <button
+            type="button"
+            class="icon-button"
+            id="close-inspector"
+            aria-label="Close inspector"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+              <use href="#i-close"></use>
+            </svg>
+          </button>
+        </header>
+        <div class="inspector-toolbar">
+          <span id="inspector-mode">Essential controls</span
+          ><button type="button" class="advanced-button" id="toggle-advanced" aria-pressed="false">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+              <use href="#i-expand"></use></svg
+            ><span>Advanced</span>
+          </button>
+        </div>
+        <div class="inspector-body">
+          <div
+            id="domain-world"
+            class="domain-content"
+            data-title="World"
+            data-description="Shape the foundation"
+            hidden
+          >
+            <section class="setting-block">
+              <div class="block-heading"><h3>Landscape</h3></div>
+              <div
+                class="control-group"
+                data-control="terrain-generation"
+                data-keywords="Generation Type"
               >
+                <div class="label-row">
+                  <label for="terrain-generation">Landscape</label
+                  ><span class="effect-badge">Regenerates terrain</span>
+                </div>
+                <select id="terrain-generation" class="select-input">
+                  <option value="realistic" selected>Realistic</option>
+                  <option value="flat">Flat</option>
+                </select>
+              </div>
+              <div
+                class="control-group"
+                data-control="flat-rock-height"
+                data-keywords="Rock Height"
+                id="flat-rock-height-group"
+              >
+                <div class="label-row">
+                  <label for="flat-rock-height">Rock Height</label
+                  ><span class="effect-badge">Regenerates terrain</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="flat-rock-height"
+                    min="0.0"
+                    max="0.5"
+                    value="0.05"
+                    step="0.01"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="flat-rock-height-number"
+                      data-number-for="flat-rock-height"
+                      aria-label="Rock Height exact value"
+                      min="0.0"
+                      max="0.5"
+                      step="0.01"
+                      value="0.05"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="flat-rock-height-val">0.05</span>
+                <p class="availability" data-availability>
+                  Available with a flat landscape.
+                  <button type="button" class="text-button" data-reveal="terrain-generation">
+                    Change mode
+                  </button>
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="terrain-sand-height"
+                data-keywords="Sand Height"
+              >
+                <div class="label-row">
+                  <label for="terrain-sand-height">Sand layer</label
+                  ><span class="effect-badge">Regenerates terrain</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="terrain-sand-height"
+                    min="0.0"
+                    max="0.5"
+                    value="0.05"
+                    step="0.01"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="terrain-sand-height-number"
+                      data-number-for="terrain-sand-height"
+                      aria-label="Sand layer exact value"
+                      min="0.0"
+                      max="0.5"
+                      step="0.01"
+                      value="0.05"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="terrain-sand-height-val">0.05</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="terrain-soil-height"
+                data-keywords="Soil Height"
+              >
+                <div class="label-row">
+                  <label for="terrain-soil-height">Soil layer</label
+                  ><span class="effect-badge">Regenerates terrain</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="terrain-soil-height"
+                    min="0"
+                    max="2"
+                    value="0.15"
+                    step="0.01"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="terrain-soil-height-number"
+                      data-number-for="terrain-soil-height"
+                      aria-label="Soil layer exact value"
+                      min="0"
+                      max="2"
+                      step="0.01"
+                      value="0.15"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="terrain-soil-height-val">0.15</span>
+              </div>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Shape & detail</h3></div>
+              <div id="terrain-noise-settings">
+                <div
+                  class="control-group"
+                  data-control="terrain-scale"
+                  data-keywords="Scale (Zoom)"
+                >
+                  <div class="label-row">
+                    <label for="terrain-scale">Terrain scale</label
+                    ><span class="effect-badge">Regenerates terrain</span>
+                  </div>
+                  <div class="range-row">
+                    <input
+                      type="range"
+                      id="terrain-scale"
+                      min="1.0"
+                      max="10.0"
+                      value="4.0"
+                      step="0.1"
+                    />
+                    <div class="number-box">
+                      <input
+                        type="number"
+                        id="terrain-scale-number"
+                        data-number-for="terrain-scale"
+                        aria-label="Terrain scale exact value"
+                        min="1.0"
+                        max="10.0"
+                        step="0.1"
+                        value="4.0"
+                      /><span class="unit"></span>
+                    </div>
+                  </div>
+                  <span class="value-display sr-only" id="terrain-scale-val">4.0</span>
+                  <p class="availability" data-availability>
+                    Available with a realistic landscape.
+                    <button type="button" class="text-button" data-reveal="terrain-generation">
+                      Change mode
+                    </button>
+                  </p>
+                </div>
+                <div
+                  class="control-group"
+                  data-control="terrain-sharpness"
+                  data-keywords="Sharpness / Relief"
+                >
+                  <div class="label-row">
+                    <label for="terrain-sharpness">Relief</label
+                    ><span class="effect-badge">Regenerates terrain</span>
+                  </div>
+                  <div class="range-row">
+                    <input
+                      type="range"
+                      id="terrain-sharpness"
+                      min="0.5"
+                      max="3.0"
+                      value="1.4"
+                      step="0.05"
+                    />
+                    <div class="number-box">
+                      <input
+                        type="number"
+                        id="terrain-sharpness-number"
+                        data-number-for="terrain-sharpness"
+                        aria-label="Relief exact value"
+                        min="0.5"
+                        max="3.0"
+                        step="0.05"
+                        value="1.4"
+                      /><span class="unit"></span>
+                    </div>
+                  </div>
+                  <span class="value-display sr-only" id="terrain-sharpness-val">1.4</span>
+                  <p class="availability" data-availability>
+                    Available with a realistic landscape.
+                    <button type="button" class="text-button" data-reveal="terrain-generation">
+                      Change mode
+                    </button>
+                  </p>
+                </div>
+                <div data-advanced>
+                  <div
+                    class="control-group"
+                    data-control="fbm-octaves"
+                    data-keywords="Details (Octaves)"
+                  >
+                    <div class="label-row">
+                      <label for="fbm-octaves">Detail octaves</label
+                      ><span class="effect-badge">Regenerates terrain</span>
+                    </div>
+                    <div class="range-row">
+                      <input type="range" id="fbm-octaves" min="1" max="8" value="4" step="1" />
+                      <div class="number-box">
+                        <input
+                          type="number"
+                          id="fbm-octaves-number"
+                          data-number-for="fbm-octaves"
+                          aria-label="Detail octaves exact value"
+                          min="1"
+                          max="8"
+                          step="1"
+                          value="4"
+                        /><span class="unit"></span>
+                      </div>
+                    </div>
+                    <span class="value-display sr-only" id="fbm-octaves-val">4</span>
+                    <p class="availability" data-availability>
+                      Available with a realistic landscape.
+                      <button type="button" class="text-button" data-reveal="terrain-generation">
+                        Change mode
+                      </button>
+                    </p>
+                  </div>
+                  <div
+                    class="control-group"
+                    data-control="fbm-persistence"
+                    data-keywords="Persistence"
+                  >
+                    <div class="label-row">
+                      <label for="fbm-persistence">Persistence</label
+                      ><span class="effect-badge">Regenerates terrain</span>
+                    </div>
+                    <div class="range-row">
+                      <input
+                        type="range"
+                        id="fbm-persistence"
+                        min="0.10"
+                        max="0.90"
+                        value="0.44"
+                        step="0.01"
+                      />
+                      <div class="number-box">
+                        <input
+                          type="number"
+                          id="fbm-persistence-number"
+                          data-number-for="fbm-persistence"
+                          aria-label="Persistence exact value"
+                          min="0.10"
+                          max="0.90"
+                          step="0.01"
+                          value="0.44"
+                        /><span class="unit"></span>
+                      </div>
+                    </div>
+                    <span class="value-display sr-only" id="fbm-persistence-val">0.44</span>
+                    <p class="availability" data-availability>
+                      Available with a realistic landscape.
+                      <button type="button" class="text-button" data-reveal="terrain-generation">
+                        Change mode
+                      </button>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <section class="setting-block" data-advanced>
+              <div class="block-heading"><h3>Terrain tilt</h3></div>
+              <div class="control-group" data-control="terrain-tilt" data-keywords="Tilt">
+                <div class="label-row">
+                  <label for="terrain-tilt">Tilt</label
+                  ><span class="effect-badge">Regenerates terrain</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="terrain-tilt"
+                    min="-5.0"
+                    max="5.0"
+                    value="0.0"
+                    step="0.1"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="terrain-tilt-number"
+                      data-number-for="terrain-tilt"
+                      aria-label="Tilt exact value"
+                      min="-5.0"
+                      max="5.0"
+                      step="0.1"
+                      value="0.0"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="terrain-tilt-val">0.0</span>
+              </div>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Recreate the world</h3></div>
+              <div class="action-entry" data-control="btn-reset" data-keywords="⛰️ Reset Terrain">
+                <button type="button" id="btn-reset" class="btn-action">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                    <use href="#i-reset"></use></svg
+                  ><span>Reset terrain</span>
+                </button>
+                <p class="help-text">
+                  Rebuild using the current seed, clear water, lava, snow and ice, and restart the
+                  weather.
+                </p>
+              </div>
+              <div
+                class="action-entry"
+                data-control="btn-new-terrain"
+                data-keywords="🏔️ New Terrain"
+              >
+                <button type="button" id="btn-new-terrain" class="btn-action">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                    <use href="#i-plus"></use></svg
+                  ><span>New terrain</span>
+                </button>
+                <p class="help-text">
+                  Generate a new landscape, clear water, lava, snow and ice, and restart the
+                  weather.
+                </p>
+              </div>
+            </section>
+          </div>
+          <div
+            id="domain-climate"
+            class="domain-content"
+            data-title="Climate"
+            data-description="Set the atmosphere in motion"
+            hidden
+          >
+            <section class="setting-block">
+              <div class="block-heading"><h3>Atmosphere</h3></div>
+              <div
+                class="control-group"
+                data-control="atmosphere-enabled"
+                data-keywords="Simulate weather"
+              >
+                <label class="toggle-row" for="atmosphere-enabled"
+                  ><span>Simulate weather</span
+                  ><input type="checkbox" id="atmosphere-enabled" checked /><span
+                    class="toggle-track"
+                    aria-hidden="true"
+                  ></span
+                ></label>
+              </div>
+              <div
+                class="control-group"
+                data-control="weather-dynamics"
+                data-keywords="Atmospheric dynamics"
+              >
+                <div class="label-row">
+                  <label for="weather-dynamics">Atmospheric dynamics</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <select id="weather-dynamics" class="select-input">
+                  <option value="emergent" selected>Emergent · solar driven</option>
+                  <option value="forced">Imposed weather conditions</option>
+                </select>
+              </div>
+              <details class="help-details">
+                <summary>How the atmosphere evolves</summary>
+                <p class="help-text" id="weather-dynamics-help">
+                  Air evolves freely from its initial state. Sunlight, cooling and terrain drive
+                  circulation.
+                </p>
+              </details>
+              <p class="help-text" id="weather-status" role="status">
+                96 × 96 × 64 cells · live GPU weather
+              </p>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Weather presets</h3></div>
+              <div class="preset-grid" role="group" aria-label="Weather presets">
+                <button
+                  type="button"
+                  class="preset-button"
+                  data-control="preset-mild"
+                  data-weather-preset="mild"
+                  aria-pressed="false"
+                >
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                    <use href="#i-heat"></use></svg
+                  >Mild</button
+                ><button
+                  type="button"
+                  class="preset-button"
+                  data-control="preset-snow"
+                  data-weather-preset="snow"
+                  aria-pressed="false"
+                >
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                    <use href="#i-ice"></use></svg
+                  >Snow</button
+                ><button
+                  type="button"
+                  class="preset-button"
+                  data-control="preset-thaw"
+                  data-weather-preset="thaw"
+                  aria-pressed="false"
+                >
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                    <use href="#i-water"></use></svg
+                  >Thaw</button
+                ><button
+                  type="button"
+                  class="preset-button"
+                  data-control="preset-storm"
+                  data-weather-preset="storm"
+                  aria-pressed="false"
+                >
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                    <use href="#i-climate"></use></svg
+                  >Storm
+                </button>
+              </div>
+              <p class="help-text">Presets preserve the landscape, liquid water, snow and ice.</p>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Air conditions</h3></div>
+              <div
+                class="control-group"
+                data-control="air-temperature"
+                data-keywords="Air temperature"
+              >
+                <div class="label-row">
+                  <label for="air-temperature">Air temperature</label
+                  ><span class="effect-badge">Initial conditions</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="air-temperature" min="-25" max="35" value="8" step="1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="air-temperature-number"
+                      data-number-for="air-temperature"
+                      aria-label="Air temperature exact value"
+                      min="-25"
+                      max="35"
+                      step="1"
+                      value="8"
+                    /><span class="unit">°C</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="air-temperature-val">8 °C</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="relative-humidity"
+                data-keywords="Relative humidity"
+              >
+                <div class="label-row">
+                  <label for="relative-humidity">Relative humidity</label
+                  ><span class="effect-badge">Initial conditions</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="relative-humidity"
+                    min="0"
+                    max="140"
+                    value="75"
+                    step="1"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="relative-humidity-number"
+                      data-number-for="relative-humidity"
+                      aria-label="Relative humidity exact value"
+                      min="0"
+                      max="140"
+                      step="1"
+                      value="75"
+                    /><span class="unit">%</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="relative-humidity-val">75%</span>
+              </div>
+              <div class="control-group" data-control="wind-speed" data-keywords="Wind speed">
+                <div class="label-row">
+                  <label for="wind-speed">Wind speed</label
+                  ><span class="effect-badge">Initial conditions</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="wind-speed" min="0" max="30" value="0" step="1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="wind-speed-number"
+                      data-number-for="wind-speed"
+                      aria-label="Wind speed exact value"
+                      min="0"
+                      max="30"
+                      step="1"
+                      value="0"
+                    /><span class="unit">u/s</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="wind-speed-val">0 u/s</span>
+              </div>
+              <div class="control-group" data-control="wind-direction" data-keywords="Wind heading">
+                <div class="label-row">
+                  <label for="wind-direction">Wind heading</label
+                  ><span class="effect-badge">Initial conditions</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="wind-direction" min="0" max="360" value="45" step="5" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="wind-direction-number"
+                      data-number-for="wind-direction"
+                      aria-label="Wind heading exact value"
+                      min="0"
+                      max="360"
+                      step="5"
+                      value="45"
+                    /><span class="unit">°</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="wind-direction-val">45°</span>
+              </div>
+              <div id="restart-air-group">
+                <div
+                  class="action-entry"
+                  data-control="btn-weather-restart-air"
+                  data-keywords="Restart air from these values"
+                >
+                  <button type="button" id="btn-weather-restart-air" class="btn-action">
+                    <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                      <use href="#i-reset"></use></svg
+                    ><span>Restart air</span>
+                  </button>
+                  <p class="help-text">
+                    Apply the initial air values. Ground water, snow and ice are preserved.
+                  </p>
+                  <p class="availability" id="restart-air-availability" hidden>
+                    Air is continuously imposed in this mode.
+                    <button type="button" class="text-button" data-reveal="weather-dynamics">
+                      Change atmospheric dynamics
+                    </button>
+                  </p>
+                </div>
+              </div>
+            </section>
+            <section class="setting-block" data-advanced>
+              <div class="block-heading"><h3>Solar energy</h3></div>
+              <div class="control-group" data-control="solar-heating" data-keywords="Solar heating">
+                <div class="label-row">
+                  <label for="solar-heating">Solar heating</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="solar-heating" min="0" max="3" value="1" step="0.1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="solar-heating-number"
+                      data-number-for="solar-heating"
+                      aria-label="Solar heating exact value"
+                      min="0"
+                      max="3"
+                      step="0.1"
+                      value="1"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="solar-heating-val">1.0×</span>
+              </div>
+              <div class="control-group" data-control="sun-elevation" data-keywords="Sun elevation">
+                <div class="label-row">
+                  <label for="sun-elevation">Sun elevation</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="sun-elevation" min="0" max="90" value="40" step="1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="sun-elevation-number"
+                      data-number-for="sun-elevation"
+                      aria-label="Sun elevation exact value"
+                      min="0"
+                      max="90"
+                      step="1"
+                      value="40"
+                    /><span class="unit">°</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="sun-elevation-val">40°</span>
+              </div>
+              <div class="control-group" data-control="sun-azimuth" data-keywords="Sun direction">
+                <div class="label-row">
+                  <label for="sun-azimuth">Sun direction</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="sun-azimuth" min="0" max="360" value="135" step="1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="sun-azimuth-number"
+                      data-number-for="sun-azimuth"
+                      aria-label="Sun direction exact value"
+                      min="0"
+                      max="360"
+                      step="1"
+                      value="135"
+                    /><span class="unit">°</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="sun-azimuth-val">135°</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="radiative-cooling"
+                data-keywords="Radiative cooling"
+              >
+                <div class="label-row">
+                  <label for="radiative-cooling">Radiative cooling</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="radiative-cooling" min="0" max="3" value="1" step="0.1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="radiative-cooling-number"
+                      data-number-for="radiative-cooling"
+                      aria-label="Radiative cooling exact value"
+                      min="0"
+                      max="3"
+                      step="0.1"
+                      value="1"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="radiative-cooling-val">1.0×</span>
+              </div>
+            </section>
+            <section class="setting-block" data-advanced>
+              <div class="block-heading"><h3>Atmospheric dynamics</h3></div>
+              <div
+                class="control-group"
+                data-control="air-stability"
+                data-keywords="Initial lower-air stability"
+              >
+                <div class="label-row">
+                  <label for="air-stability">Initial lower-air stability</label
+                  ><span class="effect-badge">Initial conditions</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="air-stability"
+                    min="0"
+                    max="100"
+                    value="12.5"
+                    step="0.5"
+                    aria-describedby="air-stability-help"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="air-stability-number"
+                      data-number-for="air-stability"
+                      aria-label="Initial lower-air stability exact value"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                      value="12.5"
+                    /><span class="unit">%</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="air-stability-val">12.5%</span>
+                <p class="help-text" id="air-stability-help">
+                  0%: easy to lift · 100%: resists lifting. Starts with a more stable upper layer.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="convection-strength"
+                data-keywords="Convection response"
+              >
+                <div class="label-row">
+                  <label for="convection-strength">Convection response</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="convection-strength"
+                    min="0"
+                    max="8"
+                    value="4"
+                    step="0.5"
+                    aria-describedby="convection-strength-help"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="convection-strength-number"
+                      data-number-for="convection-strength"
+                      aria-label="Convection response exact value"
+                      min="0"
+                      max="8"
+                      step="0.5"
+                      value="4"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="convection-strength-val">4.0×</span>
+                <p class="help-text" id="convection-strength-help">
+                  How strongly air accelerates from heat and moisture differences. Applies live.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="heating-contrast"
+                data-keywords="Surface heating contrast"
+              >
+                <div class="label-row">
+                  <label for="heating-contrast">Surface heating contrast</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="heating-contrast"
+                    min="1"
+                    max="10"
+                    value="3"
+                    step="0.5"
+                    aria-describedby="heating-contrast-help"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="heating-contrast-number"
+                      data-number-for="heating-contrast"
+                      aria-label="Surface heating contrast exact value"
+                      min="1"
+                      max="10"
+                      step="0.5"
+                      value="3"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="heating-contrast-val">3.0×</span>
+                <p class="help-text" id="heating-contrast-help">
+                  Concentrates heating on responsive, sunlit surfaces while keeping the same total
+                  solar energy. Applies live.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="atmosphere-boundary"
+                data-keywords="Atmosphere boundaries"
+              >
+                <div class="label-row">
+                  <label for="atmosphere-boundary">Atmosphere boundaries</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <select
+                  id="atmosphere-boundary"
+                  class="select-input"
+                  aria-describedby="atmosphere-boundary-help"
+                >
+                  <option value="0" selected>Periodic · wrap to opposite edge</option>
+                  <option value="1">Closed walls · no flow through edges</option>
+                </select>
+                <p class="help-text" id="atmosphere-boundary-help">
+                  Air leaving one horizontal edge returns at the opposite edge. Ground and ceiling
+                  are closed.
+                </p>
+              </div>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Reset weather</h3></div>
+              <div
+                class="action-entry"
+                data-control="btn-weather-reset"
+                data-keywords="↻ Reset Weather"
+              >
+                <button type="button" id="btn-weather-reset" class="btn-action">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                    <use href="#i-reset"></use></svg
+                  ><span>Reset weather</span>
+                </button>
+                <p class="help-text">
+                  Restart the atmosphere and clear accumulated snow and ice. Starts a new water
+                  balance.
+                </p>
+              </div>
+            </section>
+          </div>
+          <div
+            id="domain-water"
+            class="domain-content"
+            data-title="Water & Lava"
+            data-description="Guide the flow of the world"
+            hidden
+          >
+            <section class="setting-block">
+              <div class="block-heading"><h3>Water cycle</h3></div>
+              <div
+                class="control-group"
+                data-control="closed-water-cycle"
+                data-keywords="Closed water cycle"
+              >
+                <label class="toggle-row" for="closed-water-cycle"
+                  ><span>Closed water cycle</span
+                  ><input type="checkbox" id="closed-water-cycle" checked /><span
+                    class="toggle-track"
+                    aria-hidden="true"
+                  ></span
+                ></label>
+              </div>
+              <p class="help-text" id="water-cycle-help">
+                Water circulates between air, clouds, precipitation, surface water, snow and ice.
+                Surface edges are sealed and manual rain is suspended.
+              </p>
+              <div
+                class="control-group"
+                data-control="evaporation-rate"
+                data-keywords="Solar evaporation"
+              >
+                <div class="label-row">
+                  <label for="evaporation-rate">Solar evaporation</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="evaporation-rate"
+                    min="0"
+                    max="1"
+                    value="0.25"
+                    step="0.05"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="evaporation-rate-number"
+                      data-number-for="evaporation-rate"
+                      aria-label="Solar evaporation exact value"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value="0.25"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="evaporation-rate-val">0.25×</span>
+              </div>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Manual rain</h3></div>
+              <div
+                class="control-group"
+                data-control="rain-active"
+                data-keywords="⛈️ Add manual rain"
+              >
+                <label class="toggle-row" for="rain-active"
+                  ><span>Manual rain</span><input type="checkbox" id="rain-active" /><span
+                    class="toggle-track"
+                    aria-hidden="true"
+                  ></span
+                ></label>
+                <p class="availability" data-availability>
+                  Suspended by the closed water cycle.
+                  <button type="button" class="text-button" data-reveal="closed-water-cycle">
+                    Change mode
+                  </button>
+                </p>
+              </div>
+              <p class="help-text" id="manual-rain-help">
+                Suspended while Closed water cycle is enabled. Rain forms from water already in the
+                atmosphere.
+              </p>
+              <div
+                class="control-group"
+                data-control="rain-quantity"
+                data-keywords="Raindrop Quantity"
+              >
+                <div class="label-row">
+                  <label for="rain-quantity">Raindrop Quantity</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="rain-quantity"
+                    min="0.0001"
+                    max="0.0010"
+                    value="0.0005"
+                    step="0.0001"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="rain-quantity-number"
+                      data-number-for="rain-quantity"
+                      aria-label="Raindrop Quantity exact value"
+                      min="0.0001"
+                      max="0.0010"
+                      step="0.0001"
+                      value="0.0005"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="rain-quantity-val">0.0005</span>
+                <p class="availability" data-availability>
+                  Suspended by the closed water cycle.
+                  <button type="button" class="text-button" data-reveal="closed-water-cycle">
+                    Change mode
+                  </button>
+                </p>
+              </div>
+              <div class="control-group" data-control="rain-size" data-keywords="Raindrop Size">
+                <div class="label-row">
+                  <label for="rain-size">Raindrop Size</label><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="rain-size"
+                    min="0.001"
+                    max="0.010"
+                    value="0.005"
+                    step="0.001"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="rain-size-number"
+                      data-number-for="rain-size"
+                      aria-label="Raindrop Size exact value"
+                      min="0.001"
+                      max="0.010"
+                      step="0.001"
+                      value="0.005"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="rain-size-val">0.005</span>
+                <p class="availability" data-availability>
+                  Suspended by the closed water cycle.
+                  <button type="button" class="text-button" data-reveal="closed-water-cycle">
+                    Change mode
+                  </button>
+                </p>
+              </div>
+            </section>
+            <section class="setting-block" data-advanced>
+              <div class="block-heading"><h3>Water physics</h3></div>
+              <div
+                class="control-group"
+                data-control="water-gravity"
+                data-keywords="Water Gravity (Waves)"
+              >
+                <div class="label-row">
+                  <label for="water-gravity">Water Gravity (Waves)</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="water-gravity"
+                    min="1.0"
+                    max="25.0"
+                    value="9.81"
+                    step="0.1"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="water-gravity-number"
+                      data-number-for="water-gravity"
+                      aria-label="Water Gravity (Waves) exact value"
+                      min="1.0"
+                      max="25.0"
+                      step="0.1"
+                      value="9.81"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="water-gravity-val">9.81</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="water-damping"
+                data-keywords="Water Friction"
+              >
+                <div class="label-row">
+                  <label for="water-damping">Water Friction</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="water-damping"
+                    min="0.90"
+                    max="1.0"
+                    value="0.998"
+                    step="0.001"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="water-damping-number"
+                      data-number-for="water-damping"
+                      aria-label="Water Friction exact value"
+                      min="0.90"
+                      max="1.0"
+                      step="0.001"
+                      value="0.998"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="water-damping-val">0.998</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="evaporation"
+                data-keywords="Water Evaporation"
+              >
+                <div class="label-row">
+                  <label for="evaporation">Water Evaporation</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="evaporation"
+                    min="0.0"
+                    max="0.00003"
+                    value="0.0"
+                    step="0.000001"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="evaporation-number"
+                      data-number-for="evaporation"
+                      aria-label="Water Evaporation exact value"
+                      min="0.0"
+                      max="0.00003"
+                      step="0.000001"
+                      value="0.0"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="evaporation-val">0.000000</span>
+              </div>
+            </section>
+            <section class="setting-block" data-advanced>
+              <div class="block-heading"><h3>Lava physics</h3></div>
+              <div class="control-group" data-control="lava-gravity" data-keywords="Lava Gravity">
+                <div class="label-row">
+                  <label for="lava-gravity">Lava Gravity</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="lava-gravity"
+                    min="0.1"
+                    max="25.0"
+                    value="6.0"
+                    step="0.1"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="lava-gravity-number"
+                      data-number-for="lava-gravity"
+                      aria-label="Lava Gravity exact value"
+                      min="0.1"
+                      max="25.0"
+                      step="0.1"
+                      value="6.0"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="lava-gravity-val">6.0</span>
+              </div>
+              <div class="control-group" data-control="lava-damping" data-keywords="Lava Friction">
+                <div class="label-row">
+                  <label for="lava-damping">Lava Friction</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="lava-damping"
+                    min="0.50"
+                    max="1.0"
+                    value="0.95"
+                    step="0.001"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="lava-damping-number"
+                      data-number-for="lava-damping"
+                      aria-label="Lava Friction exact value"
+                      min="0.50"
+                      max="1.0"
+                      step="0.001"
+                      value="0.95"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="lava-damping-val">0.950</span>
+              </div>
+            </section>
+            <section class="setting-block" data-advanced>
+              <div class="block-heading"><h3>Surface boundaries</h3></div>
+              <div
+                class="control-group"
+                data-control="border-behavior"
+                data-keywords="Border Behavior"
+              >
+                <div class="label-row">
+                  <label for="border-behavior">Border Behavior</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <select id="border-behavior" class="select-input">
+                  <option value="0">Block all</option>
+                  <option value="1" selected>Pass all</option>
+                  <option value="2">Pass water but keep sediments</option>
+                </select>
+                <p class="availability" data-availability>
+                  Sealed by the closed water cycle.
+                  <button type="button" class="text-button" data-reveal="closed-water-cycle">
+                    Change mode
+                  </button>
+                </p>
+              </div>
+              <p class="help-text" id="surface-boundary-help">
                 Closed water cycle seals surface edges. Your open-mode settings are retained.
               </p>
-            </div>
-
-            <div class="control-group" id="border-water-height-group">
-              <div class="label-row">
-                <label for="border-water-height">Border Water Height</label>
-                <span id="border-water-height-val" class="value-display">0.00</span>
+              <div
+                class="control-group"
+                data-control="border-water-height"
+                data-keywords="Border Water Height"
+                id="border-water-height-group"
+              >
+                <div class="label-row">
+                  <label for="border-water-height">Border Water Height</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="border-water-height"
+                    min="0.0"
+                    max="3.0"
+                    value="0.0"
+                    step="0.05"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="border-water-height-number"
+                      data-number-for="border-water-height"
+                      aria-label="Border Water Height exact value"
+                      min="0.0"
+                      max="3.0"
+                      step="0.05"
+                      value="0.0"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="border-water-height-val">0.00</span>
+                <p class="availability" data-availability>
+                  Requires an open water cycle and a boundary that allows flow.
+                  <button type="button" class="text-button" data-reveal="border-behavior">
+                    Change mode
+                  </button>
+                </p>
               </div>
-              <input
-                type="range"
-                id="border-water-height"
-                min="0.0"
-                max="3.0"
-                value="0.0"
-                step="0.05"
-              />
-            </div>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Clear fluids</h3></div>
+              <div class="action-entry" data-control="btn-clear" data-keywords="🧹 Clear Fluids">
+                <button type="button" id="btn-clear" class="btn-action">
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                    <use href="#i-erase"></use></svg
+                  ><span>Clear fluids</span>
+                </button>
+                <p class="help-text">
+                  Remove liquid water, lava, snow and ice. The terrain stays in place.
+                </p>
+              </div>
+            </section>
+          </div>
+          <div
+            id="domain-sediments"
+            class="domain-content"
+            data-title="Sediments"
+            data-description="Shape how the land settles"
+            hidden
+          >
+            <section class="setting-block" data-material="soil">
+              <div class="block-heading"><h3>Soil</h3></div>
+              <div
+                class="control-group"
+                data-control="soil-static-repose-slope"
+                data-keywords="Soil Angle of Repose (Static)"
+              >
+                <div class="label-row">
+                  <label for="soil-static-repose-slope">Soil Angle of Repose (Static)</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="soil-static-repose-slope"
+                    min="0"
+                    max="89"
+                    value="70.0"
+                    step="0.1"
+                    aria-describedby="repose-angle-help"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="soil-static-repose-slope-number"
+                      data-number-for="soil-static-repose-slope"
+                      aria-label="Soil Angle of Repose (Static) exact value"
+                      min="0"
+                      max="89"
+                      step="0.1"
+                      value="70.0"
+                    /><span class="unit">°</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="soil-static-repose-slope-val">70.0°</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="soil-dynamic-repose-slope"
+                data-keywords="Soil Angle of Repose (Dynamic)"
+              >
+                <div class="label-row">
+                  <label for="soil-dynamic-repose-slope">Soil Angle of Repose (Dynamic)</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="soil-dynamic-repose-slope"
+                    min="0"
+                    max="89"
+                    value="55.0"
+                    step="0.1"
+                    aria-describedby="repose-angle-help"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="soil-dynamic-repose-slope-number"
+                      data-number-for="soil-dynamic-repose-slope"
+                      aria-label="Soil Angle of Repose (Dynamic) exact value"
+                      min="0"
+                      max="89"
+                      step="0.1"
+                      value="55.0"
+                    /><span class="unit">°</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="soil-dynamic-repose-slope-val">55.0°</span>
+              </div>
+            </section>
+            <section class="setting-block" data-material="sand">
+              <div class="block-heading"><h3>Sand</h3></div>
+              <div
+                class="control-group"
+                data-control="sand-static-repose-slope"
+                data-keywords="Sand Angle of Repose (Static)"
+              >
+                <div class="label-row">
+                  <label for="sand-static-repose-slope">Sand Angle of Repose (Static)</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="sand-static-repose-slope"
+                    min="0"
+                    max="89"
+                    value="42.7"
+                    step="0.1"
+                    aria-describedby="repose-angle-help"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="sand-static-repose-slope-number"
+                      data-number-for="sand-static-repose-slope"
+                      aria-label="Sand Angle of Repose (Static) exact value"
+                      min="0"
+                      max="89"
+                      step="0.1"
+                      value="42.7"
+                    /><span class="unit">°</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="sand-static-repose-slope-val">42.7°</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="sand-dynamic-repose-slope"
+                data-keywords="Sand Angle of Repose (Dynamic)"
+              >
+                <div class="label-row">
+                  <label for="sand-dynamic-repose-slope">Sand Angle of Repose (Dynamic)</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="sand-dynamic-repose-slope"
+                    min="0"
+                    max="89"
+                    value="20.2"
+                    step="0.1"
+                    aria-describedby="repose-angle-help"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="sand-dynamic-repose-slope-number"
+                      data-number-for="sand-dynamic-repose-slope"
+                      aria-label="Sand Angle of Repose (Dynamic) exact value"
+                      min="0"
+                      max="89"
+                      step="0.1"
+                      value="20.2"
+                    /><span class="unit">°</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="sand-dynamic-repose-slope-val">20.2°</span>
+              </div>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>How slopes behave</h3></div>
+              <p class="help-text" id="repose-angle-help">
+                Repose angles are measured from horizontal. Lower the angle to spread a pile;
+                increasing it allows steeper slopes but does not rebuild an existing pile. Rock
+                stays fixed. For both materials, Static starts an avalanche and Dynamic stops it.
+                Sliding, erosion, transport and deposition rates are shared; only the angles differ.
+              </p>
+            </section>
+            <section class="setting-block" data-advanced>
+              <div class="block-heading"><h3>Erosion & transport</h3></div>
+              <div
+                class="control-group"
+                data-control="erosion-rate"
+                data-keywords="Sediment Erosion Rate"
+              >
+                <div class="label-row">
+                  <label for="erosion-rate">Sediment Erosion Rate</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="erosion-rate"
+                    min="0.0"
+                    max="0.1"
+                    value="0.005"
+                    step="0.001"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="erosion-rate-number"
+                      data-number-for="erosion-rate"
+                      aria-label="Sediment Erosion Rate exact value"
+                      min="0.0"
+                      max="0.1"
+                      step="0.001"
+                      value="0.005"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="erosion-rate-val">0.005</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="capacity-factor"
+                data-keywords="Carrying Capacity"
+              >
+                <div class="label-row">
+                  <label for="capacity-factor">Carrying Capacity</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="capacity-factor"
+                    min="0.0"
+                    max="0.5"
+                    value="0.1"
+                    step="0.005"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="capacity-factor-number"
+                      data-number-for="capacity-factor"
+                      aria-label="Carrying Capacity exact value"
+                      min="0.0"
+                      max="0.5"
+                      step="0.005"
+                      value="0.1"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="capacity-factor-val">0.100</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="deposition-rate"
+                data-keywords="Deposition Rate"
+              >
+                <div class="label-row">
+                  <label for="deposition-rate">Deposition Rate</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="deposition-rate"
+                    min="0.0"
+                    max="1.0"
+                    value="0.05"
+                    step="0.01"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="deposition-rate-number"
+                      data-number-for="deposition-rate"
+                      aria-label="Deposition Rate exact value"
+                      min="0.0"
+                      max="1.0"
+                      step="0.01"
+                      value="0.05"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="deposition-rate-val">0.05</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="min-water-depth"
+                data-keywords="Min Water Depth for Transport"
+              >
+                <div class="label-row">
+                  <label for="min-water-depth">Min Water Depth for Transport</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="min-water-depth"
+                    min="0.0"
+                    max="0.5"
+                    value="0.0"
+                    step="0.01"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="min-water-depth-number"
+                      data-number-for="min-water-depth"
+                      aria-label="Min Water Depth for Transport exact value"
+                      min="0.0"
+                      max="0.5"
+                      step="0.01"
+                      value="0.0"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="min-water-depth-val">0.00</span>
+              </div>
+            </section>
+            <section class="setting-block" data-advanced>
+              <div class="block-heading"><h3>Material movement</h3></div>
+              <div
+                class="control-group"
+                data-control="sediment-slide"
+                data-keywords="Sediment Sliding Rate"
+              >
+                <div class="label-row">
+                  <label for="sediment-slide">Sediment Sliding Rate</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="sediment-slide"
+                    min="0.01"
+                    max="0.2"
+                    value="0.05"
+                    step="0.01"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="sediment-slide-number"
+                      data-number-for="sediment-slide"
+                      aria-label="Sediment Sliding Rate exact value"
+                      min="0.01"
+                      max="0.2"
+                      step="0.01"
+                      value="0.05"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="sediment-slide-val">0.05</span>
+              </div>
+            </section>
+          </div>
+          <div
+            id="domain-observe"
+            class="domain-content"
+            data-title="Observe"
+            data-description="Read the invisible"
+            hidden
+          >
+            <section class="setting-block">
+              <div class="block-heading"><h3>Atmospheric views</h3></div>
+              <div
+                class="control-group"
+                data-control="atmosphere-view"
+                data-keywords="Explore atmosphere"
+              >
+                <div class="label-row">
+                  <label for="atmosphere-view">Explore atmosphere</label
+                  ><span class="effect-badge">View</span>
+                </div>
+                <select id="atmosphere-view" class="select-input">
+                  <option value="0" selected>3D cloud volume</option>
+                  <option value="1">Temperature slice</option>
+                  <option value="2">Humidity slice</option>
+                  <option value="3">Wind speed slice</option>
+                </select>
+              </div>
+              <div
+                class="control-group"
+                data-control="show-clouds"
+                data-keywords="Show volumetric clouds"
+              >
+                <label class="toggle-row" for="show-clouds"
+                  ><span>Show volumetric clouds</span
+                  ><input type="checkbox" id="show-clouds" checked /><span
+                    class="toggle-track"
+                    aria-hidden="true"
+                  ></span
+                ></label>
+              </div>
+              <div
+                class="control-group"
+                data-control="show-wind"
+                data-keywords="Show 3D wind vectors"
+              >
+                <label class="toggle-row" for="show-wind"
+                  ><span>Show 3D wind vectors</span><input type="checkbox" id="show-wind" /><span
+                    class="toggle-track"
+                    aria-hidden="true"
+                  ></span
+                ></label>
+              </div>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Temperature overlay</h3></div>
+              <div
+                class="control-group"
+                data-control="thermal-overlay"
+                data-keywords="Temperature overlay"
+              >
+                <label class="toggle-row" for="thermal-overlay"
+                  ><span>Temperature overlay</span
+                  ><input type="checkbox" id="thermal-overlay" /><span
+                    class="toggle-track"
+                    aria-hidden="true"
+                  ></span
+                ></label>
+              </div>
+              <div id="thermal-controls" data-advanced>
+                <div class="control-group" data-control="thermal-mode" data-keywords="Measure">
+                  <div class="label-row">
+                    <label for="thermal-mode">Measure</label><span class="effect-badge">View</span>
+                  </div>
+                  <select id="thermal-mode" class="select-input">
+                    <option value="surface">Surface</option>
+                    <option value="air">Air above surface</option>
+                  </select>
+                  <p class="availability" data-availability>
+                    Enable the temperature overlay to choose a measurement.
+                    <button type="button" class="text-button" data-reveal="thermal-overlay">
+                      Change mode
+                    </button>
+                  </p>
+                </div>
+                <div class="control-group" data-control="thermal-opacity" data-keywords="Opacity">
+                  <div class="label-row">
+                    <label for="thermal-opacity">Opacity</label
+                    ><span class="effect-badge">View</span>
+                  </div>
+                  <div class="range-row">
+                    <input
+                      type="range"
+                      id="thermal-opacity"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value="45"
+                    />
+                    <div class="number-box">
+                      <input
+                        type="number"
+                        id="thermal-opacity-number"
+                        data-number-for="thermal-opacity"
+                        aria-label="Opacity exact value"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value="45"
+                      /><span class="unit">%</span>
+                    </div>
+                  </div>
+                  <span class="value-display sr-only" id="thermal-opacity-val">45%</span>
+                  <p class="availability" data-availability>
+                    Enable the temperature overlay to adjust opacity.
+                    <button type="button" class="text-button" data-reveal="thermal-overlay">
+                      Change mode
+                    </button>
+                  </p>
+                </div>
+                <div
+                  class="control-group"
+                  data-control="thermal-height"
+                  data-keywords="Air height above surface"
+                >
+                  <div class="label-row">
+                    <label for="thermal-height">Air height above surface</label
+                    ><span class="effect-badge">View</span>
+                  </div>
+                  <div class="range-row">
+                    <input
+                      type="range"
+                      id="thermal-height"
+                      min="1.5625"
+                      max="25"
+                      step="1.5625"
+                      value="6.25"
+                    />
+                    <div class="number-box">
+                      <input
+                        type="number"
+                        id="thermal-height-number"
+                        data-number-for="thermal-height"
+                        aria-label="Air height above surface exact value"
+                        min="1.5625"
+                        max="25"
+                        step="1.5625"
+                        value="6.25"
+                      /><span class="unit">u</span>
+                    </div>
+                  </div>
+                  <span class="value-display sr-only" id="thermal-height-val">6.25 u</span>
+                  <p class="availability" data-availability>
+                    Requires the air-above-surface temperature overlay.
+                    <button type="button" class="text-button" data-reveal="thermal-mode">
+                      Change mode
+                    </button>
+                  </p>
+                </div>
+                <p class="help-text">
+                  Height follows the landscape. Air is interpolated on a coarser grid (1.5625 u per
+                  layer); near ground, the first available air layer is used.
+                </p>
+              </div>
+            </section>
+            <section class="setting-block" data-advanced id="atmosphere-slice-group">
+              <div class="block-heading"><h3>Diagnostic slice</h3></div>
+              <div
+                class="control-group"
+                data-control="atmosphere-slice"
+                data-keywords="Slice altitude"
+              >
+                <div class="label-row">
+                  <label for="atmosphere-slice">Slice altitude</label
+                  ><span class="effect-badge">View</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="atmosphere-slice" min="0" max="100" value="50" step="1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="atmosphere-slice-number"
+                      data-number-for="atmosphere-slice"
+                      aria-label="Slice altitude exact value"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value="50"
+                    /><span class="unit">%</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="atmosphere-slice-val">50%</span>
+                <p class="availability" data-availability>
+                  Select a temperature, humidity or wind slice.
+                  <button type="button" class="text-button" data-reveal="atmosphere-view">
+                    Change mode
+                  </button>
+                </p>
+              </div>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Visible layers</h3></div>
+              <div class="layer-grid">
+                <div class="control-group" data-control="chk-show-rock" data-keywords="⛰️ Rock">
+                  <label class="toggle-row" for="chk-show-rock"
+                    ><span>Rock</span><input type="checkbox" id="chk-show-rock" checked /><span
+                      class="toggle-track"
+                      aria-hidden="true"
+                    ></span
+                  ></label>
+                </div>
+                <div
+                  class="control-group"
+                  data-control="chk-show-soil"
+                  data-keywords="🟤 Soil on ground"
+                >
+                  <label class="toggle-row" for="chk-show-soil"
+                    ><span>Soil on ground</span
+                    ><input type="checkbox" id="chk-show-soil" checked /><span
+                      class="toggle-track"
+                      aria-hidden="true"
+                    ></span
+                  ></label>
+                </div>
+                <div
+                  class="control-group"
+                  data-control="chk-show-sand"
+                  data-keywords="⏳ Sand on ground"
+                >
+                  <label class="toggle-row" for="chk-show-sand"
+                    ><span>Sand on ground</span
+                    ><input type="checkbox" id="chk-show-sand" checked /><span
+                      class="toggle-track"
+                      aria-hidden="true"
+                    ></span
+                  ></label>
+                </div>
+                <div class="control-group" data-control="chk-show-water" data-keywords="🌊 Water">
+                  <label class="toggle-row" for="chk-show-water"
+                    ><span>Water</span><input type="checkbox" id="chk-show-water" checked /><span
+                      class="toggle-track"
+                      aria-hidden="true"
+                    ></span
+                  ></label>
+                </div>
+                <div class="control-group" data-control="chk-show-lava" data-keywords="🌋 Lava">
+                  <label class="toggle-row" for="chk-show-lava"
+                    ><span>Lava</span><input type="checkbox" id="chk-show-lava" checked /><span
+                      class="toggle-track"
+                      aria-hidden="true"
+                    ></span
+                  ></label>
+                </div>
+                <div
+                  class="control-group"
+                  data-control="chk-show-suspended"
+                  data-keywords="🟫 Suspended sand &amp; soil (mud)"
+                >
+                  <label class="toggle-row" for="chk-show-suspended"
+                    ><span>Suspended sand &amp; soil</span
+                    ><input type="checkbox" id="chk-show-suspended" checked /><span
+                      class="toggle-track"
+                      aria-hidden="true"
+                    ></span
+                  ></label>
+                </div>
+              </div>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Water inventory</h3></div>
+              <p id="water-budget" role="status">Measuring water inventory…</p>
+              <p class="help-text" id="water-budget-detail"></p>
+              <p class="help-text">
+                Adding or erasing water, applying presets and resetting start a new water balance.
+              </p>
+            </section>
+          </div>
+          <div
+            id="domain-settings"
+            class="domain-content"
+            data-title="Settings"
+            data-description="Tune your observatory"
+            hidden
+          >
+            <section class="setting-block">
+              <div class="block-heading"><h3>Rendering</h3></div>
+              <div
+                class="control-group"
+                data-control="render-resolution"
+                data-keywords="Mesh Resolution"
+              >
+                <div class="label-row">
+                  <label for="render-resolution">Mesh resolution</label
+                  ><span class="effect-badge">View</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="render-resolution"
+                    min="0.05"
+                    max="1.0"
+                    value="0.5"
+                    step="0.05"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="render-resolution-number"
+                      data-number-for="render-resolution"
+                      aria-label="Mesh resolution exact value"
+                      min="0.05"
+                      max="1.0"
+                      step="0.05"
+                      value="0.5"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="render-resolution-val">0.5</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="smooth-rendering"
+                data-keywords="Smooth Rendering"
+              >
+                <label class="toggle-row" for="smooth-rendering"
+                  ><span>Smooth rendering</span><input type="checkbox" id="smooth-rendering" /><span
+                    class="toggle-track"
+                    aria-hidden="true"
+                  ></span
+                ></label>
+              </div>
+              <p class="help-text">
+                Mesh resolution changes rendering detail. The simulation grids stay the same size.
+              </p>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Camera & controls</h3></div>
+              <dl class="key-guide">
+                <div>
+                  <dt>Move</dt>
+                  <dd><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></dd>
+                </div>
+                <div>
+                  <dt>Down / up</dt>
+                  <dd><kbd>Q</kbd> / <kbd>E</kbd></dd>
+                </div>
+                <div>
+                  <dt>Look around</dt>
+                  <dd>Middle mouse + drag</dd>
+                </div>
+                <div>
+                  <dt>Move faster / slower</dt>
+                  <dd><kbd>Space</kbd> / <kbd>Shift</kbd></dd>
+                </div>
+                <div>
+                  <dt>Paint / erase</dt>
+                  <dd>Left / right mouse</dd>
+                </div>
+                <div>
+                  <dt>Close inspector</dt>
+                  <dd><kbd>Esc</kbd></dd>
+                </div>
+              </dl>
+            </section>
+            <section class="setting-block">
+              <div class="block-heading"><h3>Simulation details</h3></div>
+              <p id="perf-display" role="status">Preparing WebGPU…</p>
+              <p class="help-text">
+                A qualitative miniature world. Physical quantities use simplified simulation units.
+              </p>
+            </section>
           </div>
         </div>
-      </section>
-
-      <!-- Section: Sediment & Erosion -->
-      <section class="hud-section collapsed">
-        <button class="hud-section-header">
-          <h2><span>⏳</span> Hydrology & Sediments</h2>
-          <span class="chevron">▼</span>
+      </aside>
+      <aside
+        id="view-legend"
+        class="view-legend ui-surface"
+        data-ui
+        hidden
+        aria-label="Active diagnostic scale"
+      >
+        <div id="thermal-legend" hidden aria-label="Temperature scale">
+          <strong id="thermal-legend-title">Surface temperature · °C</strong>
+          <div class="thermal-gradient"></div>
+          <div class="thermal-ticks">
+            <span>≤ −30</span><span>0</span><span>15</span><span>≥ 35</span>
+          </div>
+        </div>
+        <div id="slice-legend" hidden>
+          <strong id="slice-legend-title"></strong>
+          <div id="slice-gradient" class="slice-gradient"></div>
+          <p id="atmosphere-legend"></p>
+        </div>
+        <button type="button" class="text-button" id="view-options" data-reveal="atmosphere-view">
+          Adjust view
         </button>
-        <div class="hud-section-content">
-          <div class="hud-section-content-inner">
-            <p
-              id="repose-angle-help"
-              style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-bottom: 12px"
-            >
-              Repose angles are measured from horizontal. Lower the angle to spread a pile;
-              increasing it allows steeper slopes but does not rebuild an existing pile. Rock stays
-              fixed. For both materials, Static starts an avalanche and Dynamic stops it. Sliding,
-              erosion, transport and deposition rates are shared; only the angles differ.
-            </p>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="soil-static-repose-slope">Soil Angle of Repose (Static)</label>
-                <span id="soil-static-repose-slope-val" class="value-display">70.0°</span>
+      </aside>
+      <footer id="power-dock" class="power-dock ui-surface" data-ui>
+        <div class="power-heading">
+          <span class="eyebrow">SHAPE YOUR WORLD</span><strong id="active-power">Water</strong>
+        </div>
+        <div class="power-tools" role="group" aria-label="World powers">
+          <button
+            type="button"
+            class="btn-brush"
+            data-brush="0"
+            data-control="brush-0"
+            data-keywords="Add water"
+            aria-pressed="false"
+            title="Add water"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+              <use href="#i-water"></use></svg
+            ><span>Water</span></button
+          ><button
+            type="button"
+            class="btn-brush"
+            data-brush="1"
+            data-control="brush-1"
+            data-keywords="Add lava"
+            aria-pressed="false"
+            title="Add lava"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-lava"></use></svg
+            ><span>Lava</span></button
+          ><button
+            type="button"
+            class="btn-brush"
+            data-brush="9"
+            data-control="brush-9"
+            data-keywords="Add cohesive soil beneath the sand"
+            aria-pressed="false"
+            title="Add cohesive soil beneath the sand"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-soil"></use></svg
+            ><span>Soil</span></button
+          ><button
+            type="button"
+            class="btn-brush"
+            data-brush="2"
+            data-control="brush-2"
+            data-keywords="Add sand"
+            aria-pressed="false"
+            title="Add sand"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-sand"></use></svg
+            ><span>Sand</span></button
+          ><button
+            type="button"
+            class="btn-brush"
+            data-brush="6"
+            data-control="brush-6"
+            data-keywords="Add solid ice beneath the water"
+            aria-pressed="false"
+            title="Add solid ice beneath the water"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-ice"></use></svg
+            ><span>Ice</span></button
+          ><button
+            type="button"
+            class="btn-brush"
+            data-brush="7"
+            data-control="brush-7"
+            data-keywords="Heat the surface; weather evolution melts snow and ice"
+            aria-pressed="false"
+            title="Heat the surface; weather evolution melts snow and ice"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-heat"></use></svg
+            ><span>Heat</span></button
+          ><button
+            type="button"
+            class="btn-brush"
+            data-brush="8"
+            data-control="brush-8"
+            data-keywords="Cool the surface; weather evolution freezes available water"
+            aria-pressed="false"
+            title="Cool the surface; weather evolution freezes available water"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-cool"></use></svg
+            ><span>Cool</span></button
+          ><button
+            type="button"
+            class="btn-brush"
+            data-brush="3"
+            data-control="brush-3"
+            data-keywords="Raise terrain"
+            aria-pressed="false"
+            title="Raise terrain"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+              <use href="#i-raise"></use></svg
+            ><span>Raise</span></button
+          ><button
+            type="button"
+            class="btn-brush"
+            data-brush="4"
+            data-control="brush-4"
+            data-keywords="Dig terrain"
+            aria-pressed="false"
+            title="Dig terrain"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-dig"></use></svg
+            ><span>Dig</span></button
+          ><button
+            type="button"
+            class="btn-brush"
+            data-brush="5"
+            data-control="brush-5"
+            data-keywords="Erase water, lava, sand, soil, snow and ice"
+            aria-pressed="false"
+            title="Erase water, lava, sand, soil, snow and ice"
+          >
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+              <use href="#i-erase"></use></svg
+            ><span>Erase</span>
+          </button>
+        </div>
+        <div class="brush-controls">
+          <div class="control-group" data-control="brush-radius" data-keywords="Brush Size">
+            <div class="label-row"><label for="brush-radius">Size</label></div>
+            <div class="range-row">
+              <input type="range" id="brush-radius" min="2" max="200" value="15" step="1" />
+              <div class="number-box">
+                <input
+                  type="number"
+                  id="brush-radius-number"
+                  data-number-for="brush-radius"
+                  aria-label="Size exact value"
+                  min="2"
+                  max="200"
+                  step="1"
+                  value="15"
+                /><span class="unit">cells</span>
               </div>
-              <input
-                type="range"
-                id="soil-static-repose-slope"
-                min="0"
-                max="89"
-                value="70.0"
-                step="0.1"
-                aria-describedby="repose-angle-help"
-              />
             </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="soil-dynamic-repose-slope">Soil Angle of Repose (Dynamic)</label>
-                <span id="soil-dynamic-repose-slope-val" class="value-display">55.0°</span>
+            <span class="value-display sr-only" id="brush-radius-val">15</span>
+          </div>
+          <div class="control-group" data-control="brush-strength" data-keywords="Strength">
+            <div class="label-row"><label for="brush-strength">Strength</label></div>
+            <div class="range-row">
+              <input type="range" id="brush-strength" min="0.1" max="2.0" value="1.0" step="0.05" />
+              <div class="number-box">
+                <input
+                  type="number"
+                  id="brush-strength-number"
+                  data-number-for="brush-strength"
+                  aria-label="Strength exact value"
+                  min="0.1"
+                  max="2.0"
+                  step="0.05"
+                  value="1.0"
+                /><span class="unit">×</span>
               </div>
-              <input
-                type="range"
-                id="soil-dynamic-repose-slope"
-                min="0"
-                max="89"
-                value="55.0"
-                step="0.1"
-                aria-describedby="repose-angle-help"
-              />
             </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="erosion-rate">Sediment Erosion Rate</label>
-                <span id="erosion-rate-val" class="value-display">0.005</span>
-              </div>
-              <input
-                type="range"
-                id="erosion-rate"
-                min="0.0"
-                max="0.1"
-                value="0.005"
-                step="0.001"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="capacity-factor">Carrying Capacity</label>
-                <span id="capacity-factor-val" class="value-display">0.100</span>
-              </div>
-              <input
-                type="range"
-                id="capacity-factor"
-                min="0.0"
-                max="0.5"
-                value="0.1"
-                step="0.005"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="deposition-rate">Deposition Rate</label>
-                <span id="deposition-rate-val" class="value-display">0.05</span>
-              </div>
-              <input
-                type="range"
-                id="deposition-rate"
-                min="0.0"
-                max="1.0"
-                value="0.05"
-                step="0.01"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="min-water-depth">Min Water Depth for Transport</label>
-                <span id="min-water-depth-val" class="value-display">0.00</span>
-              </div>
-              <input
-                type="range"
-                id="min-water-depth"
-                min="0.0"
-                max="0.5"
-                value="0.0"
-                step="0.01"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="sediment-slide">Sediment Sliding Rate</label>
-                <span id="sediment-slide-val" class="value-display">0.05</span>
-              </div>
-              <input
-                type="range"
-                id="sediment-slide"
-                min="0.01"
-                max="0.2"
-                value="0.05"
-                step="0.01"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="sand-static-repose-slope">Sand Angle of Repose (Static)</label>
-                <span id="sand-static-repose-slope-val" class="value-display">42.7°</span>
-              </div>
-              <input
-                type="range"
-                id="sand-static-repose-slope"
-                min="0"
-                max="89"
-                value="42.7"
-                step="0.1"
-                aria-describedby="repose-angle-help"
-              />
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="sand-dynamic-repose-slope">Sand Angle of Repose (Dynamic)</label>
-                <span id="sand-dynamic-repose-slope-val" class="value-display">20.2°</span>
-              </div>
-              <input
-                type="range"
-                id="sand-dynamic-repose-slope"
-                min="0"
-                max="89"
-                value="20.2"
-                step="0.1"
-                aria-describedby="repose-angle-help"
-              />
-            </div>
+            <span class="value-display sr-only" id="brush-strength-val">1.0</span>
           </div>
         </div>
-      </section>
-
-      <!-- Section: Legacy Manual Rain -->
-      <section class="hud-section collapsed">
-        <button class="hud-section-header">
-          <h2><span>⛈️</span> Manual Rain</h2>
-          <span class="chevron">▼</span>
-        </button>
-        <div class="hud-section-content">
-          <div class="hud-section-content-inner">
-            <div class="checkbox-row">
-              <input type="checkbox" id="rain-active" />
-              <label for="rain-active">⛈️ Add manual rain</label>
-            </div>
-            <p
-              id="manual-rain-help"
-              style="font-size: 11px; line-height: 1.5; color: #a4a4b5; margin-top: 6px"
-            >
-              Suspended while Closed water cycle is enabled. Rain forms from water already in the
-              atmosphere.
-            </p>
-            <div class="control-group" style="margin-top: 12px">
-              <div class="label-row">
-                <label for="rain-quantity">Raindrop Quantity</label>
-                <span id="rain-quantity-val" class="value-display">0.0005</span>
-              </div>
-              <input
-                type="range"
-                id="rain-quantity"
-                min="0.0001"
-                max="0.0010"
-                value="0.0005"
-                step="0.0001"
-              />
-            </div>
-            <div class="control-group">
-              <div class="label-row">
-                <label for="rain-size">Raindrop Size</label>
-                <span id="rain-size-val" class="value-display">0.005</span>
-              </div>
-              <input
-                type="range"
-                id="rain-size"
-                min="0.001"
-                max="0.010"
-                value="0.005"
-                step="0.001"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Section: Aesthetics -->
-      <section class="hud-section collapsed">
-        <button class="hud-section-header">
-          <h2><span>🖥️</span> Display & Rendering</h2>
-          <span class="chevron">▼</span>
-        </button>
-        <div class="hud-section-content">
-          <div class="hud-section-content-inner">
-            <div class="control-group">
-              <div class="label-row">
-                <label>Layers to Display</label>
-              </div>
-              <div class="checkbox-row" style="margin-bottom: 6px">
-                <input type="checkbox" id="chk-show-rock" checked />
-                <label for="chk-show-rock">⛰️ Rock</label>
-              </div>
-              <div class="checkbox-row" style="margin-bottom: 6px">
-                <input type="checkbox" id="chk-show-soil" checked />
-                <label for="chk-show-soil">🟤 Soil on ground</label>
-              </div>
-              <div class="checkbox-row" style="margin-bottom: 6px">
-                <input type="checkbox" id="chk-show-sand" checked />
-                <label for="chk-show-sand">⏳ Sand on ground</label>
-              </div>
-              <div class="checkbox-row" style="margin-bottom: 6px">
-                <input type="checkbox" id="chk-show-water" checked />
-                <label for="chk-show-water">🌊 Water</label>
-              </div>
-              <div class="checkbox-row" style="margin-bottom: 6px">
-                <input type="checkbox" id="chk-show-lava" checked />
-                <label for="chk-show-lava">🌋 Lava</label>
-              </div>
-              <div class="checkbox-row">
-                <input type="checkbox" id="chk-show-suspended" checked />
-                <label for="chk-show-suspended">🟫 Suspended sand & soil (mud)</label>
-              </div>
-            </div>
-
-            <div class="control-group">
-              <div class="label-row">
-                <label for="render-resolution">Mesh Resolution</label>
-                <span id="render-resolution-val" class="value-display">0.5</span>
-              </div>
-              <input
-                type="range"
-                id="render-resolution"
-                min="0.05"
-                max="1.0"
-                value="0.5"
-                step="0.05"
-              />
-            </div>
-
-            <div class="checkbox-row">
-              <input type="checkbox" id="smooth-rendering" />
-              <label for="smooth-rendering">Smooth Rendering</label>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Section: Controls -->
-      <section class="hud-section">
-        <div class="btn-row">
-          <button id="btn-pause" class="btn-action">⏸️ Pause</button>
-          <button id="btn-clear" class="btn-action danger">🧹 Clear Fluids</button>
-          <button id="btn-reset" class="btn-action danger">⛰️ Reset Terrain</button>
-          <button id="btn-new-terrain" class="btn-action danger">🏔️ New Terrain</button>
-        </div>
-      </section>
-
-      <!-- Performance Info -->
-      <footer id="perf-display">Grid: 256x256</footer>
+      </footer>
+      <button type="button" class="camera-help" data-ui data-reveal="render-resolution">
+        <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><use href="#i-help"></use></svg
+        ><span>Camera & controls</span>
+      </button>
+      <div id="simulation-alert" data-ui role="alert" hidden></div>
     </div>
-
-    <!-- FPS Counter -->
-    <div id="fps-counter" class="glass-panel">
-      <span class="fps-label">FPS</span>
-      <span id="fps-val">60</span>
-    </div>
-
-    <!-- Script entry point -->
-    <aside id="thermal-legend" class="glass-panel" hidden aria-label="Temperature scale">
-      <strong id="thermal-legend-title">Surface temperature · °C</strong>
-      <div class="thermal-gradient"></div>
-      <div class="thermal-ticks">
-        <span>≤ −30</span><span>0</span><span>15</span><span>≥ 35</span>
-      </div>
-    </aside>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

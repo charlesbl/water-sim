@@ -39,7 +39,7 @@ This is a qualitative miniature weather model for experimentation, with simplifi
   - Volumetric cloud rendering, 3D wind vectors, and adjustable horizontal slices for temperature, humidity, and wind speed.
   - Manual rain and open surface edges remain available when the closed cycle is disabled.
 - **Visuals & Customization:**
-  - Beautiful glassmorphic UI overlay.
+  - Observatory-style command UI with a persistent power dock, time controls, searchable settings, and an expandable inspector.
   - Layer visibility toggles (Rock, Soil, Sand, Water, Lava, Suspended Sand & Soil/Mud).
   - Free camera and smooth rendering modes.
   - Built-in real-time performance indicator (FPS).
@@ -88,7 +88,13 @@ This generates optimized static files inside the `dist/` directory.
 
 ### Exploring the weather
 
-The **3D Atmosphere** panel opens by default in emergent mode. Temperature, humidity, and wind sliders specify **initial air conditions**. Apply them with **Restart air**; the solar controls and radiative cooling affect the running simulation immediately. Temperature and wind then evolve through surface heating, cooling, air transport, and buoyancy. Forced mode is available when you want continuous reference conditions.
+The world opens with the inspector closed and the Water power selected. Choose **Climate** on the right to explore the atmosphere, which starts in emergent mode. Temperature, humidity, and wind sliders specify **initial air conditions**. Apply them with **Restart air**; the solar controls and radiative cooling under **Advanced** affect the running simulation immediately. Temperature and wind then evolve through surface heating, cooling, air transport, and buoyancy. Forced mode is available when you want continuous reference conditions.
+
+The top bar controls pause, **World speed**, and **Weather speed**; all ten powers and their size/strength controls stay in the bottom dock. A narrow navigation rail on the right opens its inspector directly alongside it. On small screens the domain navigation sits directly below the drawer. The six domains are **World**, **Climate**, **Water & Lava**, **Sediments**, **Observe**, and **Settings**. Select a domain again or press Escape to close its inspector. **Advanced** exposes every parameter of that domain, using two columns on screens at least 1100 px wide. Below 760 px the inspector becomes a bottom drawer.
+
+Every numeric slider has an editable value with its original limits and precision. Type a number and press Enter or leave the field to apply it. Search by a current or former control name to jump to its original control, including advanced or temporarily unavailable settings. Press **/** to focus search. Disabled controls explain their prerequisites and link to the relevant mode. **World** generation controls still regenerate the terrain immediately; their labels say **Regenerates terrain**.
+
+Find the closed water cycle, manual rain, solar evaporation and surface boundaries in **Water & Lava**. **Observe** groups atmospheric views, thermal overlays, visible layers and the complete water inventory. Active thermal and slice views expose their contextual controls without requiring Advanced. **Settings** contains rendering quality, camera help and simulation details. UI interactions never paint through onto the world, and typing in controls does not move the camera.
 
 **Closed water cycle** is also enabled by default. Solar evaporation moves available liquid water into the air; condensation and precipitation return it to the surface. Snow and ice melting return liquid water. The total includes water in every reservoir and pending transfers, and is conserved during internal evolution to floating-point precision. **Water inventory** shows that total, its drift from the current balance, and its distribution. Presets, air restarts, resets, and adding or erasing water deliberately change the water inventory and start a new balance.
 
@@ -100,7 +106,7 @@ Ice always forms a solid layer attached to the terrain, with liquid water above 
 
 Use **Explore atmosphere** to switch between cloud volume and temperature, humidity, or wind slices. **Slice altitude** moves the diagnostic plane through the volume. The wind view includes 3D vectors; **Show 3D wind vectors** also overlays them on the other views. **Pause** freezes the simulation while the camera remains usable. **Simulate weather** suspends the atmosphere independently of the surface fluids.
 
-Surface fluids advance at a fixed 60 Hz, and the atmosphere and its thermal exchanges at 30 Hz. Submerged snow also melts or compacts during the surface-fluid steps, using the same water and energy accounting. Both clocks use elapsed time instead of frame count, with bounded catch-up after slow frames. **Simulation Speed** scales both clocks; **Weather speed** additionally scales the atmospheric clock. Under sustained GPU overload, the catch-up limits can slow simulated time.
+Surface fluids advance at a fixed 60 Hz, and the atmosphere and its thermal exchanges at 30 Hz. Submerged snow also melts or compacts during the surface-fluid steps, using the same water and energy accounting. Both clocks use elapsed time instead of frame count, with bounded catch-up after slow frames. **World speed** scales both clocks; **Weather speed** additionally scales the atmospheric clock. Under sustained GPU overload, the catch-up limits can slow simulated time.
 
 The **Ice** brush adds solid ice beneath the water. **Erase** also removes snow and ice. **Heat** and **Cool** add or remove surface heat using the brush size and strength; deep water responds more slowly. Enable **Simulate weather** and resume the simulation for progressive freezing and melting. Adding or erasing ice resets the water-inventory baseline; thermal brushes preserve the water inventory.
 
@@ -109,6 +115,10 @@ Move the camera with W/A/S/D and Q/E; hold the middle mouse button to look aroun
 See [the atmospheric implementation and manual checks](docs/atmosphere-3d.md) for the model's scope, controls, and limitations. The older [climate and vegetation roadmap](docs/climate-vegetation/README.md) describes a separate 2.5D design; it is not the implementation contract for this 3D atmosphere, and vegetation is not implemented here.
 
 ### GPU checks
+
+With Vite running, **node tests/run-gpu.mjs ui** checks the production HTML and control bindings against the pre-refactor inventory in **tests/ui-baseline.json**. It covers all 64 settings, original ranges, search aliases, numeric edits, dependent controls, presets, actions and keyboard navigation without allocating a simulation GPU.
+
+**node tests/run-ui.mjs** opens the real WebGPU app in an isolated headless Chrome profile, verifies responsive layouts and input isolation, and captures screenshots at 1920 × 1080, 1366 × 768 and 390 × 844 (plus the single-column breakpoint). Screenshots and check results go to a temporary review directory printed by the runner; set **UI_ARTIFACT_DIR** to choose a destination.
 
 The additional `/water-sim/tests/brushes.html` page verifies ice addition and erasure, local heating/cooling, thermal inertia, and the resulting conservative freezing/melting.
 
@@ -154,7 +164,7 @@ This project is configured to automatically deploy to GitHub Pages via **GitHub 
 
 Whenever changes are pushed to the `main` branch, the workflow defined in [deploy.yml](.github/workflows/deploy.yml) triggers automatically, builds the project using the configured base URL in [vite.config.ts](vite.config.ts), and deploys the build artifacts to GitHub Pages.
 
-Temperature overlay is available at the top of **3D Atmosphere**. It tints the
+Temperature overlay is available in **Observe**. It tints the
 normal landscape with a fixed −30 to +35 °C scale (colors saturate outside that
 range). Choose **Surface** or **Air above
 surface**, adjust opacity, and set air height in simulation units. Air sampling
