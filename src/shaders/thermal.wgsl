@@ -48,36 +48,19 @@ fn surface_at(xy: vec2<f32>) -> vec2<f32> {
     }
     return value;
 }
-// Ignore buried cells. Near ground, use the first valid air layer; never invent
-// fine atmospheric detail below the simulation's vertical spacing.
+// The two air layers follow the mean terrain, independent of visual cloud height.
 fn air_at(xy: vec2<f32>, height: f32) -> vec2<f32> {
-    let nx = i32(u.grid.x);
-    let ny = i32(u.grid.y);
-    let nz = i32(u.grid.z);
-    let layerSize = nx * ny;
-    let dz = u.grid.w / u.grid.z;
-    if (height > u.grid.w - 0.5 * dz) { return vec2<f32>(0.0); }
-    let grid = (xy+100.0)/200.0*u.grid.xy-vec2<f32>(0.5);
-    let base = vec2<i32>(floor(grid));
-    let f = fract(grid);
-    var total = 0.0;
-    var weights = 0.0;
-    for (var y=0; y<2; y++) {
-        for (var x=0; x<2; x++) {
-            let c = clamp(base+vec2<i32>(x,y),vec2<i32>(0),vec2<i32>(nx-1,ny-1));
-            let ci = c.x+c.y*nx;
-            let first = max(0,i32(floor(columns[ci].x/dz-0.5))+1);
-            if (first >= nz) { continue; }
-            let z = clamp(height/dz-0.5,f32(first),f32(nz-1));
-            let lo = i32(floor(z));
-            let hi = min(lo+1,nz-1);
-            let t = mix(air[ci+lo*layerSize].velocity.w,air[ci+hi*layerSize].velocity.w,fract(z));
-            let w = select(1.0-f.x,f.x,x==1)*select(1.0-f.y,f.y,y==1);
-            total += t*w;
-            weights += w;
-        }
-    }
-    return vec2<f32>(total/max(weights,0.00001),weights);
+    let n=vec2<i32>(u.grid.xy); let count=n.x*n.y;
+    let grid=(xy+100.0)/200.0*u.grid.xy-0.5;
+    let base=vec2<i32>(floor(grid)); let f=fract(grid);
+    var total=0.0;
+    for(var y=0;y<2;y++){for(var x=0;x<2;x++){
+        let c=clamp(base+vec2<i32>(x,y),vec2<i32>(0),n-1); let ci=c.x+c.y*n.x;
+        let z=clamp((height-columns[ci].x)/(u.grid.w/2.0),0.0,1.0);
+        let t=mix(air[ci].velocity.w,air[ci+count].velocity.w,z);
+        let w=select(1.0-f,f,vec2<bool>(x==1,y==1)); total+=t*w.x*w.y;
+    }}
+    return vec2<f32>(total,1.0);
 }
 fn thermal_color(t: f32) -> vec3<f32> {
     if (t < 0.0) { return mix(vec3<f32>(0.16,0.25,0.85),vec3<f32>(0.82,0.96,1.0),clamp((t+30.0)/30.0,0.0,1.0)); }

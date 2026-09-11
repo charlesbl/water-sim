@@ -196,16 +196,27 @@ export function setupCommandUI(): void {
     legend.hidden = !config.thermalOverlay && config.atmosphereView === 0;
     document.getElementById('slice-legend')!.hidden = config.atmosphereView === 0;
     document.getElementById('slice-legend-title')!.textContent =
-      ['', 'Air temperature', 'Relative humidity', 'Wind speed'][config.atmosphereView] +
-      ' · altitude ' +
-      Math.round(config.atmosphereSlice * 100) +
-      '%';
+      [
+        '',
+        'Air temperature',
+        'Relative humidity',
+        'Wind speed',
+        'Rain & snow radar',
+        'Recent wetness',
+      ][config.atmosphereView] +
+      (config.atmosphereView < 4
+        ? config.atmosphereSlice < 0.5
+          ? ' · lower air'
+          : ' · cloud layer'
+        : '');
     const gradient = document.getElementById('slice-gradient')!;
     gradient.style.background = [
       '',
       'linear-gradient(to right, #2940d9, #d1f5ff 46.154%, #ffcc47 69.231%, #e61f14)',
       'linear-gradient(to right, #916b48, #67dce9)',
       'linear-gradient(to right, #364bc1, #49dbb4 38%, #f3a450)',
+      'linear-gradient(to right, #243342, #38c7b8, #f7c23d)',
+      'linear-gradient(to right, #b86e33, #29a8cc)',
     ][config.atmosphereView];
     document.getElementById('view-options')!.dataset.reveal = config.thermalOverlay
       ? 'thermal-mode'

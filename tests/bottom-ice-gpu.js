@@ -5,7 +5,7 @@ import { GPGPUSimulation } from '../src/webgpuRenderer.ts';
 import * as THREE from 'three';
 
 const results = [];
-const [atmoX, atmoY, atmoZ] = ATMOSPHERE_DIMENSIONS;
+let [atmoX, atmoY, atmoZ] = ATMOSPHERE_DIMENSIONS;
 function check(name, condition, detail = '') {
   results.push({ name, passed: !!condition, detail });
   document.querySelector('#results').textContent = JSON.stringify(results, null, 2);
@@ -35,9 +35,9 @@ function maximumDifference(a, b) {
   for (let i = 0; i < a.length; i++) maximum = Math.max(maximum, Math.abs(a[i] - b[i]));
   return maximum;
 }
-function totalWater(air, surface, fluid, n) {
+function totalWater(air, surface, fluid, n, domainHeight) {
   const surfaceVolume = (40000 * config.heightScale) / (n * n);
-  const airVolume = (40000 * 100) / (atmoX * atmoY * atmoZ);
+  const airVolume = (40000 * domainHeight) / (air.length / 8);
   return (
     (sum(fluid, 0) + sum(fluid, 3) + sum(surface, 0) + sum(surface, 1) + sum(surface, 3)) *
       surfaceVolume +
@@ -70,6 +70,11 @@ async function run() {
     airTemperature: -30,
     relativeHumidity: 0,
     windSpeed: 0,
+    weatherVariability: 0,
+    regionalDrive: 0,
+    windRotation: 0,
+    airMixing: 0,
+    convectionStrength: 0,
     solarHeating: 0,
     radiativeCooling: 0,
     evaporationRate: 0,
@@ -79,6 +84,7 @@ async function run() {
   for (let i = 0; i < terrainData.length; i += 4) terrainData[i] = 0.05;
   device.queue.writeBuffer(terrain, 0, terrainFixture(terrainData));
   const sim = new AtmosphereSimulation(device, n);
+  [atmoX, atmoY, atmoZ] = sim.dimensions;
   await sim.init();
   const step = (dt = 0.1) => {
     const encoder = device.createCommandEncoder();
@@ -114,7 +120,7 @@ async function run() {
       read(device, sim.surfaceBuffer),
       read(device, fluids),
     ]);
-    return { air, surface, fluid, total: totalWater(air, surface, fluid, n) };
+    return { air, surface, fluid, total: totalWater(air, surface, fluid, n, sim.domainHeight) };
   };
 
   await seed({ water: 0.002 });

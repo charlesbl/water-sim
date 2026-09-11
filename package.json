@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test:weather": "node tests/run-gpu.mjs regional-ui regional-weather-full regional-integration bottom-ice snow-cover sediments"
   },
   "dependencies": {
     "three": "^0.160.0"

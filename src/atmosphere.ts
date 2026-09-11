@@ -2,95 +2,48 @@ import { config } from './config';
 import atmosphereWGSL from './shaders/atmosphere.wgsl?raw';
 import surfaceThermalWGSL from './shaders/surfaceThermal.wgsl?raw';
 import cloudPhysicsWGSL from './shaders/cloudPhysics.wgsl?raw';
-
-export const ATMOSPHERE_DIMENSIONS: readonly [number, number, number] = [96, 96, 64];
-
-type PassName =
-  | 'initializeSurface'
-  | 'reduceColumns'
-  | 'initializeVolume'
-  | 'captureObstructedWater'
-  | 'reduceLayers'
-  | 'prepareHeat'
-  | 'exchangeHeat'
-  | 'gatherHeat'
-  | 'radiateColumns'
-  | 'prepareSolar'
-  | 'normalizeSolar'
-  | 'prepareSurfaceMapping'
-  | 'prepareCourant'
-  | 'advect'
-  | 'divergence'
-  | 'cgApply'
-  | 'cgReduceBefore'
-  | 'cgUpdate'
-  | 'cgReduceAfter'
-  | 'cgDirection'
-  | 'project'
-  | 'sediment'
-  | 'surfaceExchange';
-
-interface AtmosphericBindings {
-  initializeSurface: GPUBindGroup;
-  reduceColumns: GPUBindGroup;
-  initializeVolume: [GPUBindGroup, GPUBindGroup];
-  captureObstructedWater: [GPUBindGroup, GPUBindGroup];
-  reduceLayers: [GPUBindGroup, GPUBindGroup];
-  prepareHeat: [GPUBindGroup, GPUBindGroup];
-  exchangeHeat: GPUBindGroup;
-  gatherHeat: GPUBindGroup;
-  radiateColumns: [GPUBindGroup, GPUBindGroup];
-  prepareSolar: GPUBindGroup;
-  normalizeSolar: GPUBindGroup;
-  prepareSurfaceMapping: GPUBindGroup;
-  prepareCourant: [GPUBindGroup, GPUBindGroup];
-  advect: [GPUBindGroup, GPUBindGroup];
-  divergence: [GPUBindGroup, GPUBindGroup];
-  cgApply: GPUBindGroup;
-  cgReduceBefore: GPUBindGroup;
-  cgUpdate: GPUBindGroup;
-  cgReduceAfter: GPUBindGroup;
-  cgDirection: GPUBindGroup;
-  project: [GPUBindGroup, GPUBindGroup];
-  sediment: [GPUBindGroup, GPUBindGroup];
-  surfaceExchange: [GPUBindGroup, GPUBindGroup];
-}
-
+export const ATMOSPHERE_DIMENSIONS: readonly [number, number, number] = [256, 256, 2];
+export const WEATHER_TIMESTEP = 1 / 20;
+const PASSES = [
+  'initializeSurface',
+  'reduceColumns',
+  'initializeVolume',
+  'prepareSurfaceMapping',
+  'prepareSolar',
+  'normalizeSolar',
+  'prepareHeat',
+  'exchangeHeat',
+  'gatherHeat',
+  'radiateColumns',
+  'moveAir',
+  'prepareCourant',
+  'transport',
+  'microphysics',
+  'surfaceExchange',
+] as const;
+type PassName = (typeof PASSES)[number];
+type Bindings = Record<PassName, [GPUBindGroup, GPUBindGroup]>;
 /**
- * A small, genuinely volumetric weather model, entirely stepped by WebGPU.
- *
- * The 3-D grid uses periodic or sealed horizontal boundaries, solid terrain and
- * lid, and a staggered divergence/pressure-gradient pair. Velocities in each
- * cell are stored on its positive x/y/z faces. Scalars live at cell centers.
- * Moisture is equivalent liquid-water volume per local air volume; snow and
- * ice at the surface use the same water-equivalent units as fluids.water.
- *
- * Water uses conservative finite-volume transport with common face fluxes and
- * a limited second-order reconstruction, falling back to donor transport at
- * large Courant numbers. Potential temperature uses conservative face fluxes;
- * velocity uses semi-Lagrangian transport.
- * Closed-cycle mode disables moisture forcing. Exact fine-grid area weights
- * preserve surface transfers, and pending evaporation waits for available air.
- * Initialization and resets explicitly edit the inventory. This is an
- * illustrative weather model, not a scientific forecast model.
+ * Two terrain-following layers over a nominal 10 km game region.
+ * XY velocity, diagnostic pressure anomaly and temperature occupy the first
+ * vec4; vapor/cloud/rain/snow densities occupy the second. Water uses shared,
+ * positivity-limited face fluxes and conservative inter-layer transfers.
+ * The pressure is an explicit damped gravity-wave approximation, not the old
+ * 3-D incompressible projection. No global iterative pressure solve is needed.
+ * Surface hydrology, snow/ice, paired heat exchange and water units are retained.
  */
 export class AtmosphereSimulation {
-  public readonly dimensions: readonly [number, number, number] = ATMOSPHERE_DIMENSIONS;
-  public readonly domainHeight = 100;
+  public readonly dimensions: readonly [number, number, number];
+  // Accounting depth, independent of the artist-controlled cloud geometry.
+  public readonly domainHeight = 32;
   public readonly surfaceBuffer: GPUBuffer;
-  public simulationTime = 0;
-
-  private readonly volumes: [GPUBuffer, GPUBuffer];
-  private readonly pressureBuffer: GPUBuffer;
-  private readonly pressureGeometry: GPUBuffer;
-  private readonly outgoingCourants: GPUBuffer;
   public readonly columns: GPUBuffer;
+  // Rain-memory wetness, rain rate, convective exchange, cloud coverage.
+  public readonly weatherMap: GPUBuffer;
+  public simulationTime = 0;
+  private readonly volumes: [GPUBuffer, GPUBuffer];
   private readonly precipitation: GPUBuffer;
-  private readonly divergenceBuffer: GPUBuffer;
-  private readonly conjugateState: GPUBuffer;
-  private readonly conjugatePartials: GPUBuffer;
-  private readonly conjugateCoefficients: GPUBuffer;
-  private readonly layerMeans: GPUBuffer;
+  private readonly outgoingCourants: GPUBuffer;
   private readonly surfaceHeat: GPUBuffer;
   private readonly heatProfiles: GPUBuffer;
   private readonly heatTransfers: GPUBuffer;
@@ -100,21 +53,20 @@ export class AtmosphereSimulation {
   private readonly depositionWeights: GPUBuffer;
   private readonly depositionWeightValues: [Float32Array, Float32Array];
   private depositionBoundary = -1;
-  private surfaceMappingBoundary = -1;
   private readonly uniforms: GPUBuffer;
-  private readonly uniformValues = new Float32Array(32);
-  private readonly bindCache = new WeakMap<GPUBuffer, WeakMap<GPUBuffer, AtmosphericBindings>>();
+  private readonly uniformValues = new Float32Array(48);
+  private readonly bindCache = new WeakMap<GPUBuffer, WeakMap<GPUBuffer, Bindings>>();
   private pipelines: Record<PassName, GPUComputePipeline> | null = null;
-  private current = 0;
   private needsReset = true;
   private needsSurfaceClear = true;
-
   constructor(
     private readonly device: GPUDevice,
     private readonly surfaceSize: number
   ) {
+    const width = Math.min(ATMOSPHERE_DIMENSIONS[0], surfaceSize);
+    this.dimensions = [width, width, 2];
     const [nx, ny, nz] = this.dimensions;
-    const volumeCells = nx * ny * nz;
+    const count = nx * ny;
     const storage = (label: string, size: number): GPUBuffer =>
       device.createBuffer({
         label,
@@ -122,53 +74,27 @@ export class AtmosphereSimulation {
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
       });
     this.volumes = [
-      storage('Atmosphere volume A', volumeCells * 32),
-      storage('Atmosphere volume B', volumeCells * 32),
+      storage('Two-layer air', count * nz * 32),
+      storage('Air transport scratch', count * nz * 32),
     ];
-    this.pressureBuffer = storage('Atmosphere pressure', volumeCells * 4);
-    this.pressureGeometry = storage('Pressure face mask and diagonal', volumeCells * 8);
-    this.outgoingCourants = storage('Outgoing atmospheric Courant numbers', volumeCells * 4);
     this.surfaceBuffer = storage(
-      'Snow, ice, surface temperature, evaporated water',
-      surfaceSize * surfaceSize * 16
+      'Snow, ice, temperature, pending evaporation',
+      surfaceSize ** 2 * 16
     );
-    this.columns = storage(
-      'Terrain and surface exchange reduced to atmospheric columns',
-      nx * ny * 16
-    );
-    this.precipitation = storage('Atmospheric rain and snow deposition', nx * ny * 8);
-    this.divergenceBuffer = storage('Atmosphere divergence', volumeCells * 4);
-    this.conjugateState = storage(
-      'Pressure residual, preconditioner, direction, matrix product',
-      volumeCells * 16
-    );
-    this.conjugatePartials = storage(
-      'Pressure dot product partial sums',
-      Math.ceil(volumeCells / 256) * 8
-    );
-    this.conjugateCoefficients = storage('Pressure conjugate gradient coefficients', 16);
-    this.layerMeans = storage('Horizontal mean air temperature and vapor', nz * 16);
-    this.surfaceHeat = storage('Paired surface to air sensible heat', nx * ny * 4);
-    this.heatProfiles = storage('Near-ground air thermal profiles', nx * ny * 16);
-    this.heatTransfers = storage(
-      'Four conservative heat transfers per surface cell',
-      surfaceSize * surfaceSize * 16
-    );
-    this.longwaveHeating = storage('Atmospheric infrared temperature increments', volumeCells * 4);
-    this.solarPartials = storage(
-      'Raw and contrasted solar energy sums',
-      Math.ceil(surfaceSize / 16) ** 2 * 8
-    );
-    // Share the radiation budget binding to keep surfaceExchange within the
-    // default WebGPU limit of eight storage buffers per shader stage.
+    this.columns = storage('Terrain-following air columns', count * 16);
+    this.weatherMap = storage('Regional weather diagnostics', count * 16);
+    this.precipitation = storage('Conservative rain and snow deposition', count * 8);
+    this.outgoingCourants = storage('Air transport donor limits', count * nz * 4);
+    this.surfaceHeat = storage('Paired surface to air heat', count * 4);
+    this.heatProfiles = storage('Near-ground thermal profiles', count * 16);
+    this.heatTransfers = storage('Four paired surface heat transfers', surfaceSize ** 2 * 16);
+    this.longwaveHeating = storage('Two-layer infrared exchange', count * nz * 4);
+    this.solarPartials = storage('Solar absorption partials', Math.ceil(surfaceSize / 16) ** 2 * 8);
     this.solarNormalization = storage(
-      'Solar normalization, column infrared fluxes and surface mapping',
-      (1 + nx * ny) * 16 + surfaceSize * 32
+      'Radiation and surface mapping',
+      (1 + count) * 16 + surfaceSize * 32
     );
-    this.depositionWeights = storage('Conservative smooth precipitation weights', nx * ny * 4);
-    // Geometry-only quadrature weights. Physics and deposition remain on GPU.
-    // Normalize the tent footprint of each coarse cell on the fine grid,
-    // including periodic edges and non-divisible surface sizes (e.g. 2048/96).
+    this.depositionWeights = storage('Smooth conservative deposition weights', count * 4);
     const axisWeights = (count: number, sealed: boolean) => {
       const weights = new Float64Array(count);
       for (let fine = 0; fine < surfaceSize; fine++) {
@@ -195,81 +121,48 @@ export class AtmosphereSimulation {
     };
     this.depositionWeightValues = [weightTable(false), weightTable(true)];
     this.uniforms = device.createBuffer({
-      label: 'Atmosphere parameters',
+      label: 'Regional weather parameters',
       size: this.uniformValues.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
   }
-
   public get volumeBuffer(): GPUBuffer {
-    return this.volumes[this.current];
+    return this.volumes[0];
   }
-
   public async init(): Promise<void> {
     const module = this.device.createShaderModule({
-      label: 'Volumetric atmosphere WGSL',
+      label: 'Two-layer regional weather',
       code: surfaceThermalWGSL + '\n' + cloudPhysicsWGSL + '\n' + atmosphereWGSL,
     });
-    const compilation = await module.getCompilationInfo();
-    const errors = compilation.messages.filter((message) => message.type === 'error');
-    if (errors.length > 0) {
+    const errors = (await module.getCompilationInfo()).messages.filter((m) => m.type === 'error');
+    if (errors.length)
       throw new Error(
-        `Atmosphere shader compilation failed:\n${errors.map((error) => `${error.lineNum}:${error.linePos} ${error.message}`).join('\n')}`
+        errors.map((m) => `Weather ${m.lineNum}:${m.linePos} ${m.message}`).join('\n')
       );
-    }
-    const names: PassName[] = [
-      'initializeSurface',
-      'reduceColumns',
-      'initializeVolume',
-      'captureObstructedWater',
-      'reduceLayers',
-      'prepareHeat',
-      'exchangeHeat',
-      'gatherHeat',
-      'radiateColumns',
-      'prepareSolar',
-      'normalizeSolar',
-      'prepareSurfaceMapping',
-      'prepareCourant',
-      'advect',
-      'divergence',
-      'cgApply',
-      'cgReduceBefore',
-      'cgUpdate',
-      'cgReduceAfter',
-      'cgDirection',
-      'project',
-      'sediment',
-      'surfaceExchange',
-    ];
     const compiled = await Promise.all(
-      names.map(async (name) => {
-        try {
-          const pipeline = await this.device.createComputePipelineAsync({
-            label: `Atmosphere ${name}`,
-            layout: 'auto',
-            compute: { module, entryPoint: name },
-          });
-          return [name, pipeline] as const;
-        } catch (error) {
-          throw new Error(`Atmosphere pipeline ${name} failed: ${String(error)}`);
-        }
-      })
+      PASSES.map(
+        async (name) =>
+          [
+            name,
+            await this.device.createComputePipelineAsync({
+              label: `Weather ${name}`,
+              layout: 'auto',
+              compute: { module, entryPoint: name },
+            }),
+          ] as const
+      )
     );
     this.pipelines = Object.fromEntries(compiled) as Record<PassName, GPUComputePipeline>;
   }
-
-  /**
-   * Call once per submitted encoder (the parameter upload precedes submission).
-   * dt is already scaled by the caller; zero dt still processes pending resets.
-   */
+  /** Once per submitted encoder; zero dt still applies explicit pending resets. */
   public step(encoder: GPUCommandEncoder, terrain: GPUBuffer, fluids: GPUBuffer, dt: number): void {
     if (!this.pipelines) return;
     const timestep =
       config.atmosphereEnabled && Number.isFinite(dt) ? Math.min(0.1, Math.max(0, dt)) : 0;
-    if (timestep === 0 && !this.needsReset && !this.needsSurfaceClear) return;
-
+    if (!timestep && !this.needsReset && !this.needsSurfaceClear) return;
     const [nx, ny, nz] = this.dimensions;
+    const mapKm = Math.max(5, Math.min(50, config.weatherMapSizeKm));
+    const wind = ((Math.max(0, Math.min(6, config.windSpeed)) / 60) * 200) / mapKm;
     const angle = (config.windDirection * Math.PI) / 180;
     const elevation = (config.sunElevation * Math.PI) / 180;
     const azimuth = (config.sunAzimuth * Math.PI) / 180;
@@ -284,15 +177,15 @@ export class AtmosphereSimulation {
       timestep,
       config.airTemperature,
       config.relativeHumidity,
-      config.windSpeed * Math.cos(angle),
-      config.windSpeed * Math.sin(angle),
+      wind * Math.cos(angle),
+      wind * Math.sin(angle),
       config.solarHeating,
       config.heightScale,
       this.simulationTime,
       this.domainHeight,
-      0.16 - 0.04 * Math.max(0, Math.min(1, config.airStability)),
-      14,
+      0.3,
       2.5,
+      5,
       config.emergentWeather ? 1 : 0,
       Math.cos(elevation) * Math.cos(azimuth),
       Math.cos(elevation) * Math.sin(azimuth),
@@ -302,12 +195,42 @@ export class AtmosphereSimulation {
       config.atmosphereBoundary,
       config.evaporationRate,
       Math.max(1, Math.min(10, config.heatingContrast)),
-      this.domainHeight * 0.4,
-      this.domainHeight * 0.65,
-      0.04,
-      Math.max(0, Math.min(8, config.convectionStrength)),
+      config.airStability,
+      config.orographicLift,
+      config.airMixing,
+      config.convectionStrength,
+      mapKm,
+      Math.max(0.5, config.weatherCellSizeKm),
+      config.weatherVariability,
+      config.weatherSeed,
+      Math.max(10, config.rainLifetime),
+      config.windShear,
+      config.circulationStrength,
+      config.cloudShadows,
+      Math.max(0, Math.min(3, config.regionalDrive)),
+      Math.max(60, config.weatherRenewal),
+      Math.max(0, Math.min(3, config.windRotation)),
+      0,
+      0,
+      0,
+      0,
+      0,
     ]);
     this.device.queue.writeBuffer(this.uniforms, 0, this.uniformValues);
+    const groups = this.bindings(terrain, fluids);
+    const dispatch = (name: PassName, i: number, x: number, y = 1, z = 1) => {
+      const pass = encoder.beginComputePass({ label: `Weather ${name}` });
+      pass.setPipeline(this.pipelines![name]);
+      pass.setBindGroup(0, groups[name][i]);
+      pass.dispatchWorkgroups(x, y, z);
+      pass.end();
+    };
+    const columnPass = (name: PassName, i = 0) =>
+      dispatch(name, i, Math.ceil(nx / 8), Math.ceil(ny / 8));
+    const airPass = (name: PassName, i = 0) =>
+      dispatch(name, i, Math.ceil(nx / 8), Math.ceil(ny / 8), nz);
+    const finePass = (name: PassName) =>
+      dispatch(name, 0, Math.ceil(this.surfaceSize / 16), Math.ceil(this.surfaceSize / 16));
     const boundary = config.atmosphereBoundary === 1 ? 1 : 0;
     if (this.depositionBoundary !== boundary) {
       this.device.queue.writeBuffer(
@@ -315,104 +238,49 @@ export class AtmosphereSimulation {
         0,
         this.depositionWeightValues[boundary].slice().buffer
       );
+      dispatch('prepareSurfaceMapping', 0, Math.ceil(this.surfaceSize / 64));
       this.depositionBoundary = boundary;
     }
-    const groups = this.bindings(terrain, fluids);
-    const dispatch = (name: PassName, group: GPUBindGroup, x: number, y: number, z = 1): void => {
-      const pass = encoder.beginComputePass({ label: `Atmosphere ${name}` });
-      pass.setPipeline(this.pipelines![name]);
-      pass.setBindGroup(0, group);
-      pass.dispatchWorkgroups(x, y, z);
-      pass.end();
-    };
-    const volumePass = (name: PassName, group: GPUBindGroup): void =>
-      dispatch(name, group, Math.ceil(nx / 4), Math.ceil(ny / 4), Math.ceil(nz / 4));
-    const surfaceGroups = Math.ceil(this.surfaceSize / 16);
-
-    // Dimensions are fixed for this instance. Rebuild only when horizontal
-    // boundaries change, including resets at zero dt before the first exchange.
-    if (this.surfaceMappingBoundary !== boundary) {
-      dispatch(
-        'prepareSurfaceMapping',
-        groups.prepareSurfaceMapping,
-        Math.ceil(this.surfaceSize / 64),
-        1
-      );
-      this.surfaceMappingBoundary = boundary;
-    }
-
     if (this.needsSurfaceClear) {
-      dispatch('initializeSurface', groups.initializeSurface, surfaceGroups, surfaceGroups);
+      finePass('initializeSurface');
       this.needsSurfaceClear = false;
     }
-    dispatch('reduceColumns', groups.reduceColumns, Math.ceil(nx / 8), Math.ceil(ny / 8));
+    columnPass('reduceColumns');
     if (this.needsReset) {
-      volumePass('initializeVolume', groups.initializeVolume[0]);
-      volumePass('initializeVolume', groups.initializeVolume[1]);
-      this.current = 0;
+      airPass('initializeVolume');
+      airPass('initializeVolume', 1);
       this.needsReset = false;
     }
-    if (timestep === 0) return;
-
-    const source = this.current;
-    const advected = 1 - source;
-    dispatch(
-      'captureObstructedWater',
-      groups.captureObstructedWater[source],
-      Math.ceil(nx / 8),
-      Math.ceil(ny / 8)
-    );
-    dispatch('reduceLayers', groups.reduceLayers[source], nz, 1);
-    dispatch('prepareSolar', groups.prepareSolar, surfaceGroups, surfaceGroups);
-    dispatch('normalizeSolar', groups.normalizeSolar, 1, 1);
-    dispatch('prepareHeat', groups.prepareHeat[source], Math.ceil(nx / 8), Math.ceil(ny / 8));
-    dispatch('exchangeHeat', groups.exchangeHeat, surfaceGroups, surfaceGroups);
-    dispatch('gatherHeat', groups.gatherHeat, nx, ny);
-    dispatch('radiateColumns', groups.radiateColumns[source], Math.ceil(nx / 8), Math.ceil(ny / 8));
-    volumePass('prepareCourant', groups.prepareCourant[source]);
-    volumePass('advect', groups.advect[source]);
-    volumePass('divergence', groups.divergence[advected]);
-    // Preconditioned conjugate gradients resolve broad circulation modes that
-    // local Jacobi sweeps leave divergent. Every dot product stays on the GPU.
-    const pressureGroups = Math.ceil((nx * ny * nz) / 256);
-    for (let iteration = 0; iteration < 20; iteration++) {
-      dispatch('cgApply', groups.cgApply, pressureGroups, 1);
-      dispatch('cgReduceBefore', groups.cgReduceBefore, 1, 1);
-      dispatch('cgUpdate', groups.cgUpdate, pressureGroups, 1);
-      dispatch('cgReduceAfter', groups.cgReduceAfter, 1, 1);
-      dispatch('cgDirection', groups.cgDirection, pressureGroups, 1);
-    }
-    volumePass('project', groups.project[advected]);
-    volumePass('sediment', groups.sediment[source]);
-    this.current = advected;
-    dispatch('surfaceExchange', groups.surfaceExchange[this.current], surfaceGroups, surfaceGroups);
+    if (!timestep) return;
+    finePass('prepareSolar');
+    dispatch('normalizeSolar', 0, 1);
+    columnPass('prepareHeat');
+    finePass('exchangeHeat');
+    dispatch('gatherHeat', 0, nx, ny);
+    columnPass('radiateColumns');
+    airPass('moveAir');
+    airPass('prepareCourant', 1);
+    airPass('transport', 1);
+    columnPass('microphysics');
+    finePass('surfaceExchange');
     this.simulationTime += timestep;
   }
-
   public reset(clearSurface = true): void {
     this.needsReset = true;
     this.needsSurfaceClear ||= clearSurface;
     this.simulationTime = 0;
   }
-
   public clearSurface(): void {
     this.needsSurfaceClear = true;
   }
-
   public destroy(): void {
-    for (const buffer of [
+    for (const b of [
       ...this.volumes,
-      this.pressureBuffer,
-      this.pressureGeometry,
-      this.outgoingCourants,
       this.surfaceBuffer,
       this.columns,
+      this.weatherMap,
       this.precipitation,
-      this.divergenceBuffer,
-      this.conjugateState,
-      this.conjugatePartials,
-      this.conjugateCoefficients,
-      this.layerMeans,
+      this.outgoingCourants,
       this.surfaceHeat,
       this.heatProfiles,
       this.heatTransfers,
@@ -422,187 +290,73 @@ export class AtmosphereSimulation {
       this.depositionWeights,
       this.uniforms,
     ])
-      buffer.destroy();
+      b.destroy();
     this.pipelines = null;
   }
-
-  private bindings(terrain: GPUBuffer, fluids: GPUBuffer): AtmosphericBindings {
-    let terrainCache = this.bindCache.get(terrain);
-    if (!terrainCache) {
-      terrainCache = new WeakMap();
-      this.bindCache.set(terrain, terrainCache);
+  private bindings(terrain: GPUBuffer, fluids: GPUBuffer): Bindings {
+    let cache = this.bindCache.get(terrain);
+    if (!cache) {
+      cache = new WeakMap();
+      this.bindCache.set(terrain, cache);
     }
-    const cached = terrainCache.get(fluids);
-    if (cached) return cached;
-    const group = (name: PassName, buffers: Array<readonly [number, GPUBuffer]>): GPUBindGroup =>
-      this.device.createBindGroup({
-        label: `Atmosphere ${name} bindings`,
-        layout: this.pipelines![name].getBindGroupLayout(0),
-        entries: [[0, this.uniforms] as const, ...buffers].map(([binding, buffer]) => ({
-          binding,
-          resource: { buffer },
-        })),
-      });
-    const pair = (create: (index: number) => GPUBindGroup): [GPUBindGroup, GPUBindGroup] => [
-      create(0),
-      create(1),
-    ];
-    const groups: AtmosphericBindings = {
-      initializeSurface: group('initializeSurface', [
-        [4, terrain],
-        [6, this.surfaceBuffer],
-      ]),
-      reduceColumns: group('reduceColumns', [
-        [3, this.columns],
-        [4, terrain],
-        [5, fluids],
-        [6, this.surfaceBuffer],
-      ]),
-      initializeVolume: pair((i) =>
-        group('initializeVolume', [
-          [2, this.volumes[i]],
-          [3, this.columns],
-        ])
-      ),
-      captureObstructedWater: pair((i) =>
-        group('captureObstructedWater', [
-          [1, this.volumes[i]],
-          [3, this.columns],
-          [10, this.precipitation],
-        ])
-      ),
-      reduceLayers: pair((i) =>
-        group('reduceLayers', [
-          [1, this.volumes[i]],
-          [3, this.columns],
-          [12, this.layerMeans],
-        ])
-      ),
-      prepareHeat: pair((i) =>
-        group('prepareHeat', [
-          [1, this.volumes[i]],
-          [3, this.columns],
-          [11, this.depositionWeights],
-          [19, this.heatProfiles],
-        ])
-      ),
-      exchangeHeat: group('exchangeHeat', [
-        [4, terrain],
-        [5, fluids],
-        [6, this.surfaceBuffer],
-        [19, this.heatProfiles],
-        [20, this.heatTransfers],
-        [18, this.solarNormalization],
-      ]),
-      gatherHeat: group('gatherHeat', [
-        [6, this.surfaceBuffer],
-        [11, this.depositionWeights],
-        [16, this.surfaceHeat],
-        [20, this.heatTransfers],
-        [18, this.solarNormalization],
-      ]),
-      radiateColumns: pair((i) =>
-        group('radiateColumns', [
-          [1, this.volumes[i]],
-          [3, this.columns],
-          [11, this.depositionWeights],
-          [18, this.solarNormalization],
-          [22, this.longwaveHeating],
-        ])
-      ),
-      prepareSolar: group('prepareSolar', [
-        [4, terrain],
-        [5, fluids],
-        [6, this.surfaceBuffer],
-        [17, this.solarPartials],
-      ]),
-      prepareSurfaceMapping: group('prepareSurfaceMapping', [[18, this.solarNormalization]]),
-      normalizeSolar: group('normalizeSolar', [
-        [17, this.solarPartials],
-        [18, this.solarNormalization],
-      ]),
-      prepareCourant: pair((i) =>
-        group('prepareCourant', [
-          [1, this.volumes[i]],
-          [3, this.columns],
-          [24, this.outgoingCourants],
-        ])
-      ),
-      advect: pair((i) =>
-        group('advect', [
-          [1, this.volumes[i]],
-          [2, this.volumes[1 - i]],
-          [3, this.columns],
-          [12, this.layerMeans],
-          [16, this.surfaceHeat],
-          [22, this.longwaveHeating],
-          [24, this.outgoingCourants],
-        ])
-      ),
-      divergence: pair((i) =>
-        group('divergence', [
-          [1, this.volumes[i]],
-          [3, this.columns],
-          [8, this.pressureBuffer],
-          [9, this.divergenceBuffer],
-          [13, this.conjugateState],
-          [23, this.pressureGeometry],
-        ])
-      ),
-      cgApply: group('cgApply', [
-        [13, this.conjugateState],
-        [14, this.conjugatePartials],
-        [23, this.pressureGeometry],
-      ]),
-      cgReduceBefore: group('cgReduceBefore', [
-        [14, this.conjugatePartials],
-        [15, this.conjugateCoefficients],
-      ]),
-      cgUpdate: group('cgUpdate', [
-        [8, this.pressureBuffer],
-        [13, this.conjugateState],
-        [14, this.conjugatePartials],
-        [15, this.conjugateCoefficients],
-        [23, this.pressureGeometry],
-      ]),
-      cgReduceAfter: group('cgReduceAfter', [
-        [14, this.conjugatePartials],
-        [15, this.conjugateCoefficients],
-      ]),
-      cgDirection: group('cgDirection', [
-        [13, this.conjugateState],
-        [15, this.conjugateCoefficients],
-      ]),
-      project: pair((i) =>
-        group('project', [
-          [1, this.volumes[i]],
-          [2, this.volumes[1 - i]],
-          [3, this.columns],
-          [7, this.pressureBuffer],
-        ])
-      ),
-      sediment: pair((i) =>
-        group('sediment', [
-          [1, this.volumes[i]],
-          [2, this.volumes[1 - i]],
-          [3, this.columns],
-          [10, this.precipitation],
-        ])
-      ),
-      surfaceExchange: pair((i) =>
-        group('surfaceExchange', [
-          [1, this.volumes[i]],
-          [3, this.columns],
-          [4, terrain],
-          [5, fluids],
-          [6, this.surfaceBuffer],
-          [10, this.precipitation],
-          [11, this.depositionWeights],
-          [18, this.solarNormalization],
-        ])
-      ),
+    const found = cache.get(fluids);
+    if (found) return found;
+    const buffers = new Map<number, GPUBuffer>([
+      [0, this.uniforms],
+      [3, this.columns],
+      [4, terrain],
+      [5, fluids],
+      [6, this.surfaceBuffer],
+      [10, this.precipitation],
+      [11, this.depositionWeights],
+      [16, this.surfaceHeat],
+      [17, this.solarPartials],
+      [18, this.solarNormalization],
+      [19, this.heatProfiles],
+      [20, this.heatTransfers],
+      [21, this.weatherMap],
+      [22, this.longwaveHeating],
+      [24, this.outgoingCourants],
+    ]);
+    const layouts: Record<PassName, number[]> = {
+      initializeSurface: [4, 6],
+      reduceColumns: [3, 4, 5, 6],
+      initializeVolume: [2, 3, 21],
+      prepareSurfaceMapping: [18],
+      prepareSolar: [4, 5, 6, 17],
+      normalizeSolar: [17, 18],
+      prepareHeat: [1, 3, 11, 19],
+      exchangeHeat: [4, 5, 6, 18, 19, 20],
+      gatherHeat: [6, 11, 16, 18, 20],
+      radiateColumns: [1, 11, 18, 22],
+      moveAir: [1, 2, 3, 16, 22],
+      prepareCourant: [1, 24],
+      transport: [1, 2, 24],
+      microphysics: [2, 3, 10, 21],
+      surfaceExchange: [1, 3, 4, 5, 6, 10, 11, 18],
     };
-    terrainCache.set(fluids, groups);
-    return groups;
+    const result = Object.fromEntries(
+      PASSES.map((name) => [
+        name,
+        [0, 1].map((i) => {
+          const selected = new Map(buffers);
+          selected.set(1, this.volumes[i]);
+          selected.set(
+            2,
+            this.volumes[name === 'initializeVolume' || name === 'microphysics' ? i : 1 - i]
+          );
+          return this.device.createBindGroup({
+            label: `${name} ${i}`,
+            layout: this.pipelines![name].getBindGroupLayout(0),
+            entries: [0, ...layouts[name]].map((binding) => ({
+              binding,
+              resource: { buffer: selected.get(binding)! },
+            })),
+          });
+        }),
+      ])
+    ) as Bindings;
+    cache.set(fluids, result);
+    return result;
   }
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { preferences, restoreConfig, savePreferences } from './preferences';
 import { config } from './config';
+import { WEATHER_TIMESTEP } from './atmosphere';
 import { GPGPUSimulation } from './webgpuRenderer';
 import { setupWeatherControls } from './weatherControls';
 import { setupSimulationControls } from './simulationControls';
@@ -409,9 +410,9 @@ function animate() {
     gpgpu.step();
   }
 
-  // Fixed 30 Hz atmosphere; bounded catch-up avoids a backlog after inactive tabs.
+  // Regional weather runs at 20 Hz; the surface water keeps its original 60 Hz.
   if (!config.paused && config.atmosphereEnabled) {
-    const weatherDt = 1 / 30;
+    const weatherDt = WEATHER_TIMESTEP;
     weatherAccumulator = Math.min(
       weatherAccumulator + elapsed * config.simSpeed * config.atmosphereTimeScale,
       weatherDt * 4

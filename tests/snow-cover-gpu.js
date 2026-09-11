@@ -94,7 +94,7 @@ async function run() {
     const encoder = device.createCommandEncoder();
     const pass = encoder.beginComputePass();
     pass.setPipeline(sim.pipelines.surfaceExchange);
-    pass.setBindGroup(0, groups.surfaceExchange[sim.current]);
+    pass.setBindGroup(0, groups.surfaceExchange[0]);
     pass.dispatchWorkgroups(Math.ceil(n / 16), Math.ceil(n / 16));
     pass.end();
     device.queue.submit([encoder.finish()]);

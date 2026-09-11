@@ -52,17 +52,17 @@ export interface Config {
   rainQuantity: number;
   rainSize: number;
 
-  // Volumetric atmosphere (independent 96 x 96 x 64 GPU grid)
+  // Two terrain-following air layers, independent of the surface grid.
   atmosphereEnabled: boolean;
   closedWaterCycle: boolean; // Keep all water reservoirs internal; suspend manual sources and open surface edges
   atmosphereBoundary: number; // 0: periodic horizontal boundaries, 1: closed walls
   evaporationRate: number; // Solar-driven evaporation coefficient, 0..1
-  emergentWeather: boolean; // Initial air evolves freely; no temperature/humidity/wind thermostat
+  emergentWeather: boolean; // Transported weather with optional regional energy drive; humidity is never imposed
   airTemperature: number; // Reference air temperature, degrees Celsius
   relativeHumidity: number; // Reference humidity: 1 = 100%, may be supersaturated
   airStability: number; // Initial lower-air stability: 0 neutral, 1 stable
   convectionStrength: number; // Live buoyancy response at the illustrative scene scale
-  windSpeed: number; // Horizontal wind forcing, simulation units per second
+  windSpeed: number; // km per game minute across the nominal map
   windDirection: number; // Direction of travel in the horizontal plane, degrees
   solarHeating: number; // Relative solar heating strength
   heatingContrast: number; // Redistribute solar heating toward responsive surfaces, 1..10, same total energy
@@ -72,12 +72,29 @@ export interface Config {
   atmosphereTimeScale: number; // Weather time multiplier
   cloudOpacity: number;
   showWind: boolean;
-  atmosphereView: number; // 0: volume, 1: temperature, 2: humidity, 3: wind
-  atmosphereSlice: number; // Normalized altitude of the diagnostic slice
+  atmosphereView: number; // 0: clouds, 1: temperature, 2: humidity, 3: wind, 4: radar, 5: recent wetness
+  atmosphereSlice: number; // 0: lower air, 1: cloud layer
   thermalOverlay: boolean;
   thermalAir: boolean;
   thermalOpacity: number;
   thermalHeight: number;
+  weatherMapSizeKm: number; // Nominal geography; surface fluid tuning is unchanged
+  weatherCellSizeKm: number; // Air-mass and regional thermal-environment scale
+  weatherVariability: number; // Initial temperature/humidity and sustained regional thermal contrasts
+  weatherSeed: number;
+  rainLifetime: number; // Cloud-to-rain conversion time in weather seconds
+  orographicLift: number;
+  airMixing: number; // Background exchange between the two layers, per second
+  windShear: number; // Difference between initial/regional lower and upper winds
+  circulationStrength: number;
+  regionalDrive: number; // Large-scale thermal/momentum energy supply; zero lets isolated air decay
+  weatherRenewal: number; // Regional forcing evolution period in weather seconds
+  windRotation: number; // Turning of local wind anomalies, relative to regional flow
+  cloudAltitude: number; // Visual base above sea level, in nominal km
+  cloudThickness: number; // Visual depth, in nominal km
+  cloudDetail: number;
+  cloudShadows: number;
+  rainVisibility: number;
 
   // Map border settings
   borderBehavior: number; // 0: block all, 1: pass all, 2: pass water but keep sediments
@@ -141,14 +158,14 @@ export const config: Config = {
   atmosphereBoundary: 0,
   evaporationRate: 0.25,
   emergentWeather: true,
-  airTemperature: 8,
-  relativeHumidity: 0.75,
-  airStability: 0.125,
-  convectionStrength: 4,
-  windSpeed: 0,
+  airTemperature: 12,
+  relativeHumidity: 0.85,
+  airStability: 0.25,
+  convectionStrength: 1,
+  windSpeed: 2,
   windDirection: 45,
   solarHeating: 1,
-  heatingContrast: 3,
+  heatingContrast: 1.5,
   sunElevation: 40,
   sunAzimuth: 135,
   radiativeCooling: 1,
@@ -156,7 +173,24 @@ export const config: Config = {
   cloudOpacity: 1,
   showWind: false,
   atmosphereView: 0,
-  atmosphereSlice: 0.5,
+  atmosphereSlice: 1,
+  weatherMapSizeKm: 10,
+  weatherCellSizeKm: 2,
+  weatherVariability: 0.8,
+  weatherSeed: 7,
+  rainLifetime: 60,
+  orographicLift: 1.5,
+  airMixing: 0.008,
+  windShear: 0.35,
+  circulationStrength: 1,
+  regionalDrive: 1,
+  weatherRenewal: 180,
+  windRotation: 1,
+  cloudAltitude: 0.9,
+  cloudThickness: 0.5,
+  cloudDetail: 0.6,
+  cloudShadows: 0.65,
+  rainVisibility: 1,
 
   borderBehavior: 1,
   borderWaterHeight: 0.0,

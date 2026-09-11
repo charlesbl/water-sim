@@ -672,20 +672,451 @@
                   ><span class="effect-badge">Live</span>
                 </div>
                 <select id="weather-dynamics" class="select-input">
-                  <option value="emergent" selected>Emergent · solar driven</option>
+                  <option value="emergent" selected>Regional · coupled weather</option>
                   <option value="forced">Imposed weather conditions</option>
                 </select>
               </div>
               <details class="help-details">
                 <summary>How the atmosphere evolves</summary>
                 <p class="help-text" id="weather-dynamics-help">
-                  Air evolves freely from its initial state. Sunlight, cooling and terrain drive
-                  circulation.
+                  Two layers transport humidity. Regional energy, sunlight, cooling and terrain
+                  drive the circulation.
                 </p>
               </details>
               <p class="help-text" id="weather-status" role="status">
-                96 × 96 × 64 cells · live GPU weather
+                256 × 256 × 2 cells · regional GPU weather
               </p>
+            </section>
+            <section class="setting-block regional-weather-block">
+              <div class="block-heading">
+                <h3>Regional weather</h3>
+                <span class="effect-badge">Experimental</span>
+              </div>
+              <p class="help-text" id="regional-weather-summary">
+                10 km landscape · 256² × 2 layers
+              </p>
+              <p class="help-text">
+                Moving rain over a living landscape. Aim for changes over 1–3 minutes; water, snow
+                and lakes retain their history.
+              </p>
+              <div
+                class="control-group"
+                data-control="weather-map-size"
+                data-keywords="Landscape scale"
+              >
+                <div class="label-row">
+                  <label for="weather-map-size">Landscape scale</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="weather-map-size" min="5" max="50" step="1" value="10" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="weather-map-size-number"
+                      data-number-for="weather-map-size"
+                      aria-label="Landscape scale exact value"
+                      min="5"
+                      max="50"
+                      step="1"
+                      value="10"
+                    /><span class="unit">km</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="weather-map-size-val">10 km</span>
+                <p class="help-text">
+                  Nominal map width. Scales atmospheric travel and cloud geometry; surface flow
+                  keeps its current tuning.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="weather-cell-size"
+                data-keywords="Air-mass size"
+              >
+                <div class="label-row">
+                  <label for="weather-cell-size">Air-mass size</label
+                  ><span class="effect-badge">Initial + regional drive</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="weather-cell-size"
+                    min="0.5"
+                    max="5"
+                    step="0.1"
+                    value="2"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="weather-cell-size-number"
+                      data-number-for="weather-cell-size"
+                      aria-label="Air-mass size exact value"
+                      min="0.5"
+                      max="5"
+                      step="0.1"
+                      value="2"
+                    /><span class="unit">km</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="weather-cell-size-val">2 km</span>
+                <p class="help-text">
+                  Size of initial humid and dry regions and regional thermal contrasts. Actual rain
+                  follows the transported moisture.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="regional-drive"
+                data-keywords="Regional energy renewal fronts circulation"
+              >
+                <div class="label-row">
+                  <label for="regional-drive">Regional energy</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="regional-drive" min="0" max="3" step="0.1" value="1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="regional-drive-number"
+                      data-number-for="regional-drive"
+                      aria-label="Regional energy exact value"
+                      min="0"
+                      max="3"
+                      step="0.1"
+                      value="1"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="regional-drive-val">1 ×</span>
+                <p class="help-text">
+                  Keeps large-scale winds and thermal contrasts alive without adding water. Set to 0
+                  for freely decaying, isolated weather.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="weather-renewal"
+                data-keywords="Regional evolution time renewal fronts circulation"
+              >
+                <div class="label-row">
+                  <label for="weather-renewal">Regional evolution time</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="weather-renewal"
+                    min="60"
+                    max="600"
+                    step="15"
+                    value="180"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="weather-renewal-number"
+                      data-number-for="weather-renewal"
+                      aria-label="Regional evolution time exact value"
+                      min="60"
+                      max="600"
+                      step="15"
+                      value="180"
+                    /><span class="unit">s</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="weather-renewal-val">180 s</span>
+                <p class="help-text">
+                  How quickly the surrounding circulation changes. Clouds and rain still form from
+                  transported moisture.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="wind-rotation"
+                data-keywords="Wind turning renewal fronts circulation"
+                data-advanced
+              >
+                <div class="label-row">
+                  <label for="wind-rotation">Wind turning</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="wind-rotation" min="0" max="3" step="0.1" value="1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="wind-rotation-number"
+                      data-number-for="wind-rotation"
+                      aria-label="Wind turning exact value"
+                      min="0"
+                      max="3"
+                      step="0.1"
+                      value="1"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="wind-rotation-val">1 ×</span>
+                <p class="help-text">
+                  Turns pressure-driven wind anomalies into curved flows and eddies.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="rain-lifetime"
+                data-keywords="Cloud-to-rain time"
+              >
+                <div class="label-row">
+                  <label for="rain-lifetime">Cloud-to-rain time</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="rain-lifetime" min="10" max="180" step="5" value="60" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="rain-lifetime-number"
+                      data-number-for="rain-lifetime"
+                      aria-label="Cloud-to-rain time exact value"
+                      min="10"
+                      max="180"
+                      step="5"
+                      value="60"
+                    /><span class="unit">s</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="rain-lifetime-val">60 s</span>
+                <p class="help-text">
+                  Longer-lived cloud water can travel farther before becoming precipitation.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="orographic-lift"
+                data-keywords="Mountain influence"
+              >
+                <div class="label-row">
+                  <label for="orographic-lift">Mountain influence</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="orographic-lift" min="0" max="4" step="0.1" value="1.5" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="orographic-lift-number"
+                      data-number-for="orographic-lift"
+                      aria-label="Mountain influence exact value"
+                      min="0"
+                      max="4"
+                      step="0.1"
+                      value="1.5"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="orographic-lift-val">1.5 ×</span>
+                <p class="help-text">
+                  Uphill air cools and exchanges moisture with the cloud layer.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="weather-variability"
+                data-keywords="Initial air contrasts Air-mass contrasts"
+                data-advanced
+              >
+                <div class="label-row">
+                  <label for="weather-variability">Air-mass contrasts</label
+                  ><span class="effect-badge">Initial + regional drive</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="weather-variability"
+                    min="0"
+                    max="1.5"
+                    step="0.05"
+                    value="0.8"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="weather-variability-number"
+                      data-number-for="weather-variability"
+                      aria-label="Initial air contrasts exact value"
+                      min="0"
+                      max="1.5"
+                      step="0.05"
+                      value="0.8"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="weather-variability-val">0.8 ×</span>
+                <p class="help-text">Zero starts horizontally uniform on flat ground.</p>
+              </div>
+              <div
+                class="control-group"
+                data-control="weather-seed"
+                data-keywords="Weather seed"
+                data-advanced
+              >
+                <div class="label-row">
+                  <label for="weather-seed">Weather seed</label
+                  ><span class="effect-badge">Initial + regional drive</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="weather-seed" min="0" max="9999" step="1" value="7" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="weather-seed-number"
+                      data-number-for="weather-seed"
+                      aria-label="Weather seed exact value"
+                      min="0"
+                      max="9999"
+                      step="1"
+                      value="7"
+                    /><span class="unit"></span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="weather-seed-val">7 </span>
+                <p class="help-text">Restart air to repeat or change the starting pattern.</p>
+              </div>
+              <div
+                class="control-group"
+                data-control="wind-shear"
+                data-keywords="Upper wind difference"
+                data-advanced
+              >
+                <div class="label-row">
+                  <label for="wind-shear">Upper wind difference</label
+                  ><span class="effect-badge">Initial + regional drive</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="wind-shear" min="0" max="100" step="5" value="35" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="wind-shear-number"
+                      data-number-for="wind-shear"
+                      aria-label="Upper wind difference exact value"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value="35"
+                    /><span class="unit">%</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="wind-shear-val">35 %</span>
+                <p class="help-text">
+                  Upper air starts faster and turns relative to the lower wind.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="circulation-strength"
+                data-keywords="Thermal circulation"
+                data-advanced
+              >
+                <div class="label-row">
+                  <label for="circulation-strength">Thermal circulation</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="circulation-strength"
+                    min="0"
+                    max="4"
+                    step="0.1"
+                    value="1"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="circulation-strength-number"
+                      data-number-for="circulation-strength"
+                      aria-label="Thermal circulation exact value"
+                      min="0"
+                      max="4"
+                      step="0.1"
+                      value="1"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="circulation-strength-val">1 ×</span>
+                <p class="help-text">
+                  How strongly horizontal temperature contrasts drive the wind.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="air-mixing"
+                data-keywords="Layer mixing"
+                data-advanced
+              >
+                <div class="label-row">
+                  <label for="air-mixing">Layer mixing</label><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="air-mixing"
+                    min="0"
+                    max="0.08"
+                    step="0.001"
+                    value="0.008"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="air-mixing-number"
+                      data-number-for="air-mixing"
+                      aria-label="Layer mixing exact value"
+                      min="0"
+                      max="0.08"
+                      step="0.001"
+                      value="0.008"
+                    /><span class="unit">/s</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="air-mixing-val">0.008 /s</span>
+                <p class="help-text">
+                  Background exchange; convection and mountains add local lifting.
+                </p>
+              </div>
+              <div
+                class="control-group"
+                data-control="cloud-shadows"
+                data-keywords="Cloud sun shielding"
+                data-advanced
+              >
+                <div class="label-row">
+                  <label for="cloud-shadows">Cloud sun shielding</label
+                  ><span class="effect-badge">Live</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="cloud-shadows" min="0" max="100" step="5" value="65" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="cloud-shadows-number"
+                      data-number-for="cloud-shadows"
+                      aria-label="Cloud sun shielding exact value"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value="65"
+                    /><span class="unit">%</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="cloud-shadows-val">65 %</span>
+                <p class="help-text">
+                  Cloud cover shades the ground and reduces its solar heating.
+                </p>
+              </div>
             </section>
             <section class="setting-block">
               <div class="block-heading"><h3>Weather presets</h3></div>
@@ -729,7 +1160,15 @@
                 >
                   <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
                     <use href="#i-climate"></use></svg
-                  >Storm
+                  >Storm</button
+                ><button
+                  type="button"
+                  class="preset-button"
+                  data-control="preset-dry"
+                  data-weather-preset="dry"
+                  aria-pressed="false"
+                >
+                  <svg class="icon" aria-hidden="true"><use href="#i-heat"></use></svg>Dry spell
                 </button>
               </div>
               <p class="help-text">Presets preserve the landscape, liquid water, snow and ice.</p>
@@ -801,7 +1240,7 @@
                   ><span class="effect-badge">Initial conditions</span>
                 </div>
                 <div class="range-row">
-                  <input type="range" id="wind-speed" min="0" max="30" value="0" step="1" />
+                  <input type="range" id="wind-speed" min="0" max="6" step="0.1" value="2" />
                   <div class="number-box">
                     <input
                       type="number"
@@ -809,13 +1248,14 @@
                       data-number-for="wind-speed"
                       aria-label="Wind speed exact value"
                       min="0"
-                      max="30"
-                      step="1"
-                      value="0"
-                    /><span class="unit">u/s</span>
+                      max="6"
+                      step="0.1"
+                      value="2"
+                    /><span class="unit">km/min</span>
                   </div>
                 </div>
-                <span class="value-display sr-only" id="wind-speed-val">0 u/s</span>
+                <span class="value-display sr-only" id="wind-speed-val">2 km/min</span>
+                <p class="help-text">Travel per weather minute, at the nominal landscape scale.</p>
               </div>
               <div class="control-group" data-control="wind-direction" data-keywords="Wind heading">
                 <div class="label-row">
@@ -1864,10 +2304,12 @@
                   ><span class="effect-badge">View</span>
                 </div>
                 <select id="atmosphere-view" class="select-input">
-                  <option value="0" selected>3D cloud volume</option>
-                  <option value="1">Temperature slice</option>
-                  <option value="2">Humidity slice</option>
-                  <option value="3">Wind speed slice</option>
+                  <option value="0" selected>Clouds & rain</option>
+                  <option value="1">Temperature map</option>
+                  <option value="2">Humidity map</option>
+                  <option value="3">Wind map</option>
+                  <option value="4">Rain & snow radar</option>
+                  <option value="5">Recent wetness</option>
                 </select>
               </div>
               <div
@@ -1898,11 +2340,133 @@
               </div>
               <div
                 class="control-group"
+                data-control="cloud-altitude"
+                data-keywords="Cloud base height"
+                data-advanced
+              >
+                <div class="label-row">
+                  <label for="cloud-altitude">Cloud base height</label
+                  ><span class="effect-badge">View</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="cloud-altitude"
+                    min="0.2"
+                    max="2"
+                    step="0.05"
+                    value="0.9"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="cloud-altitude-number"
+                      data-number-for="cloud-altitude"
+                      aria-label="Cloud base height exact value"
+                      min="0.2"
+                      max="2"
+                      step="0.05"
+                      value="0.9"
+                    /><span class="unit">km</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="cloud-altitude-val">0.9 km</span>
+                <p class="help-text">Visual altitude; clouds rise above the terrain.</p>
+              </div>
+              <div
+                class="control-group"
+                data-control="cloud-thickness"
+                data-keywords="Cloud depth"
+                data-advanced
+              >
+                <div class="label-row">
+                  <label for="cloud-thickness">Cloud depth</label
+                  ><span class="effect-badge">View</span>
+                </div>
+                <div class="range-row">
+                  <input
+                    type="range"
+                    id="cloud-thickness"
+                    min="0.1"
+                    max="1"
+                    step="0.05"
+                    value="0.5"
+                  />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="cloud-thickness-number"
+                      data-number-for="cloud-thickness"
+                      aria-label="Cloud depth exact value"
+                      min="0.1"
+                      max="1"
+                      step="0.05"
+                      value="0.5"
+                    /><span class="unit">km</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="cloud-thickness-val">0.5 km</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="cloud-detail"
+                data-keywords="Cloud texture"
+                data-advanced
+              >
+                <div class="label-row">
+                  <label for="cloud-detail">Cloud texture</label
+                  ><span class="effect-badge">View</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="cloud-detail" min="0" max="100" step="5" value="60" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="cloud-detail-number"
+                      data-number-for="cloud-detail"
+                      aria-label="Cloud texture exact value"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value="60"
+                    /><span class="unit">%</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="cloud-detail-val">60 %</span>
+              </div>
+              <div
+                class="control-group"
+                data-control="rain-visibility"
+                data-keywords="Rain & snow visibility"
+              >
+                <div class="label-row">
+                  <label for="rain-visibility">Rain & snow visibility</label
+                  ><span class="effect-badge">View</span>
+                </div>
+                <div class="range-row">
+                  <input type="range" id="rain-visibility" min="0" max="2" step="0.1" value="1" />
+                  <div class="number-box">
+                    <input
+                      type="number"
+                      id="rain-visibility-number"
+                      data-number-for="rain-visibility"
+                      aria-label="Rain & snow visibility exact value"
+                      min="0"
+                      max="2"
+                      step="0.1"
+                      value="1"
+                    /><span class="unit">×</span>
+                  </div>
+                </div>
+                <span class="value-display sr-only" id="rain-visibility-val">1 ×</span>
+              </div>
+              <div
+                class="control-group"
                 data-control="show-wind"
-                data-keywords="Show 3D wind vectors"
+                data-keywords="Show layer wind tracers"
               >
                 <label class="toggle-row" for="show-wind"
-                  ><span>Show 3D wind vectors</span><input type="checkbox" id="show-wind" /><span
+                  ><span>Show layer wind tracers</span><input type="checkbox" id="show-wind" /><span
                     class="toggle-track"
                     aria-hidden="true"
                   ></span
@@ -2002,43 +2566,36 @@
                   </p>
                 </div>
                 <p class="help-text">
-                  Height follows the landscape. Air is interpolated on a coarser grid (1.5625 u per
-                  layer); near ground, the first available air layer is used.
+                  Height follows the landscape. Temperature is interpolated between the lower air
+                  and cloud layer; the rendered cloud height is an independent visual setting.
                 </p>
               </div>
             </section>
             <section class="setting-block" data-advanced id="atmosphere-slice-group">
-              <div class="block-heading"><h3>Diagnostic slice</h3></div>
-              <div
-                class="control-group"
-                data-control="atmosphere-slice"
-                data-keywords="Slice altitude"
-              >
+              <div class="block-heading"><h3>Weather map layer</h3></div>
+              <div class="control-group" data-control="atmosphere-slice" data-keywords="Air layer">
                 <div class="label-row">
-                  <label for="atmosphere-slice">Slice altitude</label
+                  <label for="atmosphere-slice">Air layer</label
                   ><span class="effect-badge">View</span>
                 </div>
                 <div class="range-row">
-                  <input type="range" id="atmosphere-slice" min="0" max="100" value="50" step="1" />
+                  <input type="range" id="atmosphere-slice" min="0" max="1" step="1" value="1" />
                   <div class="number-box">
                     <input
                       type="number"
                       id="atmosphere-slice-number"
                       data-number-for="atmosphere-slice"
-                      aria-label="Slice altitude exact value"
+                      aria-label="Air layer exact value"
                       min="0"
-                      max="100"
+                      max="1"
                       step="1"
-                      value="50"
-                    /><span class="unit">%</span>
+                      value="1"
+                    /><span class="unit"></span>
                   </div>
                 </div>
-                <span class="value-display sr-only" id="atmosphere-slice-val">50%</span>
-                <p class="availability" data-availability>
-                  Select a temperature, humidity or wind slice.
-                  <button type="button" class="text-button" data-reveal="atmosphere-view">
-                    Change mode
-                  </button>
+                <span class="value-display sr-only" id="atmosphere-slice-val">1 </span>
+                <p class="help-text">
+                  0: lower air · 1: cloud layer. Used by temperature, humidity and wind maps.
                 </p>
               </div>
             </section>
