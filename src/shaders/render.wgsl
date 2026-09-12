@@ -36,8 +36,8 @@ struct RenderUniforms {
     show_suspended: f32,
     time: f32,
     smooth_rendering: f32,
-    border_behavior: f32,
-    border_water_height: f32,
+    reserved_border_behavior: f32,
+    reserved_border_water_height: f32,
     show_soil: f32,
     padding_1: f32,
     padding_2: f32,
@@ -644,28 +644,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             finalColor = vec4<f32>(mix(finalColor.rgb, steam_color, steam_alpha), max(finalColor.a, steam_alpha));
         }
 
-        // 4. Map border glowing indicator
-        if (uniforms.border_behavior > 0.5 && uniforms.border_water_height > 0.0) {
-            let b_dist = min(min(input.uv.x, 1.0 - input.uv.x), min(input.uv.y, 1.0 - input.uv.y));
-            let border_width = 2.5 / uniforms.grid_size;
-            if (b_dist < border_width) {
-                var ground: f32;
-                if (uniforms.smooth_rendering > 0.5) {
-                    ground = get_ground_height_smooth(input.uv, grid_size);
-                } else {
-                    let cx = i32(input.uv.x * uniforms.grid_size);
-                    let cy = i32(input.uv.y * uniforms.grid_size);
-                    ground = get_cell_ground_height(cx, cy, grid_size);
-                }
-                if (uniforms.border_water_height > ground) {
-                    let edge_factor = pow(1.0 - (b_dist / border_width), 1.5);
-                    let pulse = 0.5 + 0.5 * sin(uniforms.time * 5.0);
-                    let glow_color = vec3<f32>(0.0, 0.8, 1.0);
-                    finalColor = vec4<f32>(mix(finalColor.rgb, glow_color, edge_factor * 0.8 * pulse), max(finalColor.a, edge_factor * 0.8));
-                }
-            }
-        }
-
         return finalColor;
     }
 }
@@ -687,6 +665,7 @@ fn fs_brush_preview(input: VertexOutput) -> @location(0) vec4<f32> {
         case 2: { color = vec3<f32>(1.0, 0.80, 0.35); }
         case 6, 8: { color = vec3<f32>(0.65, 0.90, 1.0); }
         case 9: { color = vec3<f32>(0.85, 0.60, 0.36); }
+        case 10: { color = vec3<f32>(0.72, 0.97, 1.0); }
         default: {}
     }
     if (outline + center <= 0.0 || brush.z <= 0.0) { discard; }

@@ -1,3 +1,4 @@
+import { syncParameterResets } from './parameterReset';
 import { config } from './config';
 import { preferences, savePreferences, resetPreferences } from './preferences';
 
@@ -40,8 +41,6 @@ export function setupCommandUI(): void {
   const body = inspector.querySelector<HTMLElement>('.inspector-body')!;
   const title = document.getElementById('inspector-title')!;
   const description = document.getElementById('inspector-description')!;
-  const advancedButton = document.getElementById('toggle-advanced')!;
-  const mode = document.getElementById('inspector-mode')!;
   const navButtons = Array.from(ui.querySelectorAll<HTMLButtonElement>('[data-domain]'));
   const domains = Array.from(ui.querySelectorAll<HTMLElement>('.domain-content'));
   const search = document.getElementById('command-search') as HTMLInputElement;
@@ -60,30 +59,26 @@ export function setupCommandUI(): void {
   let highlightTimer: ReturnType<typeof setTimeout> | undefined;
 
   const savedUI = { ...preferences };
+  const energyPanel = document.getElementById('energy-panel') as HTMLDetailsElement | null;
+  if (energyPanel) energyPanel.open = savedUI.energyPanelOpen === true;
   let restoring = true;
   const persistUI = () => {
     if (!restoring)
       savePreferences({
         domain: currentDomain,
-        advanced: inspector.classList.contains('advanced'),
         search: search.value,
         scrollTop: body.scrollTop,
+        energyPanelOpen: energyPanel?.open ?? false,
       });
   };
+  energyPanel?.addEventListener('toggle', persistUI);
   body.addEventListener('scroll', persistUI);
   window.addEventListener('pagehide', persistUI);
   document.getElementById('btn-reset-defaults')?.addEventListener('click', resetPreferences);
 
-  const setAdvanced = (advanced: boolean) => {
-    inspector.classList.toggle('advanced', advanced);
-    advancedButton.setAttribute('aria-pressed', String(advanced));
-    mode.textContent = advanced ? 'All parameters' : 'Essential controls';
-    persistUI();
-  };
   const openDomain = (name: string | null, focus = false) => {
     currentDomain = name;
     inspector.hidden = name === null;
-    setAdvanced(false);
     for (const button of navButtons) {
       button.setAttribute('aria-expanded', String(button.dataset.domain === name));
     }
@@ -92,7 +87,6 @@ export function setupCommandUI(): void {
       if (!domain.hidden) {
         title.textContent = domain.dataset.title!;
         description.textContent = domain.dataset.description!;
-        advancedButton.hidden = name === 'settings';
       }
     }
     body.scrollTop = 0;
@@ -113,37 +107,39 @@ export function setupCommandUI(): void {
     });
   });
   document.getElementById('close-inspector')!.addEventListener('click', closeInspector);
-  advancedButton.addEventListener('click', () => {
-    setAdvanced(!inspector.classList.contains('advanced'));
-  });
-
   // Forward shortcut edits to the inspector controls, which own the bindings.
-  const shortcuts = ['sim-speed', 'atmosphere-time-scale', 'thermal-opacity', 'cloud-opacity'].map(
-    (id) => {
-      const range = document.getElementById(id) as HTMLInputElement;
-      const group = range.closest<HTMLElement>('.control-group')!.cloneNode(true) as HTMLElement;
-      group.removeAttribute('data-control');
-      group
-        .querySelectorAll('.availability, .effect-badge, .value-display')
-        .forEach((element) => element.remove());
-      group.querySelectorAll<HTMLElement>('[id]').forEach((element) => {
-        element.id = 'quick-' + element.id;
+  const shortcuts = ['sim-speed', 'atmosphere-time-scale'].map((id) => {
+    const range = document.getElementById(id) as HTMLInputElement;
+    const group = range.closest<HTMLElement>('.control-group')!.cloneNode(true) as HTMLElement;
+    group.removeAttribute('data-control');
+    group
+      .querySelectorAll('.availability, .effect-badge, .value-display')
+      .forEach((element) => element.remove());
+    group.querySelectorAll<HTMLElement>('[id]').forEach((element) => {
+      element.id = 'quick-' + element.id;
+    });
+    group.querySelectorAll<HTMLLabelElement>('label[for]').forEach((label) => {
+      label.htmlFor = 'quick-' + label.htmlFor;
+    });
+    group.querySelectorAll<HTMLElement>('[data-number-for]').forEach((number) => {
+      number.dataset.numberFor = 'quick-' + id;
+    });
+    const resetButton = group.querySelector<HTMLButtonElement>('[data-reset-for]');
+    if (resetButton) {
+      resetButton.dataset.resetFor = 'quick-' + id;
+      resetButton.addEventListener('click', () => {
+        range.closest('.control-group')!
+          .querySelector<HTMLButtonElement>('[data-reset-for]')!.click();
       });
-      group.querySelectorAll<HTMLLabelElement>('label[for]').forEach((label) => {
-        label.htmlFor = 'quick-' + label.htmlFor;
-      });
-      group.querySelectorAll<HTMLElement>('[data-number-for]').forEach((number) => {
-        number.dataset.numberFor = 'quick-' + id;
-      });
-      const shortcut = group.querySelector<HTMLInputElement>('input[type="range"]')!;
-      shortcut.addEventListener('input', () => {
-        range.value = shortcut.value;
-        range.dispatchEvent(new Event('input', { bubbles: true }));
-      });
-      document.getElementById('quick-controls')!.append(group);
-      return { range, shortcut };
     }
-  );
+    const shortcut = group.querySelector<HTMLInputElement>('input[type="range"]')!;
+    shortcut.addEventListener('input', () => {
+      range.value = shortcut.value;
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById('quick-controls')!.append(group);
+    return { range, shortcut };
+  });
 
   const numbers = Array.from(ui.querySelectorAll<HTMLInputElement>('[data-number-for]')).map(
     (number) => ({
@@ -152,12 +148,15 @@ export function setupCommandUI(): void {
     })
   );
   const sync = () => {
+    syncParameterResets(ui);
     for (const { range, shortcut } of shortcuts) {
       shortcut.value = range.value;
+      if (range.dataset.exactValue !== undefined) shortcut.dataset.exactValue = range.dataset.exactValue;
+      else delete shortcut.dataset.exactValue;
       shortcut.disabled = range.disabled;
     }
     for (const { number, range } of numbers) {
-      if (document.activeElement !== number) number.value = range.value;
+      if (document.activeElement !== number) number.value = range.dataset.exactValue ?? range.value;
       number.disabled = range.disabled;
       const label = ui.querySelector<HTMLLabelElement>('label[for="' + range.id + '"]');
       if (label) number.setAttribute('aria-label', label.textContent!.trim() + ' exact value');
@@ -188,9 +187,6 @@ export function setupCommandUI(): void {
     pause.classList.toggle('active', config.paused);
     state.dataset.paused = String(config.paused);
     document
-      .getElementById('thermal-controls')!
-      .classList.toggle('context-active', config.thermalOverlay);
-    document
       .getElementById('atmosphere-slice-group')!
       .classList.toggle('context-active', config.atmosphereView !== 0);
     legend.hidden = !config.thermalOverlay && config.atmosphereView === 0;
@@ -203,6 +199,7 @@ export function setupCommandUI(): void {
         'Wind speed',
         'Rain & snow radar',
         'Recent wetness',
+        'Updrafts & downdrafts',
       ][config.atmosphereView] +
       (config.atmosphereView < 4
         ? config.atmosphereSlice < 0.5
@@ -217,10 +214,12 @@ export function setupCommandUI(): void {
       'linear-gradient(to right, #364bc1, #49dbb4 38%, #f3a450)',
       'linear-gradient(to right, #243342, #38c7b8, #f7c23d)',
       'linear-gradient(to right, #b86e33, #29a8cc)',
+      'linear-gradient(to right, #3d99ed, #243342 50%, #f7bf47)',
     ][config.atmosphereView];
-    document.getElementById('view-options')!.dataset.reveal = config.thermalOverlay
-      ? 'thermal-mode'
-      : 'atmosphere-slice';
+    document.getElementById('view-options')!.dataset.reveal =
+      config.atmosphereView === 2 || config.atmosphereView === 3
+        ? 'atmosphere-slice'
+        : 'atmosphere-view';
     persistUI();
   };
 
@@ -228,16 +227,16 @@ export function setupCommandUI(): void {
     const commit = () => {
       if (!number.disabled && Number.isFinite(number.valueAsNumber)) {
         // Let the native range apply its original clamp and step sanitization.
-        const previous = range.value;
+        const previous = range.dataset.exactValue ?? range.value;
         range.value = number.value;
         if (range.value !== previous) range.dispatchEvent(new Event('input', { bubbles: true }));
       }
-      number.value = range.value;
+      number.value = range.dataset.exactValue ?? range.value;
       sync();
     };
     number.addEventListener('change', commit);
     number.addEventListener('blur', () => {
-      number.value = range.value;
+      number.value = range.dataset.exactValue ?? range.value;
     });
     number.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -247,7 +246,7 @@ export function setupCommandUI(): void {
       }
     });
   }
-  // These bubble after the existing simulation handlers, including presets.
+  // These bubble after the existing simulation handlers, including weather controls.
   ui.addEventListener('input', sync);
   ui.addEventListener('change', sync);
   ui.addEventListener('click', sync);
@@ -269,7 +268,6 @@ export function setupCommandUI(): void {
     if (domain) {
       const name = domain.id.replace('domain-', '');
       if (currentDomain !== name) openDomain(name);
-      if (entry.closest('[data-advanced]')) setAdvanced(true);
     }
     closeSearch();
     ui.querySelectorAll('.search-highlight').forEach((item) =>
@@ -315,8 +313,7 @@ export function setupCommandUI(): void {
       const path = document.createElement('small');
       const domain = entry.closest<HTMLElement>('.domain-content')?.dataset.title;
       path.textContent =
-        (domain ?? (entry.closest('.power-dock') ? 'World powers' : 'Simulation time')) +
-        (entry.closest('[data-advanced]') ? ' / Advanced' : '');
+        domain ?? (entry.closest('.power-dock') ? 'World powers' : 'View & simulation time');
       button.append(label, path);
       button.addEventListener('click', () => reveal(entry.dataset.control!));
       results.append(button);
@@ -388,7 +385,6 @@ export function setupCommandUI(): void {
   openDomain(
     navButtons.some((button) => button.dataset.domain === savedUI.domain) ? savedUI.domain! : null
   );
-  setAdvanced(savedUI.advanced === true);
   search.value = typeof savedUI.search === 'string' ? savedUI.search : '';
   if (search.value) showResults();
   sync();

@@ -4,6 +4,7 @@ import { AtmosphereSimulation } from './atmosphere';
 import { AtmosphereRenderer } from './atmosphereRenderer';
 import { ThermalRenderer } from './thermalRenderer';
 import { WaterBudget } from './waterBudget';
+import { EnergyBudget } from './energyBudget';
 
 import simFluxWGSL from './shaders/simFlux.wgsl?raw';
 import simFluidsWGSL from './shaders/simFluids.wgsl?raw';
@@ -22,7 +23,7 @@ export class GPGPUSimulation {
   private atmosphereRenderer: AtmosphereRenderer | null = null;
   private thermalRenderer: ThermalRenderer | null = null;
   private waterBudget: WaterBudget | null = null;
-  private budgetClosedMode = true;
+  private energyBudget: EnergyBudget | null = null;
   private format: GPUTextureFormat = 'rgba8unorm';
 
   // State
@@ -83,6 +84,7 @@ export class GPGPUSimulation {
 
   // Brush settings cached to write during step
   private brushActive = 0;
+  private windBrushActive = false;
   private brushX = 0;
   private brushY = 0;
   private brushType = 0;
@@ -192,6 +194,7 @@ export class GPGPUSimulation {
 
     this.atmosphere = new AtmosphereSimulation(this.device, this.size);
     await this.atmosphere.init();
+    this.energyBudget = new EnergyBudget(this.device, this.atmosphere.energyFlux);
     this.atmosphereRenderer = new AtmosphereRenderer(this.device, this.format, this.atmosphere);
     await this.atmosphereRenderer.init();
     this.thermalRenderer = new ThermalRenderer(this.device, this.format, this.atmosphere);
@@ -641,7 +644,7 @@ export class GPGPUSimulation {
     radius: number,
     strength: number
   ) {
-    this.brushActive = active && uv !== null ? 1.0 : 0.0;
+    this.brushActive = active && uv !== null && type !== 10 ? 1.0 : 0.0;
     this.brushX = uv ? uv.x : 0.0;
     this.brushY = uv ? uv.y : 0.0;
     this.brushRadius = radius / this.size; // in UV coordinates
@@ -651,6 +654,14 @@ export class GPGPUSimulation {
 
   public updateParameters() {
     this.isPaused = config.paused ? 1.0 : 0.0;
+  }
+
+  public setWindBrush(uv: THREE.Vector2 | null, direction: THREE.Vector2, strength: number) {
+    this.windBrushActive = uv !== null && strength > 0 && config.atmosphereEnabled;
+    this.atmosphere?.setWindBrush(
+      uv?.x ?? 0, uv?.y ?? 0, uv ? config.brushRadius / this.size : 0,
+      direction.x * strength * 8, direction.y * strength * 8
+    );
   }
 
   public setBrushPreview(uv: THREE.Vector2 | null, radius: number, type: number) {
@@ -676,6 +687,7 @@ export class GPGPUSimulation {
     this.device.queue.submit([encoder.finish()]);
     this.atmosphere?.clearSurface();
     this.waterBudget?.resetBaseline();
+    this.energyBudget?.reset();
   }
 
   /**
@@ -693,6 +705,7 @@ export class GPGPUSimulation {
   public resetWeather(clearSurface = true) {
     this.atmosphere?.reset(clearSurface);
     this.waterBudget?.resetBaseline();
+    this.energyBudget?.reset();
   }
 
   /** One fixed weather tick, after all surface work has been submitted. */
@@ -730,7 +743,7 @@ export class GPGPUSimulation {
     computeUniforms[8] = config.erosionRate;
     computeUniforms[9] = config.capacityFactor;
     computeUniforms[10] = config.depositionRate;
-    computeUniforms[11] = config.evaporation;
+    computeUniforms[11] = 0; // Reserved; bottle has no external water sources or open edges.
     computeUniforms[12] = this.initialized ? 1.0 : 0.0;
     computeUniforms[13] = this.isPaused;
     computeUniforms[14] = this.brushActive;
@@ -740,11 +753,11 @@ export class GPGPUSimulation {
     computeUniforms[18] = this.brushX;
     computeUniforms[19] = this.brushY;
     computeUniforms[20] = this.time;
-    computeUniforms[21] = config.rainActive && !config.closedWaterCycle ? 1.0 : 0.0;
-    computeUniforms[22] = config.rainQuantity;
-    computeUniforms[23] = config.rainSize;
-    computeUniforms[24] = config.closedWaterCycle ? 0 : config.borderBehavior;
-    computeUniforms[25] = config.borderWaterHeight;
+    computeUniforms[21] = 0; // Reserved; bottle has no external water sources or open edges.
+    computeUniforms[22] = 0; // Reserved; bottle has no external water sources or open edges.
+    computeUniforms[23] = 0; // Reserved; bottle has no external water sources or open edges.
+    computeUniforms[24] = 0; // Reserved; bottle has no external water sources or open edges.
+    computeUniforms[25] = 0; // Reserved; bottle has no external water sources or open edges.
     computeUniforms[26] = this.seed;
     computeUniforms[27] = config.terrainType;
     computeUniforms[28] = config.terrainSandHeight;
@@ -861,8 +874,8 @@ export class GPGPUSimulation {
     renderUniforms[32] = config.showSuspendedSand ? 1.0 : 0.0;
     renderUniforms[33] = this.time;
     renderUniforms[34] = config.smoothRendering ? 1.0 : 0.0;
-    renderUniforms[35] = config.closedWaterCycle ? 0 : config.borderBehavior;
-    renderUniforms[36] = config.borderWaterHeight;
+    renderUniforms[35] = 0; // Reserved.
+    renderUniforms[36] = 0; // Reserved.
     renderUniforms[37] = config.showSoil ? 1.0 : 0.0;
     renderUniforms[38] = 0; // padding 1
     renderUniforms[39] = 0; // padding 2
@@ -1002,8 +1015,8 @@ export class GPGPUSimulation {
     renderUniforms[32] = config.showSuspendedSand ? 1.0 : 0.0;
     renderUniforms[33] = this.time;
     renderUniforms[34] = config.smoothRendering ? 1.0 : 0.0;
-    renderUniforms[35] = config.closedWaterCycle ? 0 : config.borderBehavior;
-    renderUniforms[36] = config.borderWaterHeight;
+    renderUniforms[35] = 0; // Reserved.
+    renderUniforms[36] = 0; // Reserved.
     renderUniforms[37] = config.showSoil ? 1.0 : 0.0;
 
     this.device.queue.writeBuffer(this.renderUniformBufferTerrain!, 0, renderUniforms);
@@ -1103,13 +1116,14 @@ export class GPGPUSimulation {
     this.device.queue.submit([commandEncoder.finish()]);
   }
 
+  public sampleEnergyBudget() {
+    if (!this.resourcesReady || !this.initialized) return;
+    this.energyBudget?.sample(Boolean(this.brushActive) || this.windBrushActive);
+  }
+
   public sampleWaterBudget() {
     if (!this.resourcesReady || !this.initialized || !this.atmosphere || !this.waterBudget) return;
     if (this.brushActive) return;
-    if (this.budgetClosedMode !== config.closedWaterCycle) {
-      this.budgetClosedMode = config.closedWaterCycle;
-      this.waterBudget.resetBaseline();
-    }
     this.waterBudget.sample(
       (this.pingPongToggle ? this.fluidsBufferB : this.fluidsBufferA)!,
       this.atmosphere.surfaceBuffer,

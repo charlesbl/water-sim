@@ -33,7 +33,7 @@ struct SimUniforms {
     erosion_rate: f32,
     capacity_factor: f32,
     deposition_rate: f32,
-    evaporation: f32,
+    reserved_evaporation: f32,
     initialized: f32,
     paused: f32,
     brush_active: f32,
@@ -43,11 +43,11 @@ struct SimUniforms {
     brush_x: f32,
     brush_y: f32,
     time: f32,
-    rain_active: f32,
-    rain_quantity: f32,
-    rain_size: f32,
-    border_behavior: f32,
-    border_water_height: f32,
+    reserved_rain_active: f32,
+    reserved_rain_quantity: f32,
+    reserved_rain_size: f32,
+    reserved_border_behavior: f32,
+    reserved_border_water_height: f32,
     seed: f32,
     terrain_type: f32,
     terrain_sand_height: f32,
@@ -274,9 +274,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         if (y > 0u) { susp_in += incomingSediment(x, y - 1u, grid_size, water_flux[idx - grid_size].top); }
         if (y + 1u < grid_size) { susp_in += incomingSediment(x, y + 1u, grid_size, water_flux[idx + grid_size].bottom); }
         suspended = max(vec2<f32>(0.0), suspended - susp_out + susp_in);
-        if (uniforms.border_behavior == 1.0 && (x == 0u || y == 0u || x == grid_size - 1u || y == grid_size - 1u)) {
-            suspended = vec2<f32>(0.0);
-        }
+
     }
 
     if (uniforms.brush_active > 0.5) {

@@ -33,7 +33,7 @@ struct SimUniforms {
     erosion_rate: f32,
     capacity_factor: f32,
     deposition_rate: f32,
-    evaporation: f32,
+    reserved_evaporation: f32,
     initialized: f32,
     paused: f32,
     brush_active: f32,
@@ -43,11 +43,11 @@ struct SimUniforms {
     brush_x: f32,
     brush_y: f32,
     time: f32,
-    rain_active: f32,
-    rain_quantity: f32,
-    rain_size: f32,
-    border_behavior: f32,
-    border_water_height: f32,
+    reserved_rain_active: f32,
+    reserved_rain_quantity: f32,
+    reserved_rain_size: f32,
+    reserved_border_behavior: f32,
+    reserved_border_water_height: f32,
     seed: f32,
     terrain_type: f32,
     terrain_sand_height: f32,
@@ -71,18 +71,6 @@ struct SimUniforms {
 @group(0) @binding(4) var<storage, read> water_flux : array<FluxCell>;
 @group(0) @binding(5) var<storage, read> lava_flux : array<FluxCell>;
 @group(0) @binding(6) var<storage, read_write> weather_surface : array<vec4<f32>>;
-
-fn hash3D(p: vec3<u32>) -> u32 {
-    var p3 = p * vec3<u32>(1103515245u, 205891187u, 123456789u);
-    var h = p3.x ^ p3.y ^ p3.z;
-    h = h * 0x27d4eb2du;
-    h = h ^ (h >> 15u);
-    return h;
-}
-
-fn random3D(p: vec3<u32>) -> f32 {
-    return f32(hash3D(p)) * (1.0 / 4294967295.0);
-}
 
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -135,17 +123,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
         water = max(0.0, water - w_out + w_in);
 
-        // Rain simulation
-        if (uniforms.rain_active > 0.5) {
-            let cell = vec2<u32>(x, y);
-            let t = u32(uniforms.time * 60.0);
-            let h = random3D(vec3<u32>(cell, t));
-            let threshold = 1.0 - uniforms.rain_quantity;
-            if (h > threshold) {
-                water += uniforms.rain_size;
-            }
-        }
-
         // --- LAVA UPDATE (Virtual Pipe Model) ---
         let my_l_flux = lava_flux[idx];
         let l_out = my_l_flux.left + my_l_flux.right + my_l_flux.bottom + my_l_flux.top;
@@ -170,24 +147,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
         lava = max(0.0, lava - l_out + l_in);
 
-        // React AFTER transport: outgoing fluxes were limited against the old
-        // liquid inventory. Consuming water before those fluxes created mass
-        // when the source was clamped to zero but neighbors still received it.
-        let boiled = min(water, lava);
-        if (boiled > 0.0001) {
-            water -= boiled;
-            lava -= boiled;
-            steam += boiled; // Actual water-equivalent inventory, not opacity.
-            temp = 1.0;
-        }
-
-        // The legacy evaporation slider transfers water to a waiting vapor
-        // reservoir. The atmosphere consumes it; it never fades or vanishes.
-        if (water > 0.0) {
-            let evaporated = min(water, max(uniforms.evaporation, 0.0));
-            water -= evaporated;
-            steam += evaporated;
-        }
+        // Contact quenches lava into rock (simTerrain). Water stays in the
+        // bottle; evaporation is paid for by the surface's finite heat store.
+        lava -= min(water, lava);
     }
 
     // --- BRUSH PAINTING INTERFACE ---
@@ -202,6 +164,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                 water += amount * 1.5;
             } else if (uniforms.brush_type == 1.0) { // Add Lava
                 lava += amount;
+                // Manual injection supplies a finite pulse of sensible heat.
+                // Existing lava never acts as a permanent atmospheric heater.
+                let frozen = weather_surface[idx];
+                let capacity = materialHeatCapacity(cell_a.sand, cell_a.soil, water, frozen.y, frozen.x);
+                weather_surface[idx].z = min(90.0, frozen.z + amount * 450.0 / capacity);
             } else if (uniforms.brush_type == 5.0) { // Erase liquid and frozen water
                 water = max(0.0, water - amount * 5.0);
                 lava = max(0.0, lava - amount * 5.0);
@@ -221,18 +188,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                 let capacity = materialHeatCapacity(cell_a.sand, cell_a.soil, water, frozen.y, frozen.x);
                 let direction = select(-1.0, 1.0, uniforms.brush_type == 7.0);
                 weather_surface[idx].z = clamp(frozen.z + direction * amount * 8.0 / capacity, -70.0, 90.0);
-            }
-        }
-    }
-
-    // --- BOUNDARY DRAINAGE CONDITIONS ---
-    if (uniforms.paused < 0.5) {
-        if (uniforms.border_behavior > 0.5) {
-            if (x == 0u || x == grid_size - 1u || y == 0u || y == grid_size - 1u) {
-                let frozen = max(weather_surface[idx].xy, vec2<f32>(0.0));
-                let ground = cell_a.rock + cell_a.soil + cell_a.sand + frozen.x * 5.0 + frozen.y / 0.917;
-                water = max(0.0, uniforms.border_water_height - ground);
-                lava = 0.0;
             }
         }
     }
@@ -258,7 +213,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     // Steam is water waiting to join the atmosphere, including while weather
     // is paused/disabled. Visual opacity is scaled separately in the renderer.
     if (uniforms.paused < 0.5) {
-        // Temp cooling
+        // Cosmetic lava glow; atmospheric heat is stored in weather_surface.z.
         if (lava > 0.01) {
             temp = 1.0;
         } else {

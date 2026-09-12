@@ -17,6 +17,45 @@ let pointerPosition: { x: number; y: number } | null = null;
 let pointerRevision = 0;
 let pickingPending = false;
 let activeBrushType: number = 0;
+let windStart: { x: number; y: number } | null = null;
+let windEnd: { x: number; y: number } | null = null;
+let windOrigin: THREE.Vector2 | null = null;
+let windPickPosition: { x: number; y: number } | null = null;
+let windArrow: SVGSVGElement;
+const windDirection = new THREE.Vector2();
+
+function stopWind() {
+  windStart = windEnd = windPickPosition = null;
+  windOrigin = null;
+  if (windArrow) windArrow.style.display = 'none';
+}
+
+function updateWind() {
+  const active = isPointerDown && activeBrushType === 10 && !isFPSLooking;
+  windDirection.set(0, 0);
+  let strength = 0;
+  if (active && windStart && windEnd) {
+    const dx = windEnd.x - windStart.x;
+    const dy = windEnd.y - windStart.y;
+    const length = Math.hypot(dx, dy);
+    // Project screen right/up onto the horizontal world plane. This remains
+    // well-defined even when looking along the horizon or straight down.
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+    const rightXZ = new THREE.Vector2(right.x, right.z).normalize();
+    const upXZ = new THREE.Vector2(rightXZ.y, -rightXZ.x);
+    windDirection.copy(rightXZ).multiplyScalar(dx).addScaledVector(upXZ, -dy).normalize();
+    // The terrain model rotates -90° about X: increasing UV.y is world -Z.
+    windDirection.y *= -1;
+    strength = length < 4 ? 0 : Math.min(length / 150, 1) * config.brushStrength;
+    windArrow.style.display = length >= 4 ? 'block' : 'none';
+    windArrow
+      .querySelector('path')!
+      .setAttribute('d', `M ${windStart.x} ${windStart.y} L ${windEnd.x} ${windEnd.y}`);
+  } else {
+    windArrow.style.display = 'none';
+  }
+  gpgpu.setWindBrush(active && !config.paused ? windOrigin : null, windDirection, strength);
+}
 
 // Performance timing variables
 let frameCount = 0;
@@ -72,6 +111,13 @@ function init() {
   canvas.style.width = '100%';
   canvas.style.height = '100%';
   container.appendChild(canvas);
+  windArrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  windArrow.setAttribute('aria-hidden', 'true');
+  windArrow.style.cssText =
+    'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:10;display:none;filter:drop-shadow(0 1px 3px #000)';
+  windArrow.innerHTML =
+    '<defs><marker id="wind-arrow-head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><polygon points="0,0 10,5 0,10" fill="#b8f7ff"/></marker></defs><path fill="none" stroke="#b8f7ff" stroke-width="3" stroke-linecap="round" marker-end="url(#wind-arrow-head)"/>';
+  container.appendChild(windArrow);
 
   // 2. Perspective Camera
   camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -214,6 +260,7 @@ function init() {
   const releaseInputs = () => {
     for (const key of Object.keys(keys) as Array<keyof typeof keys>) keys[key] = false;
     isPointerDown = false;
+    stopWind();
     isFPSLooking = false;
     pointerUV = null;
     pointerPosition = null;
@@ -281,6 +328,12 @@ function onPointerDown(e: PointerEvent) {
 
   isPointerDown = true;
   updatePointerUV(e);
+  stopWind();
+  pointerRevision++;
+  if (activeBrushType === 10) {
+    windStart = windEnd = { x: e.clientX, y: e.clientY };
+    windPickPosition = pointerPosition ? { ...pointerPosition } : null;
+  }
 }
 
 function onPointerMove(e: PointerEvent) {
@@ -311,9 +364,12 @@ function onPointerMove(e: PointerEvent) {
   }
 
   updatePointerUV(e);
+  if (windStart) windEnd = { x: e.clientX, y: e.clientY };
 }
 
 function onPointerUp(_e: PointerEvent) {
+  stopWind();
+  pointerRevision++;
   if (isFPSLooking) {
     isFPSLooking = false;
   }
@@ -364,12 +420,18 @@ function animate() {
   // Ignore results after leaving the canvas; keep accepting hits during motion.
   if (pointerPosition && !isFPSLooking && !pickingPending) {
     const revision = pointerRevision;
+    const windPicking = windPickPosition;
+    const pickPosition = windPicking ?? pointerPosition;
     pickingPending = true;
     void gpgpu
-      .performPicking(camera, pointerPosition.x, pointerPosition.y)
+      .performPicking(camera, pickPosition.x, pickPosition.y)
       .then(() => {
         if (revision === pointerRevision && pointerPosition && !isFPSLooking) {
           pointerUV = gpgpu.pointerUV?.clone() ?? null;
+          if (windPicking) {
+            windOrigin = pointerUV?.clone() ?? null;
+            windPickPosition = null;
+          }
         }
       })
       .finally(() => {
@@ -377,10 +439,11 @@ function animate() {
       });
   }
   gpgpu.setBrushPreview(
-    isFPSLooking ? null : pointerUV,
+    isFPSLooking ? null : windStart ? windOrigin : pointerUV,
     config.brushRadius,
     isPointerDown ? activeBrushType : config.brushType
   );
+  updateWind();
 
   // Run GPGPU physical simulation ticks
   if (!config.paused) {
@@ -410,7 +473,7 @@ function animate() {
     gpgpu.step();
   }
 
-  // Regional weather runs at 20 Hz; the surface water keeps its original 60 Hz.
+  // Bottle weather runs at 20 Hz; the surface water keeps its original 60 Hz.
   if (!config.paused && config.atmosphereEnabled) {
     const weatherDt = WEATHER_TIMESTEP;
     weatherAccumulator = Math.min(
@@ -432,6 +495,7 @@ function animate() {
   // Render Scene using WebGPU
   gpgpu.render(camera);
   gpgpu.sampleWaterBudget();
+  gpgpu.sampleEnergyBudget();
 
   // FPS Stats Monitoring
   frameCount++;

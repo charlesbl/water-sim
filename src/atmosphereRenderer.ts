@@ -7,6 +7,7 @@ import cloudPhysicsWGSL from './shaders/cloudPhysics.wgsl?raw';
 export class AtmosphereRenderer {
   private uniformBuffer: GPUBuffer | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
+  private overlayPipeline: GPURenderPipeline | null = null;
   private volumePipeline: GPURenderPipeline | null = null;
   private particlePipeline: GPURenderPipeline | null = null;
   private readonly uniforms = new Float32Array(64);
@@ -71,6 +72,13 @@ export class AtmosphereRenderer {
         alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
       },
     };
+    this.overlayPipeline = await this.device.createRenderPipelineAsync({
+      label: 'Weather diagnostic overlay',
+      layout,
+      vertex: { module, entryPoint: 'vs_volume' },
+      fragment: { module, entryPoint: 'fs_overlay', targets: [target] },
+      primitive: { topology: 'triangle-list' },
+    });
     this.volumePipeline = await this.device.createRenderPipelineAsync({
       label: 'Cloud column reconstruction',
       layout,
@@ -107,12 +115,7 @@ export class AtmosphereRenderer {
     this.uniforms.set([...this.atmosphere.dimensions, Math.max(100, base + thickness * 3)], 36);
     this.uniforms.set([base, thickness, config.cloudDetail, config.rainVisibility], 52);
     this.uniforms.set(
-      [
-        config.weatherMapSizeKm,
-        config.cloudShadows,
-        this.atmosphere.domainHeight / 2,
-        config.atmosphereBoundary,
-      ],
+      [config.weatherMapSizeKm, config.cloudShadows, this.atmosphere.domainHeight / 2, 0],
       56
     );
     const sunElevation = (config.sunElevation * Math.PI) / 180;
@@ -122,7 +125,7 @@ export class AtmosphereRenderer {
         Math.cos(sunElevation) * Math.cos(sunAzimuth),
         Math.cos(sunElevation) * Math.sin(sunAzimuth),
         Math.sin(sunElevation),
-        0,
+        config.viewOpacity,
       ],
       60
     );
@@ -158,6 +161,11 @@ export class AtmosphereRenderer {
       colorAttachments: [{ view: colorView, loadOp: 'load', storeOp: 'store' }],
     });
     pass.setBindGroup(0, bindGroup);
+    // Diagnostics tint the surface; clouds and precipitation remain independent above them.
+    if (config.atmosphereView !== 0 && config.viewOpacity > 0 && this.overlayPipeline) {
+      pass.setPipeline(this.overlayPipeline);
+      pass.draw(3);
+    }
     pass.setPipeline(this.volumePipeline);
     pass.draw(3);
     pass.setPipeline(this.particlePipeline);
@@ -168,6 +176,7 @@ export class AtmosphereRenderer {
     this.uniformBuffer?.destroy();
     this.uniformBuffer = null;
     this.volumePipeline = null;
+    this.overlayPipeline = null;
     this.particlePipeline = null;
     this.bindGroupLayout = null;
   }

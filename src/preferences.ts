@@ -5,9 +5,9 @@ export const defaultConfig = Object.freeze({ ...config });
 
 interface Preferences {
   weatherModel?: string;
+  energyPanelOpen?: boolean;
   config?: Partial<typeof config>;
   domain?: string | null;
-  advanced?: boolean;
   search?: string;
   scrollTop?: number;
   camera?: { position: number[]; quaternion: number[] };
@@ -32,7 +32,9 @@ export function restoreConfig(): void {
   if (!saved || typeof saved !== 'object') return;
   // Preserve the user's terrain/water/camera preferences when trying this branch.
   // Old volumetric wind units and vertical controls are incompatible with it.
-  const oldWeather = preferences.weatherModel !== 'regional-two-layer-v1';
+  const oldWeather = !['regional-two-layer-v1', 'bottle-two-layer-v1', 'bottle-circulation-v1', 'bottle-mac-v1'].includes(
+    preferences.weatherModel ?? ''
+  );
   const migrated = new Set([
     'airTemperature',
     'relativeHumidity',
@@ -41,30 +43,45 @@ export function restoreConfig(): void {
     'windSpeed',
     'windDirection',
     'solarHeating',
-    'heatingContrast',
     'radiativeCooling',
     'atmosphereTimeScale',
     'atmosphereSlice',
     'atmosphereView',
-    'emergentWeather',
   ]);
   for (const key of Object.keys(defaultConfig) as Array<keyof typeof config>) {
     if (oldWeather && migrated.has(key)) continue;
+    if (key === 'windSpeed' && !['bottle-circulation-v1', 'bottle-mac-v1'].includes(preferences.weatherModel ?? '')) continue;
+    // Migrate the previous default damping; retain deliberately changed values.
+    if (key === 'airDrag' && preferences.weatherModel !== 'bottle-mac-v1' && saved.airDrag === 0.025) continue;
     const value = saved[key];
     if (typeof value !== typeof defaultConfig[key]) continue;
     if (typeof value === 'number' && !Number.isFinite(value)) continue;
     Object.assign(config, { [key]: value });
   }
-  if (saved.thermalOverlay === false) config.thermalOpacity = 0;
-  config.thermalOverlay = config.thermalOpacity > 0;
+  // Older preferences used opacity itself to activate the thermal view.
+  if (saved.viewOpacity === undefined) {
+    config.viewOpacity =
+      saved.thermalOverlay && typeof saved.thermalOpacity === 'number'
+        ? Math.max(0, Math.min(1, saved.thermalOpacity))
+        : defaultConfig.viewOpacity;
+  }
+  config.viewOpacity = Math.max(0, Math.min(1, config.viewOpacity));
+  config.thermalOpacity = config.viewOpacity;
+  // The former height-based air view now opens the lower model layer.
+  if (config.thermalOverlay && config.thermalAir) {
+    config.thermalOverlay = false;
+    config.atmosphereView = 1;
+    config.atmosphereSlice = 0;
+  }
+  config.thermalAir = false;
 }
 
-/** Store the source values, including settings temporarily disabled by another mode. */
+/** Store current settings; removed controls are never restored or saved. */
 export function savePreferences(update: Partial<Preferences> = {}): void {
   if (resetting) return;
   Object.assign(preferences, update, {
     config: { ...config },
-    weatherModel: 'regional-two-layer-v1',
+    weatherModel: 'bottle-mac-v1',
   });
   try {
     const serialized = JSON.stringify(preferences);

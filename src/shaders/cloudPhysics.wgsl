@@ -2,6 +2,13 @@
 // simulation units, not meteorological liquid water contents or droplet sizes.
 const cloudWaterScale: f32 = 0.001;
 const cloudLatentHeat: f32 = 480.0;
+const cloudFusionHeat: f32 = 80.0;
+
+// The same column shielding drives ground heating and visible cloud shadows.
+// Shading reflects incoming sunlight; it never adds a local cooling source.
+fn cloudSunTransmission(condensate: f32, strength: f32) -> f32 {
+    return 1.0 - clamp(strength, 0.0, 1.0) * (1.0 - exp(-max(condensate, 0.0) * 160.0));
+}
 
 fn cloudSaturation(temperature: f32) -> f32 {
     return clamp(0.008 * exp(0.065 * temperature), 0.0001, 0.1);

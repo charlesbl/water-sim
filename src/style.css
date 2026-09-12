@@ -349,9 +349,7 @@ select {
   flex-direction: column;
   overflow: hidden;
 }
-body:has(.inspector.advanced:not([hidden])) {
-  --inspector-width: 640px;
-}
+
 .inspector-header {
   display: flex;
   align-items: flex-start;
@@ -394,38 +392,7 @@ h2 {
   width: 16px;
   height: 16px;
 }
-.inspector-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 9px 22px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-#inspector-mode {
-  font-size: 11px;
-  color: var(--muted);
-}
-.advanced-button {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  color: #c4d3df;
-  font-size: 11px;
-  padding: 6px 8px;
-  border-radius: 5px;
-  background: transparent;
-  border: 1px solid #354c5f;
-}
-.advanced-button .icon {
-  width: 13px;
-  height: 13px;
-}
-.advanced-button[aria-pressed='true'] {
-  border-color: #467f83;
-  color: var(--cyan);
-  background: #1a363e;
-}
+
 .inspector-body {
   min-height: 0;
   overflow-y: auto;
@@ -439,9 +406,7 @@ h2 {
   column-gap: 24px;
   align-items: start;
 }
-.advanced .domain-content {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
+
 .setting-block {
   min-width: 0;
   padding: 20px 0 17px;
@@ -460,9 +425,7 @@ h3 {
   margin: 0;
   color: #dce9f2;
 }
-.inspector:not(.advanced) [data-advanced]:not(.context-active) {
-  display: none;
-}
+
 .control-group {
   margin: 0 0 16px;
   min-width: 0;
@@ -819,7 +782,7 @@ kbd {
 }
 .power-tools {
   display: grid;
-  grid-template-columns: repeat(10, minmax(0, 1fr));
+  grid-template-columns: repeat(11, minmax(0, 1fr));
   gap: 5px;
   flex: 1;
   min-width: 0;
@@ -1016,12 +979,6 @@ kbd {
   }
 }
 @media (min-width: 760px) and (max-width: 1099px) {
-  body:has(.inspector.advanced:not([hidden])) {
-    --inspector-width: 360px;
-  }
-  .advanced .domain-content {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .brand {
     font-size: 16px;
   }
@@ -1143,7 +1100,7 @@ kbd {
     right: 8px;
     width: auto;
     padding: 4px;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 0;
     border-radius: 8px;
   }
@@ -1202,21 +1159,6 @@ kbd {
   .brush-controls .number-box {
     width: 74px;
   }
-  .inspector,
-  body:has(.inspector.advanced:not([hidden])) .inspector {
-    top: auto;
-    bottom: calc(var(--dock-height) + var(--nav-height) + 24px);
-    right: 8px;
-    left: 8px;
-    width: auto;
-    height: calc(
-      100dvh - var(--dock-height) - var(--top-measured-height, var(--top-height)) -
-        var(--nav-height) - 52px
-    );
-    max-height: 480px;
-    border-radius: 12px;
-    z-index: 15;
-  }
   .inspector-header {
     padding: 13px 16px 10px;
   }
@@ -1230,15 +1172,11 @@ kbd {
   #inspector-description {
     font-size: 11px;
   }
-  .inspector-toolbar {
-    padding: 7px 16px;
-  }
+
   .inspector-body {
     padding-inline: 16px;
   }
-  .advanced .domain-content {
-    grid-template-columns: minmax(0, 1fr);
-  }
+
   .setting-block {
     padding-block: 16px;
   }
@@ -1277,9 +1215,6 @@ kbd {
     min-width: 40px;
     min-height: 40px;
   }
-  .advanced-button {
-    min-height: 36px;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -1317,4 +1252,265 @@ kbd {
   .quick-controls .control-group {
     min-width: 0;
   }
+}
+
+/* View selection stays available while any category is open. */
+.topbar {
+  height: auto;
+  min-height: 54px;
+  flex-wrap: wrap;
+}
+.view-controls {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+}
+.view-controls .control-group {
+  margin: 0;
+  width: 160px;
+}
+.view-controls .label-row {
+  margin-bottom: 2px;
+}
+.view-controls label {
+  font-size: 11px;
+  color: var(--muted);
+}
+.view-controls .effect-badge {
+  display: none;
+}
+.view-controls .select-input {
+  padding-block: 5px;
+}
+.view-controls .range-row {
+  min-height: 28px;
+}
+.view-controls .number-box {
+  width: 60px;
+}
+.inspector,
+.domain-nav {
+  top: calc(var(--top-measured-height, 54px) + 28px);
+}
+@media (max-width: 1099px) {
+  .topbar {
+    gap: 10px;
+  }
+  .view-controls .control-group {
+    width: 145px;
+  }
+  .search-area {
+    flex: 1;
+  }
+}
+
+/* A small, independent readout of the bottle's radiative boundary. */
+.energy-panel {
+  position: absolute;
+  top: calc(var(--top-measured-height, 54px) + 28px);
+  left: 16px;
+  width: 108px;
+  border-radius: 8px;
+  z-index: 20;
+  font-size: 12px;
+}
+.energy-panel[open] {
+  width: 244px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - var(--top-measured-height, 54px) - var(--dock-height) - 72px);
+  overflow-y: auto;
+}
+.energy-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+.energy-panel > summary::-webkit-details-marker {
+  display: none;
+}
+.energy-panel > summary:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.energy-panel > summary > .icon {
+  width: 16px;
+  height: 16px;
+  color: #efc879;
+}
+.energy-chevron {
+  margin-left: auto;
+  color: var(--muted);
+}
+.energy-panel[open] .energy-chevron {
+  transform: rotate(180deg);
+}
+.energy-body {
+  padding: 2px 12px 12px;
+  border-top: 1px solid var(--line);
+}
+.energy-diagram {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px minmax(0, 1fr);
+  gap: 3px;
+  align-items: center;
+  padding: 12px 0;
+  text-align: center;
+}
+.energy-flow {
+  display: grid;
+  gap: 3px;
+}
+.energy-in {
+  color: #efc879;
+}
+.energy-out {
+  color: #93c7ff;
+}
+.energy-direction {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+}
+.energy-source {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.energy-flow strong,
+.energy-net strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.energy-bottle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.energy-bottle svg {
+  width: 38px;
+  height: 46px;
+  flex-shrink: 0;
+  stroke: #a2b4c4;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.energy-bottle .energy-water {
+  stroke: var(--cyan);
+}
+.energy-arrow {
+  font-size: 16px;
+}
+.energy-net {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  background: #ffffff06;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.energy-net[data-sign='incoming'] strong {
+  color: #efc879;
+}
+.energy-net[data-sign='outgoing'] strong {
+  color: #93c7ff;
+}
+.energy-body p {
+  margin: 7px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.energy-units {
+  text-align: center;
+}
+.energy-body .energy-status {
+  color: var(--cyan);
+}
+@media (max-width: 759px) {
+  .energy-panel {
+    top: calc(var(--top-measured-height, 194px) + 20px);
+    left: 8px;
+    z-index: 15;
+  }
+  .energy-panel[open] {
+    max-height: calc(
+      100dvh - var(--top-measured-height, 194px) - var(--dock-height) - var(--nav-height) - 60px
+    );
+  }
+  #command-ui:has(.inspector:not([hidden])) .energy-panel {
+    visibility: hidden;
+  }
+}
+@media (max-width: 759px) {
+  .topbar {
+    display: flex;
+  }
+  .view-controls {
+    width: 100%;
+  }
+  .view-controls .control-group {
+    flex: 1;
+    width: auto;
+  }
+  .time-controls {
+    width: 100%;
+    padding: 0;
+    border: 0;
+  }
+  .search-area {
+    flex-basis: 100%;
+  }
+  .domain-nav {
+    top: auto;
+  }
+  .inspector {
+    top: calc(var(--top-measured-height, 194px) + 20px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: calc(var(--dock-height) + var(--nav-height) + 24px);
+    padding: 0;
+  }
+}
+
+@media (max-width: 759px) {
+  .view-controls {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+  .view-controls [data-control='atmosphere-view'] {
+    flex-basis: 100%;
+  }
+}
+
+/* Keep individual resets available for contextually inactive parameters too. */
+.parameter-reset {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin-left: auto;
+  border: 1px solid #3c505e;
+  border-radius: 6px;
+  background: transparent;
+  color: #9cbdc6;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.parameter-reset:hover {
+  color: #e6fbff;
+  background: #263c48;
+  border-color: #77b5c4;
 }

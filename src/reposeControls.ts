@@ -1,4 +1,6 @@
 import { config } from './config';
+import { defaultConfig } from './preferences';
+import { addParameterReset } from './parameterReset';
 
 // The shaders compare stored height differences per cell. The controls expose
 // the corresponding angle in the rendered world (200 units across the map).
@@ -31,6 +33,7 @@ export function setupReposeControls(root: ParentNode = document): void {
       const value = root.querySelector<HTMLElement>(`#${id}-val`);
       const angle = reposeSlopeToAngle(config[key], config.gridSize, config.heightScale);
       if (slider) {
+        delete slider.dataset.exactValue;
         slider.value = angle.toFixed(1);
         slider.setAttribute('aria-valuetext', `${angle.toFixed(1)} degrees`);
       }
@@ -39,6 +42,11 @@ export function setupReposeControls(root: ParentNode = document): void {
   };
 
   for (const [id, key] of controls) {
+    const slider = root.querySelector<HTMLInputElement>(`#${id}`);
+    if (slider) addParameterReset(slider, () => {
+      config[key] = defaultConfig[key];
+      refresh();
+    }, () => config[key] === defaultConfig[key], () => reposeSlopeToAngle(config[key], config.gridSize, config.heightScale));
     root.querySelector<HTMLInputElement>(`#${id}`)?.addEventListener('input', (event) => {
       const angle = (event.target as HTMLInputElement).valueAsNumber;
       if (!Number.isFinite(angle)) return;

@@ -3,7 +3,7 @@ struct AtmosphereRenderUniforms {
     inverse_mvp: mat4x4<f32>, mvp: mat4x4<f32>, camera_time: vec4<f32>, grid_height: vec4<f32>,
     view_slice_clouds_wind: vec4<f32>, camera_right: vec4<f32>, camera_up: vec4<f32>,
     clouds: vec4<f32>, // reconstructed base, depth, detail, rain visibility
-    region: vec4<f32>, // nominal map km, shadow strength, layer accounting depth, boundary
+    region: vec4<f32>, // nominal map km, shadow strength, layer accounting depth, padding
     sun: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> uniforms: AtmosphereRenderUniforms;
@@ -14,8 +14,7 @@ struct AtmosphereRenderUniforms {
 
 fn cellIndex(p: vec2<i32>) -> u32 {
     let n=vec2<i32>(uniforms.grid_height.xy);
-    var c=clamp(p,vec2<i32>(0),n-1);
-    if (uniforms.region.w < 0.5) { c=((p%n)+n)%n; }
+    let c=clamp(p,vec2<i32>(0),n-1);
     return u32(c.x+c.y*n.x);
 }
 fn mixAir(a: AirCell,b: AirCell,t:f32) -> AirCell {
@@ -65,33 +64,44 @@ fn temperatureColor(t:f32) -> vec3<f32> {
 @vertex fn vs_volume(@builtin(vertex_index) i:u32) -> @builtin(position) vec4<f32> {
     let p=vec2<f32>(f32((i<<1u)&2u),f32(i&2u)); return vec4<f32>(p*2.0-1.0,0.0,1.0);
 }
-@fragment fn fs_volume(@builtin(position) pixel:vec4<f32>) -> @location(0) vec4<f32> {
+@fragment fn fs_overlay(@builtin(position) pixel:vec4<f32>) -> @location(0) vec4<f32> {
     let size=vec2<f32>(textureDimensions(scene_depth));
     let ndc=vec2<f32>(pixel.x/size.x*2.0-1.0,1.0-pixel.y/size.y*2.0);
     let depth=textureLoad(scene_depth,vec2<i32>(pixel.xy),0);
     let hit=unproject(ndc,depth);
     let onGround=depth<1.0 && all(abs(hit.xy)<=vec2<f32>(100.0));
     let view=uniforms.view_slice_clouds_wind.x;
-    if(view>0.5){
-        if(!onGround){discard;}
-        let layer=u32(round(uniforms.view_slice_clouds_wind.y));
-        let cell=sampleAir(hit.xy,layer); let weatherSample=sampleWeather(hit.xy);
-        var color=temperatureColor(cell.velocity_temperature.w);
-        if(view>1.5 && view<2.5){
-            let rh=cell.moisture.x/max(cloudSaturation(cell.velocity_temperature.w),0.00001);
-            color=mix(vec3<f32>(0.64,0.34,0.15),vec3<f32>(0.18,0.83,0.92),clamp(rh,0.0,1.0));
-            color=mix(color,vec3<f32>(0.96,0.98,1.0),clamp(cell.moisture.y*120.0,0.0,0.8));
-        }else if(view>2.5 && view<3.5){
-            let speed=length(cell.velocity_temperature.xy)*uniforms.region.x/200.0*60.0;
-            color=mix(vec3<f32>(0.14,0.23,0.57),vec3<f32>(0.25,0.85,0.7),clamp(speed/3.0,0.0,1.0));
-            color=mix(color,vec3<f32>(1.0,0.55,0.16),clamp((speed-3.0)/3.0,0.0,1.0));
-        }else if(view>3.5 && view<4.5){
-            let rate=1.0-exp(-weatherSample.z*18000.0);
-            color=mix(vec3<f32>(0.14,0.20,0.26),vec3<f32>(0.22,0.78,0.72),clamp(rate*2.0,0.0,1.0));
-            color=mix(color,vec3<f32>(0.97,0.76,0.24),clamp(rate*2.0-1.0,0.0,1.0));
-        }else if(view>4.5){color=mix(vec3<f32>(0.72,0.43,0.20),vec3<f32>(0.16,0.66,0.80),weatherSample.y);}
-        return vec4<f32>(color*0.72,0.72);
+    if(!onGround || view<0.5){discard;}
+    let layer=u32(round(uniforms.view_slice_clouds_wind.y));
+    let cell=sampleAir(hit.xy,layer); let weatherSample=sampleWeather(hit.xy);
+    var color=temperatureColor(cell.velocity_temperature.w);
+    if(view>1.5 && view<2.5){
+        let rh=cell.moisture.x/max(cloudSaturation(cell.velocity_temperature.w),0.00001);
+        color=mix(vec3<f32>(0.64,0.34,0.15),vec3<f32>(0.18,0.83,0.92),clamp(rh,0.0,1.0));
+        color=mix(color,vec3<f32>(0.96,0.98,1.0),clamp(cell.moisture.y*120.0,0.0,0.8));
+    }else if(view>2.5 && view<3.5){
+        let speed=length(cell.velocity_temperature.xy)*uniforms.region.x/200.0*60.0;
+        color=mix(vec3<f32>(0.14,0.23,0.57),vec3<f32>(0.25,0.85,0.7),clamp(speed/3.0,0.0,1.0));
+        color=mix(color,vec3<f32>(1.0,0.55,0.16),clamp((speed-3.0)/3.0,0.0,1.0));
+    }else if(view>3.5 && view<4.5){
+        let rate=1.0-exp(-weatherSample.z*18000.0);
+        color=mix(vec3<f32>(0.14,0.20,0.26),vec3<f32>(0.22,0.78,0.72),clamp(rate*2.0,0.0,1.0));
+        color=mix(color,vec3<f32>(0.97,0.76,0.24),clamp(rate*2.0-1.0,0.0,1.0));
+    }else if(view>4.5 && view<5.5){color=mix(vec3<f32>(0.72,0.43,0.20),vec3<f32>(0.16,0.66,0.80),weatherSample.y);}
+    if(view>5.5){
+        let vertical=cell.velocity_temperature.z*2.0;
+        let amount=1.0-exp(-abs(vertical)*0.8);
+        let tint=select(vec3<f32>(0.24,0.6,0.93),vec3<f32>(0.97,0.75,0.28),vertical>=0.0);
+        color=mix(vec3<f32>(0.14,0.20,0.26),tint,amount);
     }
+    return vec4<f32>(color * uniforms.sun.w, uniforms.sun.w);
+}
+@fragment fn fs_volume(@builtin(position) pixel:vec4<f32>) -> @location(0) vec4<f32> {
+    let size=vec2<f32>(textureDimensions(scene_depth));
+    let ndc=vec2<f32>(pixel.x/size.x*2.0-1.0,1.0-pixel.y/size.y*2.0);
+    let depth=textureLoad(scene_depth,vec2<i32>(pixel.xy),0);
+    let hit=unproject(ndc,depth);
+    let onGround=depth<1.0 && all(abs(hit.xy)<=vec2<f32>(100.0));
     let origin=uniforms.camera_time.xyz; let direction=normalize(unproject(ndc,1.0)-origin);
     let box=rayBox(origin,direction);
     let start=max(max(box.x,0.0),length(unproject(ndc,0.0)-origin));
@@ -132,7 +142,9 @@ fn temperatureColor(t:f32) -> vec3<f32> {
     var shadow=0.0;
     if(onGround){
         let info=sampleWeather(hit.xy);
-        shadow=info.w*uniforms.region.y*0.55 + info.y*0.08;
+        let condensate=sampleAir(hit.xy,0u).moisture.y+sampleAir(hit.xy,1u).moisture.y;
+        let shielding=1.0-cloudSunTransmission(condensate,uniforms.region.y);
+        shadow=clamp(shielding*0.55 + info.y*0.08,0.0,0.9);
     }
     // Cloud shadow and rain-darkened ground are composed underneath the volume.
     color+=trans*shadow*vec3<f32>(0.035,0.055,0.08);
@@ -149,7 +161,10 @@ struct ParticleVertex {
     let isWind=instance>=8192u;
     let layer=u32(select(seed.z>0.5,uniforms.view_slice_clouds_wind.y>0.5,uniforms.view_slice_clouds_wind.x>0.5));
     let initial=sampleAir(seed.xy*200.0-100.0,layer);
-    let xy=fract(seed.xy+initial.velocity_temperature.xy*uniforms.camera_time.w/200.0)*200.0-100.0;
+    // Short-lived tracers restart locally and never wrap through bottle walls.
+    let age=fract(seed.z+uniforms.camera_time.w/8.0);
+    let xy=seed.xy*200.0-100.0+initial.velocity_temperature.xy*(age*8.0);
+    let visible=all(abs(xy)<vec2<f32>(99.0));
     let info=sampleWeather(xy); let air=sampleAir(xy,layer);
     let low=sampleAir(xy,0u);
     let snow=low.moisture.w/max(low.moisture.z+low.moisture.w,0.000001);
@@ -163,10 +178,12 @@ struct ParticleVertex {
     var axis=normalize(vec3<f32>(low.velocity_temperature.xy,-fall)); var kind=snow;
     if(isWind){
         p.z=select(info.x+2.0,base+uniforms.clouds.y*0.5,layer==1u);
-        alpha=min(0.65,length(air.velocity_temperature.xy)*0.6);
+        alpha=min(0.65,length(air.velocity_temperature.xyz)*0.6);
         tint=select(vec3<f32>(0.3,0.9,0.95),vec3<f32>(1.0,0.8,0.36),layer==1u);
-        axis=normalize(vec3<f32>(air.velocity_temperature.xy,0.00001));width=0.07;extent=1.0;kind=2.0;
-    }else if(uniforms.view_slice_clouds_wind.x>0.5){alpha=0.0;}
+        axis=normalize(air.velocity_temperature.xyz+vec3<f32>(0.0,0.0,0.00001));width=0.07;extent=1.0;kind=2.0;
+        if(uniforms.view_slice_clouds_wind.x>2.5 && uniforms.view_slice_clouds_wind.x<3.5){alpha*=uniforms.sun.w;}
+    }
+    alpha *= select(0.0, smoothstep(0.0,0.12,age)*(1.0-smoothstep(0.8,1.0,age)), visible);
     var side=normalize(cross(axis,normalize(uniforms.camera_time.xyz-p+0.00001))+uniforms.camera_right.xyz*0.00001);
     var point=p+side*corner.x*width+axis*corner.y*extent;
     if(!isWind && snow>0.7){point=p+uniforms.camera_right.xyz*corner.x*width+uniforms.camera_up.xyz*corner.y*width;}

@@ -1,3 +1,4 @@
+import '../src/style.css';
 import { config } from '../src/config.ts';
 import { setupSimulationControls } from '../src/simulationControls.ts';
 import { setupWeatherControls } from '../src/weatherControls.ts';
@@ -40,6 +41,82 @@ async function run() {
       const number = $(e.id + '-number');
       return number && ['min', 'max', 'step'].every((k) => e[k] === number[k]);
     })
+  );
+  check(
+    'View selector and common opacity are in the top bar',
+    $('atmosphere-view').closest('.topbar') && $('view-opacity').closest('.topbar')
+  );
+  check(
+    'All parameters are available without an advanced mode',
+    !$('toggle-advanced') && !document.querySelector('[data-advanced]')
+  );
+  check(
+    'Sun controls share a dedicated panel',
+    [
+      'sun-elevation',
+      'sun-azimuth',
+      'solar-heating',
+      'heating-contrast',
+      'radiative-cooling',
+      'evaporation-rate',
+      'cloud-shadows',
+    ].every((id) => $(id).closest('.domain-content').id === 'domain-sun')
+  );
+  check(
+    'Exactly three temperature layers and no height control',
+    $('atmosphere-view').querySelectorAll('optgroup[label="Temperature"] option').length === 3 &&
+      !$('thermal-height') &&
+      !$('thermal-controls')
+  );
+  for (const [choice, layer] of [
+    ['1', 0],
+    ['temperature-cloud', 1],
+  ]) {
+    change('atmosphere-view', choice);
+    check(
+      `Temperature ${choice} selects its fixed layer`,
+      config.atmosphereView === 1 &&
+        config.atmosphereSlice === layer &&
+        !config.thermalOverlay &&
+        $('atmosphere-slice').disabled &&
+        $('atmosphere-slice-group').hidden &&
+        $('atmosphere-view').value === choice
+    );
+  }
+  change('view-opacity', 35);
+  for (const view of ['0', '1', '2', '3', '4', '5', 'temperature-cloud', 'surface']) {
+    change('atmosphere-view', view);
+    check(
+      `View ${view} retains common opacity`,
+      config.viewOpacity === 0.35 &&
+        config.thermalOpacity === 0.35 &&
+        $('view-opacity').value === '35' &&
+        config.thermalOverlay === (view === 'surface')
+    );
+  }
+  change('view-opacity', 0);
+  check(
+    'Zero opacity keeps the selected view',
+    $('atmosphere-view').value === 'surface' && config.thermalOverlay && config.thermalOpacity === 0
+  );
+  change('view-opacity', 100);
+  check('Full opacity restores the selected overlay', config.thermalOpacity === 1);
+  change('atmosphere-view', 0);
+  check(
+    'Humidity is grouped with initial air in the closed cycle',
+    $('relative-humidity').closest('section').id === 'climate-initial-air'
+  );
+  change('regional-drive', 0);
+  check(
+    'Isolated temperature and wind move to initial conditions',
+    $('air-temperature').closest('section').id === 'climate-initial-air' &&
+      $('wind-speed').closest('section').id === 'climate-initial-wind'
+  );
+  change('regional-drive', 1);
+  check(
+    'Regional temperature and wind return to live climate',
+    $('air-temperature').closest('section').id === 'climate-live-air' &&
+      $('wind-speed').closest('section').id === 'climate-live-wind'
   );
   const edits = [
     ['weather-map-size', 'weatherMapSizeKm', 15, 15],
@@ -100,16 +177,43 @@ async function run() {
     'Upper layer selector reports its actual meaning',
     $('atmosphere-slice-val').textContent === 'Cloud layer'
   );
-  document.querySelector('[data-weather-preset="dry"]').click();
+  check('Weather presets are removed', !document.querySelector('[data-weather-preset]'));
+  for (const drive of [0, 1]) {
+    change('regional-drive', drive);
+    for (const category of ['air', 'wind']) {
+      const initial = $(`climate-initial-${category}`);
+      check(
+        `Initial ${category} remains populated with regional drive ${drive}`,
+        [...initial.querySelectorAll('.control-group')].some((group) => !group.hidden)
+      );
+    }
+    const temperature = drive ? 'initial-air-temperature' : 'air-temperature';
+    check(
+      `Initial temperature is visible with regional drive ${drive}`,
+      !$(temperature).closest('.control-group').hidden &&
+        $(temperature).closest('section').id === 'climate-initial-air'
+    );
+  }
+  change('initial-air-temperature-number', 18);
   check(
-    'Dry preset changes air and retains ground reservoirs',
-    config.relativeHumidity === 0.25 && resets.at(-1) === false
+    'Initial temperature edits synchronize live range and numeric value',
+    config.airTemperature === 18 &&
+      $('air-temperature').value === '18' &&
+      $('air-temperature-number').value === '18'
   );
-  document.querySelector('[data-weather-preset="storm"]').click();
+  change('air-temperature-number', 9);
   check(
-    'Storm preset enables fast rain and moving winds',
-    config.rainLifetime === 30 && config.windSpeed === 3
+    'Live temperature edits synchronize initial range and numeric value',
+    $('initial-air-temperature').value === '9' && $('initial-air-temperature-number').value === '9'
   );
+  change('initial-wind-speed-number', 2.8);
+  check(
+    'Initial wind updates the shared wind value',
+    config.windSpeed === 2.8 && $('wind-speed').value === '2.8'
+  );
+  $('btn-weather-restart-air').click();
+  check('Restart air remains available and preserves surface water', resets.at(-1) === false);
+  change('regional-drive', 1.5);
   check(
     'Surface fluid tuning is preserved by weather controls',
     [
@@ -121,6 +225,18 @@ async function run() {
       'depositionRate',
     ].every((k) => config[k] === defaults[k])
   );
+  change('atmosphere-view', 'surface');
+  change('view-opacity', 0);
+  const zeroOpacityPreferences = JSON.parse(localStorage.getItem('terragpu.preferences.v1'));
+  Object.assign(preferences, zeroOpacityPreferences);
+  config.thermalOverlay = false;
+  restoreConfig();
+  check(
+    'Reload preserves the thermal view even at zero opacity',
+    config.thermalOverlay && !config.thermalAir && config.viewOpacity === 0
+  );
+  change('atmosphere-view', 3);
+  change('view-opacity', 65);
   const saved = JSON.parse(localStorage.getItem('terragpu.preferences.v1'));
   check(
     'New controls and model version are persisted',

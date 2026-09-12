@@ -4,7 +4,7 @@
 
 An interactive GPU sandbox inspired by _From Dust_, coupling water, sand, soil, lava and terrain to **two horizontal atmospheric layers**. This experimental branch, `codex/two-layer-weather`, replaces the 96 × 96 × 64 atmosphere with **256 × 256 × 2 cells**. The existing **2048 × 2048** terrain and surface-fluid simulation retains its resolution and flow parameters.
 
-The default game region is nominally **10 km wide**, with roughly **2 km air-mass features** and a **180-second regional evolution time**. These are game scales, not a calibrated forecast. The deployed demo may still use the older model.
+The default game region is nominally **10 km wide**, with roughly **2 km air-mass features** and a sealed atmospheric boundary. These are game scales, not a calibrated forecast. The deployed demo may still use the older model.
 
 ---
 
@@ -20,17 +20,18 @@ The default game region is nominally **10 km wide**, with roughly **2 km air-mas
   - Dynamic shallow water equation solver.
   - Ice forms a solid layer on the bed, and the remaining liquid flows above it in the existing 2.5D solver.
   - Cooling freezes available water progressively; melting returns the same water-equivalent mass to the liquid reservoir.
-  - Water erodes exposed sand first, then the underlying soil. Both materials share a carrying capacity, travel separately with the flow, and settle back into their own layers; dry cells deposit all remaining sediment. Closed and water-only borders conserve each sediment inventory.
-  - Interactive sliders for fluid parameters (gravity, damping, evaporation).
-  - Map border behaviors (block all, pass all, pass water only).
-- **Regional Weather:**
+  - Water erodes exposed sand first, then the underlying soil. Both materials share a carrying capacity, travel separately with the flow, and settle back into their own layers; dry cells deposit all remaining sediment. Sealed walls retain both sediment inventories.
+  - Interactive sliders for fluid parameters (gravity and damping).
+  - Permanently closed walls for fluids, sediments and air.
+- **Climate in a Bottle:**
   - Lower air exchanges heat and moisture with the landscape; upper air transports clouds and most precipitation.
   - Conservative horizontal vapor/cloud/rain/snow transport, terrain lifting, convection and exchanges between layers.
-  - Regional energy sustains evolving thermal contrasts and curved winds. This represents the surrounding weather system; it never adds water or directly creates rain. Set **Regional energy** to 0 for isolated, decaying weather.
+  - No prescribed regional circulation, wind target, temperature target or humidity reservoir. Initial wind is zero by default.
   - Cloud maturation delays rain so evaporated water can reach inland areas. Shallow fog produces rain more slowly than upper clouds.
   - Snow albedo, thermal inertia, cloud shading, infrared cooling, evaporation, freezing and thawing couple the atmosphere to the existing terrain.
-  - Mild, Snow, Thaw, Storm and Dry presets. **Restart air** preserves terrain, water, snow and ice.
-  - A closed water cycle by default, with periodic atmospheric edges or closed walls. Manual rain and open surface boundaries remain available when the cycle is opened.
+  - **Restart air** applies initial conditions while preserving terrain, water, snow and ice.
+  - A permanently closed water cycle. Sunlight in and infrared out are the only automatic boundary energy inputs/outputs; brushes and resets are manual interventions.
+  - A compact collapsible **Energy** panel on the left shows absorbed sunlight, escaping infrared and their difference, read from the GPU.
   - Live inventory accounts for liquid, snow, ice, vapor, clouds, airborne precipitation, steam and pending evaporation.
   - Reconstructed volumetric clouds, low fog, rain/snow particles, shadows and wind tracers. Maps show temperature, humidity, wind, current precipitation or recent rain history.
 - **Visuals & Customization:**
@@ -83,25 +84,23 @@ This generates optimized static files inside the `dist/` directory.
 
 ### Exploring the weather
 
-The world opens with the inspector closed and the Water power selected. **Climate → Regional weather** exposes landscape scale, air-mass size, regional energy, regional evolution time, cloud-to-rain time and mountain influence. **Advanced** adds thermal contrasts, seed, wind shear, turning and mixing controls. Regional energy is enabled by default: a small isolated atmosphere otherwise loses its initial contrasts and settles into local recycling above water.
+The world opens with the inspector closed and the Water power selected. **Climate** separates initial conditions (air temperature, humidity, stability, a lower-air impulse whose return is pressure-solved, and spatial contrasts) from live parameters (layer exchange, cloud-to-rain time and terrain response). **Restart air** applies initial values while preserving ground water, snow and ice; **Reset weather** also clears snow and ice. Each manual reset starts a new water-inventory baseline.
 
-Humidity and stability are initial conditions applied by **Restart air**. Reference temperature and wind, pattern scale and contrasts also shape the live regional environment when regional energy is enabled. Set that energy to 0 to test freely evolving air. Solar forcing, rain timing, relief response and surface feedbacks remain live. Presets restart the air while preserving the ground; they start a new water-inventory baseline.
+The bottle has permanently sealed walls, with no periodic wrapping, external rain, humidity thermostat or sustained regional wind. Sunlight and infrared radiation are configured in **Sun**, along with surface evaporation. Land/water heating differences come from local albedo and heat capacity; the artificial solar-contrast redistribution is removed. The previous extra evaporation shortcut and permanent lava heating are removed; painting lava supplies a finite manual heat pulse. The wind now uses independent MAC velocities in both layers and at their vertical interface. Conservative momentum transport and a coupled multigrid pressure projection let currents travel and find return paths through the closed domain. Thermal buoyancy and mechanical dissipation retain explicit sensible-heat counterparts; this remains a simplified thermal-work model rather than a complete atmospheric energy model.
 
-The top bar controls pause and provides synchronized shortcuts to **World speed**, **Weather speed**, **Temperature opacity**, and **Cloud opacity** in the right inspector. Set temperature opacity to 0 to hide its overlay; all ten powers and their size/strength controls stay in the bottom dock. A narrow navigation rail on the right opens its inspector directly alongside it. On small screens the domain navigation sits directly below the drawer. The six domains are **World**, **Climate**, **Water & Lava**, **Sediments**, **Observe**, and **Settings**. Select a domain again or press Escape to close its inspector. **Advanced** exposes every parameter of that domain, using two columns on screens at least 1100 px wide. Below 760 px the inspector becomes a bottom drawer.
+Open **Energy** on the left for `Sun absorbed → bottle → IR to space` and **IN − OUT**. Values are game energy units per weather second, measured from applied GPU radiative fluxes. Reflected sunlight is excluded from the absorbed input; infrared reabsorbed inside the atmosphere is an internal transfer. Paused or disabled weather shows zero applied exchange. This is a boundary-flow readout, not a proof that the existing numerical model conserves total stored energy. Brushes and resets are explicitly outside this readout.
 
-Every numeric slider has an editable value with its original limits and precision. Type a number and press Enter or leave the field to apply it. Search by a current or former control name to jump to its original control, including advanced or temporarily unavailable settings. Press **/** to focus search. Disabled controls explain their prerequisites and link to the relevant mode. **World** generation controls still regenerate the terrain immediately; their labels say **Regenerates terrain**.
+**Climate** exposes **Thermal expansion**, **Air friction**, **Air viscosity**, **Pressure quality** and **Surface–air heat exchange**. Friction defaults to 0.006 /s near the ground and is ten times weaker aloft; pressure quality defaults to three multigrid cycles. The old default friction is migrated while changed values are retained. The **Updrafts & downdrafts** view shows the signed vertical flow, and wind tracers include vertical motion.
 
-Find the closed water cycle, manual rain, solar evaporation and surface boundaries in **Water & Lava**. **Observe** groups atmospheric views, thermal overlays, visible layers and the complete water inventory. Active thermal and slice views expose their contextual controls without requiring Advanced. **Settings** contains rendering quality, camera help and simulation details. UI interactions never paint through onto the world. Camera shortcuts remain active after using buttons, checkboxes, or sliders, including Space to move faster; text and numeric fields keep the keyboard while editing.
+**Cloud adjustment** controls how quickly condensation/evaporation converts stored latent energy into air heating/cooling. **Rain evaporation** lets falling rain cool dry lower air before reaching the ground, feeding cold-pool circulation through the coupled buoyancy/pressure response. Both act live and accept zero to isolate their effects. Surface evaporation and condensation now share the same latent cost; sensible heat carried across the air/surface boundary has paired debits and credits. **Sun → Cloud sun shielding** already affected heating and now shares its attenuation law with visible shadows. These internal feedbacks add no prescribed wind or cooling source; sustained moving showers still need gameplay validation.
 
-**Closed water cycle** is also enabled by default. Solar evaporation moves available liquid water into the air; condensation and precipitation return it to the surface. Snow and ice melting return liquid water. The total includes water in every reservoir and pending transfers, and is conserved during internal evolution to floating-point precision. **Water inventory** shows that total, its drift from the current balance, and its distribution. Presets, air restarts, resets, and adding or erasing water deliberately change the water inventory and start a new balance.
+The top bar contains the view selector, a shared view opacity, pause, and **World speed** / **Weather speed** shortcuts. The right-hand domains are **World**, **Climate**, **Sun**, **Water & Lava**, **Sediments**, **Observe**, and **Settings**. Select a domain again or press Escape to close its inspector. All controls are available without an Advanced mode. Every numeric slider has an editable value with its limits and precision; search jumps directly to a control. **World** generation settings regenerate terrain immediately.
 
-**Atmosphere boundaries** offers two closed choices: **Periodic** carries air and its water across to the opposite horizontal edge; **Closed walls** blocks outward flow. Both keep ground and ceiling closed. The closed water cycle independently seals surface-water edges, suspends manual rain, and disables humidity forcing. The corresponding controls display their effective settings while preserving your choices for open mode. Disabling the closed cycle restores those choices and permits external water sources or losses; it does not create an open atmospheric boundary.
-
-Choose **Snow** to start with cold, humid air, add some liquid water with the Water brush, and let the weather evolve. Select **Thaw** on the same landscape to initialize warmer air while preserving the accumulated snow and ice. Melting transfers solid water into the liquid water buffer, where it can flow through the existing surface simulation. **Restart air** and the presets preserve the ground and its water reservoirs; **Reset Weather** clears snow and ice as well as restarting the atmosphere.
+**Observe** contains rendering adjustments, visible layers and the complete water inventory. The inventory includes liquid, snow, ice, vapor, clouds, airborne precipitation, steam and pending evaporation. Manual additions, erasing and resets start a new baseline. The ten powers and brush controls remain in the bottom dock; UI interactions do not paint through onto the world.
 
 Ice always forms a solid layer attached to the terrain, with liquid water above it. Freezing consumes available liquid and grows that layer as cooling removes heat; sustained cooling can freeze the entire water column. Melting lowers the solid bed and returns the same water-equivalent mass to liquid. Only the submerged portion of snow interacts with liquid water: available heat melts it, while the remainder compacts into anchored ice. Traces of rain or meltwater therefore leave the snowpack intact, and snow on dry terrain can accumulate. This is a deliberate simplification for the 2.5D model: it does not reproduce the floating ice cover of a real lake. There is one liquid reservoir per column, with no floating sheets, ice mechanics, or stacked layers of liquid.
 
-Use **Observe → Explore atmosphere** for clouds, temperature, humidity, wind, **Rain & snow radar**, or **Recent wetness**. Temperature/humidity/wind maps select either lower air or the cloud layer. Wetness records recent rainfall with a three-minute decay; it is not groundwater or a vegetation simulation. Cloud base, thickness and detail are visual controls independent of the simulated water inventory. **Pause** freezes simulation while leaving the camera usable.
+Use the top-bar view selector for clouds, surface/layer temperature, humidity, wind, **Rain & snow radar**, or **Recent wetness**. Temperature/humidity/wind maps select either lower air or the cloud layer. Wetness records recent rainfall with a three-minute decay; it is not groundwater or a vegetation simulation. Cloud base, thickness and detail are visual controls independent of the simulated water inventory. **Pause** freezes simulation while leaving the camera usable.
 
 Surface fluids advance at a fixed **60 Hz**, weather at **20 Hz**. Both use elapsed time and bounded catch-up. **World speed** scales both clocks; **Weather speed** additionally scales weather. Under sustained GPU overload, catch-up limits can slow simulated time. Evaporation now gives a shallow water film roughly a three-minute drying time at the default rate, allowing rain to collect and flow through the existing river solver.
 
@@ -109,29 +108,17 @@ The **Ice** brush adds solid ice beneath the water. **Erase** also removes snow 
 
 Move the camera with W/A/S/D and Q/E; hold the middle mouse button to look around. Space accelerates movement and Shift slows it down.
 
-See [the two-layer design and test recipes](docs/regional-weather.md). Historical 3D atmosphere tests and optimization fixtures describe the previous model; vegetation is not implemented on this branch.
+See [the bottle model and validation notes](docs/regional-weather.md). See also [the MAC wind design](docs/mac-wind.md). Historical 3D atmosphere tests and optimization fixtures describe the previous model; vegetation is not implemented on this branch.
 
 ### Checks
 
-Start Vite, then run:
+Minimum checks passed on September 12, 2026: **typecheck, production build and four targeted suites (47 assertions)**. A reserved WGSL entry-point name was fixed during GPU validation. The existing `npm run test:weather` suites still contain regional-forcing and obsolete-control expectations and need adaptation before broader validation. Earlier results for regional weather do not validate the bottle model.
 
-```bash
-npm run test:weather
-npm run typecheck
-npm run lint
-npm run build
-```
+A dedicated `bottle-circulation` GPU suite is prepared but has not been run. Broader validation should cover radiative GPU sums, energy-panel pause/reset behavior, full-resolution coupling, and retained water/ice/snow/sediment behavior. Lint, performance and visual review remain pending. See [the model notes](docs/regional-weather.md) for the separate total-energy conservation limitation.
 
-The weather command runs:
+The `mac-pressure`, `mac-momentum` and updated `wind-brush` suites **passed**, covering pressure at 256², same-direction layer currents, moving vortex pairs, the mechanical/thermal balance of that isolated case, brush propagation, walls and the shared Courant limiter. `mac-wind-ui` **passed** for the wind controls, resets and preference migration.
 
-- `regional-ui`: real panel bindings, numeric limits, search, presets, layer legends and preferences.
-- `regional-weather-full`: full 256² × 2 atmospheric grid; rain/dry areas, eleven-minute sea-to-inland transport, persistent changing winds, closed/wall water inventories, freezing/thawing and rain timing.
-- `regional-integration`: full 2048² terrain/water coupling, CPU/GPU water-budget comparison and all six weather views plus thermal overlays.
-- `bottom-ice`, `snow-cover`, `sediments`: retained surface freezing, snow/ice, fluid-flow and erosion regressions.
-
-Set `CHROME_PATH`, `TEST_BASE_URL` or `TEST_VERBOSE=1` as needed. Tests use a separate Chrome profile. The long atmospheric test runs at 256² surface resolution to isolate the atmosphere; full-resolution coupling is tested separately.
-
-Historical 3D pressure/projection, volume-slice and A/B benchmark pages remain as references and are not compatible with the two-layer solver. The older `ui` inventory and `brushes` suites also fail on the unmodified parent commit; this branch has dedicated current-panel coverage. Existing `run-ui.mjs` is available for general responsive layout checks. GPU-time gains have not been benchmarked against the old model: the structural reduction is 589,824 → 131,072 air cells and removal of iterative 3D pressure projection.
+`bottle-feedbacks` is also prepared, **not run**, for condensation, rain cooling, cold-pool circulation, paired evaporation/deposition heat, snow formation and solar shielding. Those feedback controls and their individual resets still need interface validation.
 
 ---
 
@@ -141,7 +128,7 @@ This project is configured to automatically deploy to GitHub Pages via **GitHub 
 
 Whenever changes are pushed to the `main` branch, the workflow defined in [deploy.yml](.github/workflows/deploy.yml) triggers automatically, builds the project using the configured base URL in [vite.config.ts](vite.config.ts), and deploys the build artifacts to GitHub Pages.
 
-Temperature overlay in **Observe** uses a fixed −30 to +35 °C scale. Select **Surface** or **Air above surface** and adjust opacity. Air sampling interpolates between the two terrain-following layer temperatures; the 16-unit reference layer depth is for accounting, independent of rendered cloud altitude. Selecting a weather map disables this overlay. Painting, erasing and camera controls remain available.
+The top-bar temperature view uses a fixed −30 to +35 °C scale. Select **Surface**, **Lower air** or **Cloud layer** and adjust shared opacity. The 16-unit reference layer depth is for accounting, independent of rendered cloud altitude.
 
 ### Soil and sand regression
 

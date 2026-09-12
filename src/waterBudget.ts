@@ -218,7 +218,7 @@ export class WaterBudget {
     if (summary) {
       summary.textContent = `Water total ${format(budget.total)} u³ · drift ${drift}`;
       summary.title =
-        'Measured GPU inventory, including all liquid, frozen and atmospheric reservoirs. Drift is relative to the latest reset; open modes also include external sources and sinks.';
+        'Measured GPU inventory, including all liquid, frozen and atmospheric reservoirs. Drift is relative to the latest reset or manual intervention; all boundaries are sealed.';
     }
     const detail = document.getElementById('water-budget-detail');
     if (detail) {

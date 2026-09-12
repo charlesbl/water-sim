@@ -1,4 +1,6 @@
 import { config } from './config';
+import { defaultConfig } from './preferences';
+import { addParameterReset } from './parameterReset';
 import { ATMOSPHERE_DIMENSIONS } from './atmosphere';
 import { setupReposeControls } from './reposeControls';
 
@@ -48,7 +50,6 @@ export function setupSimulationControls(actions: SimulationActions): void {
       | 'erosionRate'
       | 'capacityFactor'
       | 'depositionRate'
-      | 'evaporation'
       | 'terrainScale'
       | 'terrainSharpness'
       | 'terrainTilt'
@@ -56,9 +57,6 @@ export function setupSimulationControls(actions: SimulationActions): void {
       | 'flatRockHeight'
       | 'fbmOctaves'
       | 'fbmPersistence'
-      | 'rainQuantity'
-      | 'rainSize'
-      | 'borderWaterHeight'
       | 'minWaterDepth'
       | 'renderResolution'
       | 'simSpeed',
@@ -76,9 +74,8 @@ export function setupSimulationControls(actions: SimulationActions): void {
       );
     }
 
-    slider.addEventListener('input', () => {
-      const val = parseFloat(slider.value);
-      if (!Number.isFinite(val) || slider.disabled) return;
+    const apply = (val: number) => {
+      if (!Number.isFinite(val)) return;
       config[configKey] = val;
 
       if (valDisplay) {
@@ -107,7 +104,14 @@ export function setupSimulationControls(actions: SimulationActions): void {
       if (configKey === 'renderResolution') {
         actions.rebuildMesh();
       }
+    };
+    slider.addEventListener('input', () => {
+      if (!slider.disabled) apply(parseFloat(slider.value));
     });
+    addParameterReset(slider, () => {
+      slider.value = String(defaultConfig[configKey]);
+      apply(defaultConfig[configKey]);
+    }, () => config[configKey] === defaultConfig[configKey], () => config[configKey]);
   };
 
   bindSlider('brush-radius', 'brushRadius', 'brush-radius-val');
@@ -122,7 +126,6 @@ export function setupSimulationControls(actions: SimulationActions): void {
   bindSlider('erosion-rate', 'erosionRate', 'erosion-rate-val');
   bindSlider('capacity-factor', 'capacityFactor', 'capacity-factor-val');
   bindSlider('deposition-rate', 'depositionRate', 'deposition-rate-val');
-  bindSlider('evaporation', 'evaporation', 'evaporation-val');
   bindSlider('terrain-scale', 'terrainScale', 'terrain-scale-val');
   bindSlider('terrain-sand-height', 'terrainSandHeight', 'terrain-sand-height-val');
   bindSlider('flat-rock-height', 'flatRockHeight', 'flat-rock-height-val');
@@ -130,9 +133,6 @@ export function setupSimulationControls(actions: SimulationActions): void {
   bindSlider('terrain-tilt', 'terrainTilt', 'terrain-tilt-val');
   bindSlider('fbm-octaves', 'fbmOctaves', 'fbm-octaves-val');
   bindSlider('fbm-persistence', 'fbmPersistence', 'fbm-persistence-val');
-  bindSlider('rain-quantity', 'rainQuantity', 'rain-quantity-val');
-  bindSlider('rain-size', 'rainSize', 'rain-size-val');
-  bindSlider('border-water-height', 'borderWaterHeight', 'border-water-height-val');
   bindSlider('min-water-depth', 'minWaterDepth', 'min-water-depth-val');
   bindSlider('render-resolution', 'renderResolution', 'render-resolution-val');
   bindSlider('sim-speed', 'simSpeed', 'sim-speed-val');
@@ -189,6 +189,10 @@ export function setupSimulationControls(actions: SimulationActions): void {
   ) => {
     const chk = document.getElementById(id) as HTMLInputElement;
     if (!chk) return;
+    addParameterReset(chk, () => {
+      config[configKey] = defaultConfig[configKey];
+      chk.checked = config[configKey];
+    }, () => config[configKey] === defaultConfig[configKey]);
     chk.checked = config[configKey];
     chk.addEventListener('change', () => {
       config[configKey] = chk.checked;
@@ -201,26 +205,6 @@ export function setupSimulationControls(actions: SimulationActions): void {
   bindCheckbox('chk-show-water', 'showWater');
   bindCheckbox('chk-show-lava', 'showLava');
   bindCheckbox('chk-show-suspended', 'showSuspendedSand');
-
-  // 6.5. Border Behavior Dropdown Select
-  const borderSelect = document.getElementById('border-behavior') as HTMLSelectElement;
-  const borderHeightGroup = document.getElementById('border-water-height-group');
-  const updateBorderHeightVisibility = () => {
-    if (borderHeightGroup) {
-      borderHeightGroup.style.display = '';
-      const input = document.getElementById('border-water-height') as HTMLInputElement;
-      input.disabled = config.closedWaterCycle || config.borderBehavior === 0;
-    }
-  };
-
-  if (borderSelect) {
-    borderSelect.value = config.borderBehavior.toString();
-    updateBorderHeightVisibility();
-    borderSelect.addEventListener('change', () => {
-      config.borderBehavior = parseInt(borderSelect.value);
-      updateBorderHeightVisibility();
-    });
-  }
 
   // 6.6. Terrain Generation Dropdown Select
   const terrainGenSelect = document.getElementById('terrain-generation') as HTMLSelectElement;
@@ -239,6 +223,12 @@ export function setupSimulationControls(actions: SimulationActions): void {
   if (terrainGenSelect) {
     terrainGenSelect.value = config.terrainType === 0 ? 'realistic' : 'flat';
     updateTerrainSettingsVisibility();
+    addParameterReset(terrainGenSelect, () => {
+      config.terrainType = defaultConfig.terrainType;
+      terrainGenSelect.value = config.terrainType === 0 ? 'realistic' : 'flat';
+      updateTerrainSettingsVisibility();
+      actions.resetTerrain(false);
+    }, () => config.terrainType === defaultConfig.terrainType);
     terrainGenSelect.addEventListener('change', () => {
       config.terrainType = terrainGenSelect.value === 'realistic' ? 0 : 1;
       updateTerrainSettingsVisibility();
@@ -246,18 +236,13 @@ export function setupSimulationControls(actions: SimulationActions): void {
     });
   }
 
-  // 8. Rain Active checkbox
-  const rainCheck = document.getElementById('rain-active') as HTMLInputElement;
-  if (rainCheck) {
-    rainCheck.checked = config.rainActive;
-    rainCheck.addEventListener('change', () => {
-      config.rainActive = rainCheck.checked;
-    });
-  }
-
   // 8.5. Smooth Rendering checkbox
   const smoothCheck = document.getElementById('smooth-rendering') as HTMLInputElement;
   if (smoothCheck) {
+    addParameterReset(smoothCheck, () => {
+      config.smoothRendering = defaultConfig.smoothRendering;
+      smoothCheck.checked = config.smoothRendering;
+    }, () => config.smoothRendering === defaultConfig.smoothRendering);
     smoothCheck.checked = config.smoothRendering;
     smoothCheck.addEventListener('change', () => {
       config.smoothRendering = smoothCheck.checked;
