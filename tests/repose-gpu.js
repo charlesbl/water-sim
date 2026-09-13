@@ -150,10 +150,9 @@ async function run() {
     terrainSandHeight: 0,
     terrainSoilHeight: 0,
     paused: false,
-    atmosphereEnabled: false,
+    weatherEnabled: false,
     erosionRate: 0,
     sedimentSlideRate: 0.1,
-    closedWaterCycle: true,
   });
   const engine = new GPGPUSimulation(document.querySelector('canvas'), n);
   check('Production engine initializes for the live angle test', await engine.initWebGPU());

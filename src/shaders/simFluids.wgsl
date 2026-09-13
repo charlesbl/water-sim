@@ -33,7 +33,7 @@ struct SimUniforms {
     erosion_rate: f32,
     capacity_factor: f32,
     deposition_rate: f32,
-    reserved_evaporation: f32,
+    padding_1: f32,
     initialized: f32,
     paused: f32,
     brush_active: f32,
@@ -43,11 +43,11 @@ struct SimUniforms {
     brush_x: f32,
     brush_y: f32,
     time: f32,
-    reserved_rain_active: f32,
-    reserved_rain_quantity: f32,
-    reserved_rain_size: f32,
-    reserved_border_behavior: f32,
-    reserved_border_water_height: f32,
+    padding_2: f32,
+    padding_3: f32,
+    padding_4: f32,
+    border_mode: f32,
+    padding_5: f32,
     seed: f32,
     terrain_type: f32,
     terrain_sand_height: f32,
@@ -148,7 +148,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         lava = max(0.0, lava - l_out + l_in);
 
         // Contact quenches lava into rock (simTerrain). Water stays in the
-        // bottle; evaporation is paid for by the surface's finite heat store.
+        // world; evaporation is paid for by the surface's finite heat store.
         lava -= min(water, lava);
     }
 
@@ -160,16 +160,27 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             let falloff = 1.0 - smoothstep(uniforms.brush_radius * 0.2, uniforms.brush_radius, dist);
             let amount = falloff * uniforms.brush_strength * 0.06;
 
-            if (uniforms.brush_type == 0.0) { // Add Water
+            if (uniforms.brush_type == 13.0) { water = max(0.0, water - amount * 1.5); }
+            else if (uniforms.brush_type == 14.0) { lava = max(0.0, lava - amount); }
+            else if (uniforms.brush_type == 17.0) {
+                weather_surface[idx].x = max(0.0, weather_surface[idx].x - amount * 1.5);
+                weather_surface[idx].y = max(0.0, weather_surface[idx].y - amount * 1.5);
+            }
+            else if (uniforms.brush_type == 0.0) { // Add Water
                 water += amount * 1.5;
             } else if (uniforms.brush_type == 1.0) { // Add Lava
                 lava += amount;
                 // Manual injection supplies a finite pulse of sensible heat.
-                // Existing lava never acts as a permanent atmospheric heater.
+                // Existing lava never acts as a permanent surface heater.
                 let frozen = weather_surface[idx];
                 let capacity = materialHeatCapacity(cell_a.sand, cell_a.soil, water, frozen.y, frozen.x);
                 weather_surface[idx].z = min(90.0, frozen.z + amount * 450.0 / capacity);
-            } else if (uniforms.brush_type == 5.0) { // Erase liquid and frozen water
+            } else if (uniforms.brush_type == 10.0 || uniforms.brush_type == 12.0) {
+                let sign = select(1.0, -1.0, uniforms.brush_type == 12.0);
+                weather_surface[idx].w = clamp(weather_surface[idx].w + sign * amount * 0.4, 0.0, 2.0);
+            } else if (uniforms.brush_type == 5.0) { // Erase all materials in the footprint
+                weather_surface[idx].w = max(0.0, weather_surface[idx].w - amount * 5.0);
+                steam = 0.0;
                 water = max(0.0, water - amount * 5.0);
                 lava = max(0.0, lava - amount * 5.0);
                 weather_surface[idx].x = max(0.0, weather_surface[idx].x - amount * 5.0);
@@ -210,10 +221,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         weather_surface[idx] = frozen;
     }
 
-    // Steam is water waiting to join the atmosphere, including while weather
-    // is paused/disabled. Visual opacity is scaled separately in the renderer.
+    // Cosmetic steam dissipates independently of the water inventory.
     if (uniforms.paused < 0.5) {
-        // Cosmetic lava glow; atmospheric heat is stored in weather_surface.z.
+        // Cosmetic lava glow; surface heat is stored in weather_surface.z.
         if (lava > 0.01) {
             temp = 1.0;
         } else {

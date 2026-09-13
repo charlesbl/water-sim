@@ -1,6 +1,5 @@
 import { config } from '../src/config.ts';
 import { GPGPUSimulation } from '../src/webgpuRenderer.ts';
-import { ATMOSPHERE_DIMENSIONS } from '../src/atmosphere.ts';
 import { terrainFixture } from './terrain-fixture.js';
 import * as THREE from 'three';
 
@@ -31,18 +30,12 @@ const enthalpy = (water, snow, ice, temperature) =>
 
 async function run() {
   Object.assign(config, {
-    atmosphereEnabled: false,
-    closedWaterCycle: true,
-    atmosphereBoundary: 1,
-    borderBehavior: 0,
-    airTemperature: -5,
-    relativeHumidity: 0,
-    windSpeed: 0,
+    weatherEnabled: true,
     solarHeating: 0,
-    radiativeCooling: 0,
+    coolingLow: 0,
+    coolingMiddle: 0,
+    coolingHigh: 0,
     evaporationRate: 0,
-    evaporation: 0,
-    rainActive: false,
     erosionRate: 0,
     terrainType: 1,
     flatRockHeight: 0.1,
@@ -53,24 +46,21 @@ async function run() {
     smoothRendering: true,
     renderResolution: 1,
     cloudOpacity: 0,
-    showWind: false,
   });
   const n = 257;
   const engine = new GPGPUSimulation(document.querySelector('canvas'), n);
   check('WebGPU engine initializes', await engine.initWebGPU());
-  const { device, atmosphere: sim } = engine;
+  const { device, weather: sim } = engine;
   const errors = [];
   device.addEventListener('uncapturederror', (event) => errors.push(event.error.message));
   window.addEventListener('simulation-error', (event) => errors.push(event.detail));
   engine.step();
-  engine.stepAtmosphere(0);
+  engine.stepWeather(0);
   const terrain = new Float32Array(n * n * 4);
   const liquid = new Float32Array(terrain.length);
   const surface = new Float32Array(terrain.length);
-  const [nx, ny] = ATMOSPHERE_DIMENSIONS;
+
   const currentFluid = () => (engine.pingPongToggle ? engine.fluidsBufferB : engine.fluidsBufferA);
-  const currentTerrain = () =>
-    engine.pingPongToggle ? engine.terrainBufferB : engine.terrainBufferA;
   const seed = (water, snow, temperature) => {
     liquid.fill(0);
     surface.fill(0);
@@ -85,38 +75,24 @@ async function run() {
     for (const buffer of [engine.fluidsBufferA, engine.fluidsBufferB])
       device.queue.writeBuffer(buffer, 0, liquid);
     device.queue.writeBuffer(sim.surfaceBuffer, 0, surface);
-    device.queue.writeBuffer(sim.precipitation, 0, new Float32Array(nx * ny * 2));
   };
-  // Isolate production surface exchange from weather transport and external heat.
-  const exchange = () => {
-    device.queue.writeBuffer(sim.uniforms, 28, new Float32Array([1 / 30]));
-    const groups = sim.bindings(currentTerrain(), currentFluid());
-    const encoder = device.createCommandEncoder();
-    const pass = encoder.beginComputePass();
-    pass.setPipeline(sim.pipelines.surfaceExchange);
-    pass.setBindGroup(0, groups.surfaceExchange[0]);
-    pass.dispatchWorkgroups(Math.ceil(n / 16), Math.ceil(n / 16));
-    pass.end();
-    device.queue.submit([encoder.finish()]);
-  };
+  const exchange = () => engine.stepWeather(1 / 30);
   const snapshot = async () => ({
     snow: await read(device, sim.surfaceBuffer),
     water: await read(device, currentFluid()),
   });
 
-  // A tiny rain/condensate footprint used to erase the entire snow layer in
-  // rectangular patches aligned with the coarse atmospheric columns.
+  // A tiny precipitation footprint used to erase the entire snow layer in
+  // rectangular patches aligned with the render summary cells.
   seed(0, 0.025, -5);
-  const rain = new Float32Array(nx * ny * 2);
-  for (let y = 0; y < ny; y++)
-    for (let x = 0; x < nx; x++) if ((x + y) % 4 === 0) rain[(y * nx + x) * 2] = 1e-7;
-  device.queue.writeBuffer(sim.precipitation, 0, rain);
+  for (let i = 0; i < surface.length; i += 4) if ((i / 4) % 4 === 0) surface[i + 3] = 0.001;
+  device.queue.writeBuffer(sim.surfaceBuffer, 0, surface);
   exchange();
   const dusted = await snapshot();
   let minSnow = Infinity;
   for (let i = 0; i < dusted.snow.length; i += 4) minSnow = Math.min(minSnow, dusted.snow[i]);
   check(
-    'Trace rain leaves a continuous snow cover across atmosphere tiles',
+    'Trace rain leaves a continuous snow cover across the surface',
     minSnow > 0.02499,
     `minimum snow=${minSnow}, initial=0.025`
   );
@@ -154,10 +130,10 @@ async function run() {
           s > snow * 0.999,
           `remaining snow=${s}`
         );
-      } else if (water < snow * 5) {
+      } else if (water < snow * 2.5) {
         check(
           `${pass}: partial flooding retains the unsubmerged snow (${temperature} C)`,
-          s > 0.02
+          s > 0.015
         );
       } else {
         check(`${pass}: flooded snow joins the water or anchored ice (${temperature} C)`, s === 0);
@@ -191,7 +167,6 @@ async function run() {
     }
   for (const buffer of [engine.terrainBufferA, engine.terrainBufferB])
     device.queue.writeBuffer(buffer, 0, terrainFixture(terrain));
-  device.queue.writeBuffer(sim.precipitation, 0, rain);
   exchange();
   const camera = new THREE.PerspectiveCamera(45, 960 / 640, 0.1, 1000);
   camera.position.set(80, 100, 135);

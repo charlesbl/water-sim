@@ -11,9 +11,10 @@ export interface RadiativeFlux {
 export class EnergyBudget {
   public latest: RadiativeFlux | null = null;
   private readonly readback: GPUBuffer;
-  private readonly panel = typeof document === 'undefined'
-    ? null
-    : document.querySelector<HTMLDetailsElement>('#energy-panel');
+  private readonly panel =
+    typeof document === 'undefined'
+      ? null
+      : document.querySelector<HTMLDetailsElement>('#energy-panel');
   private busy = false;
   private destroyed = false;
   private epoch = 0;
@@ -22,7 +23,10 @@ export class EnergyBudget {
   private manual = false;
   private displayState = '';
 
-  constructor(private readonly device: GPUDevice, private readonly flux: GPUBuffer) {
+  constructor(
+    private readonly device: GPUDevice,
+    private readonly flux: GPUBuffer
+  ) {
     this.readback = device.createBuffer({
       label: 'Radiative energy 16-byte readback',
       size: 16,
@@ -33,13 +37,13 @@ export class EnergyBudget {
   sample(manualIntervention = false): void {
     if (this.destroyed || !this.panel?.open) return;
     this.manual = manualIntervention;
-    const state = `${config.paused}:${config.atmosphereEnabled}:${this.manual}`;
+    const state = `${config.paused}:${config.weatherEnabled}:${this.manual}`;
     if (state !== this.displayState) {
       this.displayState = state;
       this.updateDisplay();
     }
     const now = performance.now();
-    if (config.paused || !config.atmosphereEnabled || this.busy || now - this.lastSampleAt < 1000)
+    if (config.paused || !config.weatherEnabled || this.busy || now - this.lastSampleAt < 1000)
       return;
     this.busy = true;
     this.lastSampleAt = now;
@@ -61,9 +65,10 @@ export class EnergyBudget {
       if (this.destroyed || epoch !== this.epoch) return;
       const values = new Float32Array(this.readback.getMappedRange());
       if (!values.every(Number.isFinite)) throw new Error('Non-finite radiative energy flux');
-      this.latest = values[3] > 0
-        ? { incoming: values[0], outgoing: values[1], net: values[2], weatherTime: values[3] }
-        : null;
+      this.latest =
+        values[3] > 0
+          ? { incoming: values[0], outgoing: values[1], net: values[2], weatherTime: values[3] }
+          : null;
       this.failed = false;
       this.updateDisplay();
     } catch (error) {
@@ -76,7 +81,7 @@ export class EnergyBudget {
 
   private updateDisplay(): void {
     if (!this.panel) return;
-    const held = config.paused || !config.atmosphereEnabled;
+    const held = config.paused || !config.weatherEnabled;
     const value = held ? { incoming: 0, outgoing: 0, net: 0 } : this.failed ? null : this.latest;
     const format = (n: number) => n.toLocaleString('en', { maximumFractionDigits: 1 });
     const set = (id: string, text: string) => {
@@ -87,17 +92,21 @@ export class EnergyBudget {
     set('energy-out', value ? format(value.outgoing) : '—');
     set('energy-net', value ? `${value.net > 0 ? '+' : ''}${format(value.net)}` : '—');
     const row = this.panel.querySelector<HTMLElement>('#energy-net-row');
-    if (row) row.dataset.sign = !value || Math.abs(value.net) < 0.05
-      ? 'balanced' : value.net > 0 ? 'incoming' : 'outgoing';
-    set('energy-status', this.manual
-      ? 'Manual intervention · radiative flows shown'
-      : held
-        ? 'Weather held · no radiative exchange'
-        : this.failed
-          ? 'Energy measurement unavailable'
-          : !this.latest
-            ? 'Waiting for the first weather step'
-            : 'Closed walls · no automatic matter exchange');
+    if (row)
+      row.dataset.sign =
+        !value || Math.abs(value.net) < 0.05 ? 'balanced' : value.net > 0 ? 'incoming' : 'outgoing';
+    set(
+      'energy-status',
+      this.manual
+        ? 'Manual intervention · radiative flows shown'
+        : held
+          ? 'Weather held · no radiative exchange'
+          : this.failed
+            ? 'Energy measurement unavailable'
+            : !this.latest
+              ? 'Waiting for the first weather step'
+              : 'Painted precipitation · radiative flows only'
+    );
   }
 
   private reportError(error: unknown, epoch: number): void {

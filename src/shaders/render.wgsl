@@ -75,7 +75,7 @@ struct VertexOutput {
 // --- HEIGHT RETRIEVAL HELPERS ---
 fn frozen_depth(idx: i32) -> f32 {
     let weather = max(weather_surface[idx].xy, vec2<f32>(0.0));
-    return weather.x * 5.0 + weather.y / 0.917;
+    return weather.x * 2.5 + weather.y / 0.917;
 }
 
 fn get_weather_surface(uv: vec2<f32>, grid_size: i32) -> vec2<f32> {
@@ -660,12 +660,13 @@ fn fs_brush_preview(input: VertexOutput) -> @location(0) vec4<f32> {
     let center = 1.0 - smoothstep(0.5, 1.0, distance_to_center / pixel);
     var color = vec3<f32>(0.96, 0.96, 0.90);
     switch i32(brush.w) {
-        case 0: { color = vec3<f32>(0.25, 0.85, 1.0); }
-        case 1, 7: { color = vec3<f32>(1.0, 0.40, 0.18); }
-        case 2: { color = vec3<f32>(1.0, 0.80, 0.35); }
-        case 6, 8: { color = vec3<f32>(0.65, 0.90, 1.0); }
-        case 9: { color = vec3<f32>(0.85, 0.60, 0.36); }
-        case 10: { color = vec3<f32>(0.72, 0.97, 1.0); }
+        case 0, 13: { color = vec3<f32>(0.25, 0.85, 1.0); }
+        case 1, 7, 14: { color = vec3<f32>(1.0, 0.40, 0.18); }
+        case 2, 15: { color = vec3<f32>(1.0, 0.80, 0.35); }
+        case 6, 8, 17, 18: { color = vec3<f32>(0.65, 0.90, 1.0); }
+        case 9, 16: { color = vec3<f32>(0.85, 0.60, 0.36); }
+        case 10, 12: { color = vec3<f32>(0.72, 0.97, 1.0); }
+        case 11: { color = vec3<f32>(1.0, 0.85, 0.20); }
         default: {}
     }
     if (outline + center <= 0.0 || brush.z <= 0.0) { discard; }

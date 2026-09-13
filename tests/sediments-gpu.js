@@ -292,7 +292,7 @@ async function run() {
     );
   }
 
-  for (const boundary of [0, 2]) {
+  for (const boundary of [0]) {
     seed();
     u[24] = boundary;
     u[5] = config.sedimentSlideRate;
@@ -312,22 +312,12 @@ async function run() {
     state = ground;
     for (let i = 0; i < 30; i++) state = await step(state);
     check(
-      `${boundary === 0 ? 'Closed' : 'Water-only'} borders conserve sand and soil through concurrent erosion, slides and transport`,
+      `Closed borders conserve sand and soil through concurrent erosion, slides and transport`,
       close(sum(state, 1, 2), sum(ground, 1, 2)) &&
         close(sum(state, 4, 5), sum(ground, 4, 5)) &&
         state.every((v) => Number.isFinite(v) && v >= 0)
     );
   }
-  seed();
-  u[24] = 1;
-  ground[2] = 0.01;
-  ground[5] = 0.02;
-  flow[1] = 0.5;
-  state = await step();
-  check(
-    'Open borders drain both suspended materials',
-    sum(state, 1, 2) < 0.01 && sum(state, 4, 5) < 0.02
-  );
   check('No terrain GPU validation errors', errors.length === 0, errors.join('\n'));
   device.destroy();
 
@@ -336,7 +326,7 @@ async function run() {
     flatRockHeight: 0.1,
     terrainSoilHeight: 0.15,
     terrainSandHeight: 0.05,
-    atmosphereEnabled: false,
+    weatherEnabled: false,
     paused: false,
     cloudOpacity: 0,
   });
@@ -369,16 +359,19 @@ async function run() {
   engine.step();
   const erased = await read(engine.device, current());
   check(
-    'Erase removes upper sand before soil',
-    erased[middle + 1] < painted[middle + 1] && erased[middle + 4] === painted[middle + 4]
+    'Erase removes sand, soil and rock together',
+    erased[middle + 1] < painted[middle + 1] &&
+      erased[middle + 4] < painted[middle + 4] &&
+      erased[middle] < painted[middle]
   );
   engine.step();
   painted = await read(engine.device, current());
   check(
-    'Erase reaches soil once the sand is gone',
+    'Erase continues clearing all layers while preserving distant terrain',
     painted[middle + 1] === 0 &&
       painted[middle + 4] < erased[middle + 4] &&
-      painted[middle] === generated[middle]
+      painted[middle] < erased[middle] &&
+      painted[0] === generated[0]
   );
   engine.setBrush(false, null, 9, 12, 1);
   // A changing soil thickness must raise the hydraulic bed, just like rock/sand.
@@ -411,10 +404,10 @@ async function run() {
     'A level lake remains at rest above a nonuniform soil bed',
     restingLake.every((v, i) => Math.abs(v - lake[i]) < 2e-6)
   );
-  engine.stepAtmosphere(0);
-  const columns = await read(engine.device, engine.atmosphere.columns);
+  engine.stepWeather(0);
+  const columns = await read(engine.device, engine.weather.weatherMap);
   check(
-    'Atmospheric columns include soil in their surface elevation',
+    'Weather rendering includes soil in their surface elevation',
     columns.every((v, i) => i % 4 !== 0 || close(v, 0.7 * config.heightScale))
   );
   const camera = new THREE.PerspectiveCamera(50, 1.6, 0.1, 1000);

@@ -19,7 +19,7 @@ export interface Config {
   simSpeed: number; // Time multiplier for the fixed simulation clocks
 
   // Brush settings
-  brushType: number; // 0: Water, 1: Lava, 2: Sand, 3: Raise, 4: Dig, 5: Erase, 6: Ice, 7: Heat, 8: Cool, 9: Soil, 10: Wind
+  brushType: number; // 0: Water, 1: Lava, 2: Sand, 3: Raise, 4: Dig, 5: Erase, 6: Ice, 7: Heat, 8: Cool, 9: Soil, 10: Clouds, 11: Nuke, 12–17: material erasers, 18: cold impulse
   brushRadius: number; // Radius of the brush in grid units
   brushStrength: number; // Strength/rate of drawing
 
@@ -46,56 +46,33 @@ export interface Config {
   fbmPersistence: number; // Persistence of details in FBM
   terrainTilt: number; // Incline the map (one side higher than the other)
 
-  // Two terrain-following air layers, independent of the surface grid.
-  atmosphereEnabled: boolean;
-  evaporationRate: number; // Surface evaporation coefficient, 0..1
-  airTemperature: number; // Initial air temperature, degrees Celsius
-  relativeHumidity: number; // Initial humidity: 1 = 100%, may be supersaturated
-  airStability: number; // Initial lower-air stability: 0 neutral, 1 stable
-  convectionStrength: number; // Live inter-layer exchange response to instability
-  windSpeed: number; // Initial km per game minute across the nominal map
-  windDirection: number; // Initial direction of travel in the horizontal plane, degrees
-  solarHeating: number; // Relative solar heating strength
-  airBuoyancy: number; // Potential-temperature buoyancy multiplier for the coupled MAC flow
-  airDrag: number; // Lower-air damping per second; upper air has one tenth this drag
-  airViscosity: number; // Momentum diffusion in simulation distance² per weather second
-  pressureCycles: number; // Coupled pressure multigrid V-cycles, 1..6
-  surfaceAirHeatExchange: number; // Paired surface-air conductance; water retains its larger capacity
-  sunElevation: number; // Sun angle above horizon, degrees
-  sunAzimuth: number; // Sun direction in terrain coordinates, degrees
-  radiativeCooling: number; // Longwave heat loss multiplier
-  atmosphereTimeScale: number; // Weather time multiplier
+  // Painted weather and surface thermal balance.
+  weatherEnabled: boolean;
+  albedoStrength: number; // 0: equal solar absorption, 1: normal, 2: doubled albedo
+  borderMode: number; // 0: walls, 1: passthrough (outflow only)
+  solarHeating: number;
+  sunElevation: number;
+  sunAzimuth: number;
+  coolingLow: number;
+  coolingMiddle: number;
+  coolingHigh: number;
+  coolingMiddleAltitude: number;
+  rainRate: number;
+  evaporationRate: number;
   cloudOpacity: number;
-  showWind: boolean;
-  atmosphereView: number; // 0: no overlay, 1: temperature, 2: humidity, 3: wind, 4: radar, 5: recent wetness, 6: vertical circulation
-  atmosphereSlice: number; // 0: lower air, 1: cloud layer
-  thermalOverlay: boolean;
-  thermalAir: boolean;
-  thermalOpacity: number;
-  viewOpacity: number;
-  thermalHeight: number;
-  weatherMapSizeKm: number; // Nominal geography; surface fluid tuning is unchanged
-  weatherCellSizeKm: number; // Initial air-mass scale
-  weatherVariability: number; // Initial temperature/humidity contrasts only
-  weatherSeed: number;
-  rainLifetime: number; // Cloud-to-rain conversion time in weather seconds
-  condensationRate: number; // Cloud/vapor relaxation per weather second; latent heat stays fixed
-  rainEvaporationRate: number; // Rain evaporation in unsaturated air, per weather second
-  orographicLift: number;
-  airMixing: number; // Background exchange between the two layers, per second
-  cloudAltitude: number; // Visual base above sea level, in nominal km
-  cloudThickness: number; // Visual depth, in nominal km
+  cloudAltitude: number;
+  cloudThickness: number;
   cloudDetail: number;
   cloudShadows: number;
   rainVisibility: number;
+  weatherView: number; // 0: world, 1: cloud intensity, 2: precipitation
+  thermalOverlay: boolean;
+  viewOpacity: number;
 }
 
 export const config: Config = {
   thermalOverlay: false,
-  thermalAir: false,
-  thermalOpacity: 0.72,
   viewOpacity: 0.72,
-  thermalHeight: 6.25,
   gridSize: 2048,
   waterGravity: 9.81,
   waterDamping: 0.998,
@@ -138,40 +115,23 @@ export const config: Config = {
   fbmPersistence: 0.44,
   terrainTilt: 0.0,
 
-  atmosphereEnabled: true,
-  evaporationRate: 0.25,
-  airTemperature: 12,
-  relativeHumidity: 0.85,
-  airStability: 0.25,
-  convectionStrength: 1,
-  windSpeed: 0,
-  windDirection: 45,
+  weatherEnabled: true,
+  albedoStrength: 1,
+  borderMode: 0,
   solarHeating: 1,
-  airBuoyancy: 1,
-  airDrag: 0.006,
-  airViscosity: 0.005,
-  pressureCycles: 3,
-  surfaceAirHeatExchange: 0.45,
   sunElevation: 40,
   sunAzimuth: 135,
-  radiativeCooling: 1,
-  atmosphereTimeScale: 1,
+  coolingLow: 0.7,
+  coolingMiddle: 1,
+  coolingHigh: 1.5,
+  coolingMiddleAltitude: 16,
+  rainRate: 0.002,
+  evaporationRate: 0.05,
   cloudOpacity: 1,
-  showWind: false,
-  atmosphereView: 0,
-  atmosphereSlice: 1,
-  weatherMapSizeKm: 10,
-  weatherCellSizeKm: 2,
-  weatherVariability: 0.8,
-  weatherSeed: 7,
-  rainLifetime: 60,
-  condensationRate: 2,
-  rainEvaporationRate: 0.4,
-  orographicLift: 1.5,
-  airMixing: 0.008,
-  cloudAltitude: 0.9,
-  cloudThickness: 0.5,
+  cloudAltitude: 40,
+  cloudThickness: 10,
   cloudDetail: 0.6,
   cloudShadows: 0.65,
   rainVisibility: 1,
+  weatherView: 0,
 };

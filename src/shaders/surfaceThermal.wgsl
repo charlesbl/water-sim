@@ -1,5 +1,5 @@
 // Effective surface properties at the illustrative scene scale. Shared by the
-// atmospheric exchanges, freezing/melting and the surface brushes.
+// surface exchanges, freezing/melting and the surface brushes.
 fn sedimentCoverage(sediment: f32) -> f32 {
     return smoothstep(0.0001, 0.05, max(sediment, 0.0));
 }
@@ -11,13 +11,13 @@ fn materialHeatCapacity(sand: f32, soil: f32, liquid: f32, ice: f32, snow: f32) 
         + max(ice, 0.0) * 5.0 + max(snow, 0.0) * 2.0;
 }
 
-// Snow occupies five times its water-equivalent depth. Only the submerged
+// Snow occupies 2.5 times its water-equivalent depth. Only the submerged
 // portion interacts with liquid: a trace of rain or meltwater must not collapse
 // the entire snowpack. Warm water melts this portion using available sensible
 // energy; without that heat it compacts into the anchored ice bed, staying solid.
 // Return water-equivalent transfers to liquid and ice respectively.
 fn wetSnowTransfer(liquid: f32, snow: f32, energy: f32) -> vec2<f32> {
-    let submerged = min(max(snow, 0.0), max(liquid, 0.0) / 5.0);
+    let submerged = min(max(snow, 0.0), max(liquid, 0.0) / 2.5);
     let melted = min(submerged, max(energy, 0.0) / 80.0);
     return vec2<f32>(melted, submerged - melted);
 }
@@ -29,3 +29,6 @@ fn materialAlbedo(sand: f32, soil: f32, liquid: f32, ice: f32, snow: f32) -> f32
     // Liquid covers the anchored ice. A thin film transitions continuously.
     return mix(albedo, 0.08, smoothstep(0.0001, 0.01, max(liquid, 0.0)));
 }
+
+// Painted density shares the same attenuation in thermal and visual rendering.
+fn cloudTransmission(intensity:f32,strength:f32)->f32 { return 1.0-clamp(strength,0.0,1.0)*(1.0-exp(-max(intensity,0.0)*1.6)); }

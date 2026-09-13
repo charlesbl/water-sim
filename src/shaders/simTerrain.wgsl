@@ -33,7 +33,7 @@ struct SimUniforms {
     erosion_rate: f32,
     capacity_factor: f32,
     deposition_rate: f32,
-    reserved_evaporation: f32,
+    padding_1: f32,
     initialized: f32,
     paused: f32,
     brush_active: f32,
@@ -43,11 +43,11 @@ struct SimUniforms {
     brush_x: f32,
     brush_y: f32,
     time: f32,
-    reserved_rain_active: f32,
-    reserved_rain_quantity: f32,
-    reserved_rain_size: f32,
-    reserved_border_behavior: f32,
-    reserved_border_water_height: f32,
+    padding_2: f32,
+    padding_3: f32,
+    padding_4: f32,
+    border_mode: f32,
+    padding_5: f32,
     seed: f32,
     terrain_type: f32,
     terrain_sand_height: f32,
@@ -287,11 +287,12 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             else if (uniforms.brush_type == 9.0) { ground.y += amount * 1.5; }
             else if (uniforms.brush_type == 3.0) { rock += amount; }
             else if (uniforms.brush_type == 4.0) { rock = max(0.0, rock - amount); }
+            else if (uniforms.brush_type == 15.0) { ground.x = max(0.0, ground.x - amount * 1.5); suspended.x = max(0.0, suspended.x - amount * 1.5); }
+            else if (uniforms.brush_type == 16.0) { ground.y = max(0.0, ground.y - amount * 1.5); suspended.y = max(0.0, suspended.y - amount * 1.5); }
             else if (uniforms.brush_type == 5.0) {
-                // Erase the upper sand layer before reaching the soil beneath.
-                let removed_sand = min(ground.x, amount * 4.0);
-                ground.x -= removed_sand;
-                ground.y = max(0.0, ground.y - (amount * 4.0 - removed_sand));
+                rock = max(0.0, rock - amount * 4.0);
+                ground = max(vec2<f32>(0.0), ground - amount * 4.0);
+                suspended = max(vec2<f32>(0.0), suspended - amount * 4.0);
             }
         }
     }

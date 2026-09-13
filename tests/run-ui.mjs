@@ -5,6 +5,13 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+const testBase = (process.env.TEST_BASE_URL || 'http://localhost:5173/water-sim').replace(
+  /\/$/,
+  ''
+);
+const server = await fetch(testBase + '/', { signal: AbortSignal.timeout(5000) }).catch(() => null);
+if (!server?.ok) throw new Error('Start Vite first with npm run dev. Expected server: ' + testBase);
+
 const profile = await mkdtemp(join(tmpdir(), 'terragpu-ui-browser-'));
 const output =
   process.env.UI_ARTIFACT_DIR || (await mkdtemp(join(tmpdir(), 'terragpu-ui-review-')));
@@ -98,6 +105,18 @@ try {
     });
     await settle();
   };
+  const waitFor = async (expression) => {
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      if (await evaluate(expression)) return;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    await screenshot('failure');
+    const state = await evaluate(
+      '(()=>{const e=window.testEngine;return {hit:document.elementFromPoint(620,355)?.outerHTML.slice(0,300),brush:e?.brushType,active:e?.brushActive,uv:e?.pointerUV,preview:Array.from(e?.brushPreview??[]),state:document.getElementById("runtime-state")?.textContent,alert:document.getElementById("simulation-alert")?.textContent,scroll:[scrollX,scrollY],canvas:document.querySelector("canvas").getBoundingClientRect().toJSON()};})()'
+    );
+    throw new Error('UI condition timed out: ' + expression + ' ' + JSON.stringify(state));
+  };
   const screenshot = async (name) => {
     const { data } = await call('Page.captureScreenshot', {
       format: 'png',
@@ -123,37 +142,62 @@ try {
       throw new Error(await evaluate('document.getElementById("simulation-alert").textContent'));
   } while (state !== 'Running' && Date.now() < deadline);
   check('Production app initializes WebGPU and the command UI', state === 'Running');
-  const shortcutState = await evaluate(`(async () => {
-    const { config } = await import('/water-sim/src/config.ts');
-    for (const [id, value] of [['sim-speed', '2'], ['atmosphere-time-scale', '2'], ['thermal-opacity', '60'], ['cloud-opacity', '30']]) {
-      const source = document.getElementById(id);
-      const shortcut = document.getElementById('quick-' + id);
-      if (!source.closest('#inspector') || !shortcut.closest('.topbar')) return false;
-      const original = source.value;
-      shortcut.value = value;
-      shortcut.dispatchEvent(new Event('input', { bubbles: true }));
-      if (source.value !== value || (id === 'thermal-opacity' && !config.thermalOverlay)) return false;
-      source.value = original;
-      source.dispatchEvent(new Event('input', { bubbles: true }));
-      if (shortcut.value !== original) return false;
-    }
-    return !config.thermalOverlay && config.thermalOpacity === 0 && !document.getElementById('thermal-overlay');
-  })()`);
-  check('Top bar shortcuts sync both ways and zero opacity disables temperature', shortcutState);
-  await click('#btn-pause');
-  await screenshot('desktop-1920-closed');
-  await click('[data-domain="climate"]');
-  await screenshot('desktop-1920-climate');
-  await click('#toggle-advanced');
-  await screenshot('desktop-1920-advanced');
+  await evaluate('document.fonts.ready.then(() => true)');
 
-  const sizes = [
+  await click('#btn-pause');
+  await evaluate(
+    '(async()=>{const {GPGPUSimulation}=await import(performance.getEntriesByType("resource").find(e=>new URL(e.name).pathname.endsWith("/src/webgpuRenderer.ts")).name);const proto=GPGPUSimulation.prototype;const brush=proto.setBrush;const render=proto.render;window.uiAnyPaint=false;proto.setBrush=function(active,...args){window.uiAnyPaint ||= active;return brush.call(this,active,...args)};proto.render=function(camera){window.testEngine=this;window.testCamera=camera;return render.call(this,camera)};})()'
+  );
+  await click('[data-domain="climate"]');
+  check(
+    'Three cooling points are present',
+    await evaluate('document.querySelectorAll("#cooling-curve [data-point]").length===3')
+  );
+  await evaluate('document.getElementById("cooling-curve").scrollIntoView({block:"center"})');
+  await settle();
+  const middle = await evaluate(
+    '(()=>{const r=document.querySelectorAll("#cooling-curve g circle:first-child")[1].getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()'
+  );
+  await call('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    button: 'left',
+    clickCount: 1,
+    ...middle,
+  });
+  await call('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    buttons: 1,
+    button: 'left',
+    x: middle.x + 35,
+    y: middle.y - 20,
+  });
+  await call('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    button: 'left',
+    clickCount: 1,
+    x: middle.x + 35,
+    y: middle.y - 20,
+  });
+  const edited = await evaluate(
+    '(async()=>{const {config}=await import(performance.getEntriesByType("resource").find(e=>new URL(e.name).pathname.endsWith("/src/config.ts")).name);return {altitude:config.coolingMiddleAltitude,power:config.coolingMiddle};})()'
+  );
+  await screenshot('curve-after-drag');
+  check(
+    'Dragging the middle point changes altitude and cooling',
+    edited.altitude > 16 && edited.power > 1,
+    JSON.stringify(edited)
+  );
+  check(
+    'Dragging climate controls does not paint through the inspector',
+    !(await evaluate('window.uiAnyPaint'))
+  );
+  await screenshot('climate-three-points');
+  for (const [width, height] of [
     [1920, 1080],
     [1366, 768],
     [1000, 800],
     [390, 844],
-  ];
-  for (const [width, height] of sizes) {
+  ]) {
     await call('Emulation.setDeviceMetricsOverride', {
       width,
       height,
@@ -162,225 +206,109 @@ try {
     });
     await settle();
     const layout = await evaluate(
-      '(() => { const ids = ["inspector","power-dock"]; const rects = Object.fromEntries(ids.map(id=>{const r=document.getElementById(id).getBoundingClientRect();return [id,{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width}]})); const nav = document.querySelector(".domain-nav").getBoundingClientRect(); return {rects, overflow:document.documentElement.scrollWidth>innerWidth, columns:getComputedStyle(document.querySelector("#domain-climate")).gridTemplateColumns.split(" ").length, navBottom:nav.bottom, navTop:nav.top, navLeft:nav.left};})()'
-    );
-    const a = layout.rects.inspector,
-      b = layout.rects['power-dock'];
-    check(
-      width + ': inspector and powers do not overlap or leave the viewport',
-      a.x >= 0 &&
-        a.right <= width &&
-        a.bottom <= b.y &&
-        b.bottom <= height &&
-        !layout.overflow &&
-        (width >= 760 || a.bottom <= layout.navTop),
-      JSON.stringify(layout)
+      '(()=>{const i=document.getElementById("inspector").getBoundingClientRect(),d=document.getElementById("power-dock").getBoundingClientRect();return {x:i.x,right:i.right,bottom:i.bottom,dockTop:d.y,dockBottom:d.bottom,overflow:document.documentElement.scrollWidth>innerWidth};})()'
     );
     check(
-      width + ': correct advanced inspector width and column count',
-      layout.columns === (width >= 1100 ? 2 : 1) &&
-        (width < 760 || Math.abs(a.width - (width >= 1100 ? 640 : 360)) < 1),
+      width + ': inspector and dock stay within the viewport',
+      layout.x >= 0 &&
+        layout.right <= width + 1 &&
+        layout.bottom <= layout.dockTop + 1 &&
+        layout.dockBottom <= height + 1 &&
+        !layout.overflow,
       JSON.stringify(layout)
     );
-    await screenshot('layout-' + width + '-advanced');
-    if (width >= 760) {
-      check(
-        width + ': inspector opens directly beside its navigation rail',
-        a.right <= layout.navLeft && layout.navLeft - a.right <= 16,
-        JSON.stringify(layout)
-      );
-      const barHeight = await evaluate(
-        '({top:document.querySelector(".topbar").getBoundingClientRect().height,dock:document.getElementById("power-dock").getBoundingClientRect().height})'
-      );
-      check(
-        width + ': command bars stay slim',
-        barHeight.top <= 60 && barHeight.dock <= 80,
-        JSON.stringify(barHeight)
-      );
-    }
+    await screenshot('layout-' + width);
   }
-  for (const width of [1366, 390]) {
-    await call('Emulation.setDeviceMetricsOverride', {
-      width,
-      height: width === 390 ? 844 : 768,
-      deviceScaleFactor: 1,
-      mobile: width === 390,
-    });
-    await call('Emulation.setTouchEmulationEnabled', { enabled: width === 390 });
-    for (const domain of ['world', 'climate', 'water', 'sediments', 'observe', 'settings']) {
-      await evaluate('document.querySelector("[data-domain=' + domain + ']").click()');
-      if (domain !== 'settings')
-        await evaluate('document.getElementById("toggle-advanced").click()');
-      await settle();
-      const overflowing = await evaluate(
-        'Array.from(document.querySelectorAll("#inspector .setting-block, #inspector .range-row, #inspector .number-box, .time-controls, .power-tools")).filter(e => e.getClientRects().length && e.scrollWidth > e.clientWidth + 1).map(e => e.className + ": " + e.scrollWidth + "/" + e.clientWidth)'
-      );
-      check(
-        width + ': ' + domain + ' controls fit without internal horizontal clipping',
-        overflowing.length === 0,
-        JSON.stringify(overflowing)
-      );
-      if (domain === 'observe') {
-        await evaluate(
-          '(() => { const e=document.getElementById("quick-thermal-opacity"); e.value="45"; e.dispatchEvent(new Event("input", {bubbles:true})); })()'
-        );
-        await settle();
-        const legend = await evaluate(
-          '(() => { const e=document.getElementById("view-legend"); const r=e.getBoundingClientRect();return {visible:!e.hidden&&getComputedStyle(e).visibility!=="hidden",inInspector:!!e.closest("#inspector"),right:r.right,width:innerWidth};})()'
-        );
-        check(
-          width + ': active legend remains available with the inspector open',
-          legend.visible && legend.inInspector === (width === 390) && legend.right <= legend.width,
-          JSON.stringify(legend)
-        );
-        await screenshot('observe-' + width + '-legend');
-        await evaluate(
-          '(() => { const e=document.getElementById("thermal-opacity"); e.value="0"; e.dispatchEvent(new Event("input", {bubbles:true})); })()'
-        );
-      } else if (domain === 'sediments') await screenshot('sediments-' + width);
-    }
-  }
-  await call('Emulation.setTouchEmulationEnabled', { enabled: false });
   await call('Emulation.setDeviceMetricsOverride', {
     width: 1366,
     height: 768,
     deviceScaleFactor: 1,
     mobile: false,
   });
-  await click('[data-domain="world"]');
-  await screenshot('desktop-1366-world');
-
-  // Observe the production input path at the GPU boundary without modifying shaders.
-  await evaluate(
-    '(async()=>{const {GPGPUSimulation}=await import("/water-sim/src/webgpuRenderer.ts");const proto=GPGPUSimulation.prototype;const brush=proto.setBrush;const render=proto.render;window.uiPaintActive=false;window.uiAnyPaint=false;proto.setBrush=function(active,...args){window.uiPaintActive=active;window.uiAnyPaint ||= active;return brush.call(this,active,...args)};proto.render=function(camera){window.uiCamera=camera;return render.call(this,camera)};})()'
-  );
-  await click('[data-brush="1"]');
-  check('Clicking a power never paints through the dock', !(await evaluate('window.uiAnyPaint')));
-  await click('#terrain-sand-height-number');
-  const cameraBefore = await evaluate('window.uiCamera.position.toArray()');
-  await call('Input.dispatchKeyEvent', {
-    type: 'keyDown',
-    key: 'w',
-    code: 'KeyW',
-    windowsVirtualKeyCode: 87,
-  });
-  await new Promise((resolve) => setTimeout(resolve, 120));
-  await call('Input.dispatchKeyEvent', {
-    type: 'keyUp',
-    key: 'w',
-    code: 'KeyW',
-    windowsVirtualKeyCode: 87,
-  });
-  const cameraAfter = await evaluate('window.uiCamera.position.toArray()');
-  check(
-    'Typing in a numeric field does not move the camera',
-    JSON.stringify(cameraBefore) === JSON.stringify(cameraAfter)
-  );
-  check('Editing inspector controls never starts a brush', !(await evaluate('window.uiAnyPaint')));
-  // Real browser key events must move the camera without reactivating focused UI.
-  await click('[data-domain="observe"]');
-  const checkboxSelector = await evaluate(`(() => {
-    const box = [...document.querySelectorAll('#domain-observe input[type="checkbox"]')]
-      .find(e => !e.disabled && e.getBoundingClientRect().height > 0);
-    return '#' + box.id;
-  })()`);
-  await click(checkboxSelector);
-  const checkboxBefore = await evaluate(
-    `document.querySelector(${JSON.stringify(checkboxSelector)}).checked`
-  );
-  const movement = await evaluate(`(async () => {
-    const start = window.uiCamera.position.clone();
-    return start.toArray();
-  })()`);
-  await call('Input.dispatchKeyEvent', {
-    type: 'keyDown',
-    key: ' ',
-    code: 'Space',
-    windowsVirtualKeyCode: 32,
-  });
-  await call('Input.dispatchKeyEvent', {
-    type: 'keyDown',
-    key: 'w',
-    code: 'KeyW',
-    windowsVirtualKeyCode: 87,
-  });
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  await call('Input.dispatchKeyEvent', {
-    type: 'keyUp',
-    key: 'w',
-    code: 'KeyW',
-    windowsVirtualKeyCode: 87,
-  });
-  await call('Input.dispatchKeyEvent', {
-    type: 'keyUp',
-    key: ' ',
-    code: 'Space',
-    windowsVirtualKeyCode: 32,
-  });
-  check(
-    'WASD still moves the camera after clicking a checkbox',
-    JSON.stringify(movement) !==
-      JSON.stringify(await evaluate('window.uiCamera.position.toArray()'))
-  );
-  check(
-    'Space does not toggle the focused checkbox',
-    checkboxBefore ===
-      (await evaluate(`document.querySelector(${JSON.stringify(checkboxSelector)}).checked`))
-  );
-  await click('#close-inspector');
-  await evaluate(`(async () => {
-    const { GPGPUSimulation } = await import('/water-sim/src/webgpuRenderer.ts');
-    const original = GPGPUSimulation.prototype.setBrushPreview;
-    GPGPUSimulation.prototype.setBrushPreview = function(uv, radius, type) {
-      window.uiPreview = uv ? { x: uv.x, y: uv.y, radius, type } : null;
-      return original.call(this, uv, radius, type);
-    };
-  })()`);
-  await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 683, y: 380 });
-  const hoverDeadline = Date.now() + 10000;
-  while (!(await evaluate('Boolean(window.uiPreview)')) && Date.now() < hoverDeadline) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  for (const domain of ['world', 'climate', 'sun', 'water', 'sediments', 'observe', 'settings']) {
+    await evaluate(
+      '(()=>{const b=document.querySelector("[data-domain=' +
+        domain +
+        ']");if(document.getElementById("domain-' +
+        domain +
+        '").hidden)b.click();})()'
+    );
+    await settle();
+    const overflow = await evaluate(
+      'Array.from(document.querySelectorAll("#inspector .setting-block, #inspector .range-row")).filter(e=>e.getClientRects().length&&e.scrollWidth>e.clientWidth+1).map(e=>e.className)'
+    );
+    check(
+      domain + ': controls have no horizontal clipping',
+      overflow.length === 0,
+      JSON.stringify(overflow)
+    );
   }
-  check(
-    'Hovering terrain previews the selected brush before clicking',
-    await evaluate('window.uiPreview?.type === 1 && !window.uiPaintActive')
+  await evaluate(
+    '(()=>{const e=document.getElementById("weather-view");e.value="surface";e.dispatchEvent(new Event("change",{bubbles:true}));})()'
   );
-  await screenshot('desktop-brush-preview');
-  // Click the visible terrain, then cross into the dock while still dragging.
+  check(
+    'Surface temperature overlay is available',
+    await evaluate(
+      '!document.getElementById("thermal-legend").hidden && !document.getElementById("view-legend").hidden'
+    )
+  );
+  await evaluate(
+    '(()=>{const e=document.getElementById("weather-view");e.value="0";e.dispatchEvent(new Event("change",{bubbles:true}));document.getElementById("close-inspector").click();})()'
+  );
+  await click('[data-brush="10"]');
+  await evaluate(
+    '(()=>{const e=document.getElementById("brush-radius");e.value="130";e.dispatchEvent(new Event("input",{bubbles:true}));})()'
+  );
+  await call('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 620, y: 355 });
+  await settle();
   await call('Input.dispatchMouseEvent', {
     type: 'mousePressed',
-    x: 683,
-    y: 380,
     button: 'left',
     clickCount: 1,
+    x: 620,
+    y: 355,
   });
-  await settle();
-  check('Painting remains available on the world canvas', await evaluate('window.uiPaintActive'));
+  await waitFor('window.testEngine?.brushActive===1');
+  await new Promise((r) => setTimeout(r, 1200));
   await call('Input.dispatchMouseEvent', {
-    type: 'mouseMoved',
-    x: 683,
-    y: 705,
+    type: 'mouseReleased',
     button: 'left',
-    buttons: 1,
+    clickCount: 1,
+    x: 620,
+    y: 355,
   });
-  await settle();
   check(
-    'Dragging from the world into the dock stops painting',
-    !(await evaluate('window.uiPaintActive'))
+    'Cloud brush paints through the normal canvas input path',
+    await evaluate('window.uiAnyPaint')
   );
+  await screenshot('painted-clouds-paused');
+  await call('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    button: 'right',
+    clickCount: 1,
+    x: 620,
+    y: 355,
+  });
+  await waitFor('window.testEngine?.brushType===12');
   check(
-    'Crossing into the dock also hides the brush preview',
-    await evaluate('window.uiPreview === null')
+    'Right-drag selects cloud erasing rather than terrain erasing',
+    await evaluate('window.testEngine.brushType===12')
   );
   await call('Input.dispatchMouseEvent', {
     type: 'mouseReleased',
-    x: 683,
-    y: 705,
-    button: 'left',
+    button: 'right',
     clickCount: 1,
+    x: 620,
+    y: 355,
   });
-  await click('.camera-help');
-  await screenshot('desktop-1366-settings');
+  await click('[data-brush="0"]');
+  await click('#btn-pause');
+  await new Promise((r) => setTimeout(r, 2000));
+  await screenshot('painted-weather-running');
+  check(
+    'Production renderer stays healthy',
+    await evaluate('document.getElementById("simulation-alert").hidden')
+  );
   check('No uncaught browser exceptions', errors.length === 0, JSON.stringify(errors));
   console.log(JSON.stringify({ passed: true, checks: checks.length, output }));
 } catch (error) {

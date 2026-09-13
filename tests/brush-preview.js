@@ -8,7 +8,7 @@ function check(name, passed) {
   if (!passed) throw new Error(name);
 }
 async function run() {
-  Object.assign(config, { paused: true, atmosphereEnabled: false, cloudRendering: false });
+  Object.assign(config, { paused: true, weatherEnabled: false, cloudOpacity: 0 });
   const canvas = document.querySelector('canvas');
   const engine = new GPGPUSimulation(canvas, 96);
   check('WebGPU initializes the production preview shader', await engine.initWebGPU());

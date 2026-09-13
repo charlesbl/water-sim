@@ -6,18 +6,13 @@ export interface WaterInventory {
   liquid: number;
   snow: number;
   ice: number;
-  vapor: number;
-  cloud: number;
-  rain: number;
-  airSnow: number;
-  pending: number;
-  steam: number;
   /** Fractional variation from baseline; multiply by 100 for a percentage. */
   relativeDrift: number;
   baseline: number;
+  externalNet: number;
 }
 
-/** A two-stage GPU inventory; only 64 bytes return to the CPU per sample. */
+/** A two-stage GPU inventory; only 16 bytes return to the CPU per sample. */
 export class WaterBudget {
   public latest: WaterInventory | null = null;
 
@@ -29,7 +24,7 @@ export class WaterBudget {
   private partialPipeline: GPUComputePipeline | null = null;
   private totalPipeline: GPUComputePipeline | null = null;
   private readonly partialCount: number;
-  private readonly airCount: number;
+  private baselineExchange = 0;
   private readonly uniformData = new ArrayBuffer(32);
   private readonly uniformInts = new Uint32Array(this.uniformData);
   private readonly uniformFloats = new Float32Array(this.uniformData);
@@ -42,12 +37,9 @@ export class WaterBudget {
 
   constructor(
     private readonly device: GPUDevice,
-    private readonly surfaceSize: number,
-    dimensions: readonly [number, number, number],
-    private readonly domainHeight: number
+    private readonly surfaceSize: number
   ) {
-    this.airCount = dimensions[0] * dimensions[1] * dimensions[2];
-    this.partialCount = Math.ceil(Math.max(surfaceSize * surfaceSize, this.airCount) / 256);
+    this.partialCount = Math.ceil((surfaceSize * surfaceSize) / 256);
   }
 
   async init(): Promise<void> {
@@ -70,17 +62,17 @@ export class WaterBudget {
     });
     this.partials = this.device.createBuffer({
       label: 'Water inventory partial sums',
-      size: this.partialCount * 64,
+      size: this.partialCount * 16,
       usage: GPUBufferUsage.STORAGE,
     });
     this.totals = this.device.createBuffer({
       label: 'Water inventory totals',
-      size: 64,
+      size: 16,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
     this.readback = this.device.createBuffer({
-      label: 'Water inventory 64-byte readback',
-      size: 64,
+      label: 'Water inventory 16-byte readback',
+      size: 16,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
     this.layout = this.device.createBindGroupLayout({
@@ -109,7 +101,7 @@ export class WaterBudget {
   }
 
   /** Sample current post-step buffers, including while the simulation is paused. */
-  sample(fluids: GPUBuffer, surface: GPUBuffer, volume: GPUBuffer): void {
+  sample(fluids: GPUBuffer, surface: GPUBuffer, exchange: GPUBuffer): void {
     const now = performance.now();
     if (
       this.destroyed ||
@@ -125,12 +117,11 @@ export class WaterBudget {
     const epoch = this.epoch;
     try {
       this.uniformInts[0] = this.surfaceSize;
-      this.uniformInts[1] = this.airCount;
+      this.uniformInts[1] = 0;
       this.uniformInts[2] = this.partialCount;
       // Every component is measured as equivalent liquid-water volume, not
-      // geometric snow/ice depth. Steam is also a true water reservoir.
+      // geometric snow/ice depth. Painted clouds are controls, not a water reservoir.
       this.uniformFloats[4] = (200 / this.surfaceSize) ** 2 * config.heightScale;
-      this.uniformFloats[5] = (40000 * this.domainHeight) / this.airCount;
       this.device.queue.writeBuffer(this.uniforms!, 0, this.uniformData);
       const bindGroup = this.device.createBindGroup({
         layout: this.layout!,
@@ -138,7 +129,7 @@ export class WaterBudget {
           { binding: 0, resource: { buffer: this.uniforms! } },
           { binding: 1, resource: { buffer: fluids } },
           { binding: 2, resource: { buffer: surface } },
-          { binding: 3, resource: { buffer: volume } },
+          { binding: 3, resource: { buffer: exchange } },
           { binding: 4, resource: { buffer: this.partials! } },
           { binding: 5, resource: { buffer: this.totals! } },
         ],
@@ -151,7 +142,7 @@ export class WaterBudget {
       pass.setPipeline(this.totalPipeline);
       pass.dispatchWorkgroups(1);
       pass.end();
-      encoder.copyBufferToBuffer(this.totals!, 0, this.readback!, 0, 64);
+      encoder.copyBufferToBuffer(this.totals!, 0, this.readback!, 0, 16);
       this.device.queue.submit([encoder.finish()]);
       void this.consumeReadback(this.readback!, epoch);
     } catch (error) {
@@ -165,32 +156,28 @@ export class WaterBudget {
       await buffer.mapAsync(GPUMapMode.READ);
       if (this.destroyed || epoch !== this.epoch) return;
       const values = new Float32Array(buffer.getMappedRange());
-      // Read nine reduced scalars, never an atmospheric or terrain-sized array.
+      // Read only the totals, never a terrain-sized array.
       const liquid = values[0];
       const snow = values[1];
       const ice = values[2];
-      const steam = values[3];
-      const vapor = values[4];
-      const cloud = values[5];
-      const rain = values[6];
-      const airSnow = values[7];
-      const pending = values[8];
-      const total = liquid + snow + ice + steam + vapor + cloud + rain + airSnow + pending;
+      const externalNet = values[3];
+      const total = liquid + snow + ice;
       if (!Number.isFinite(total)) throw new Error('Non-finite water inventory');
       // The first completed, non-stale post-step sample establishes baseline.
-      if (this.baseline === null) this.baseline = total;
-      const relativeDrift = this.baseline !== 0 ? (total - this.baseline) / this.baseline : 0;
+      if (this.baseline === null) {
+        this.baseline = total;
+        this.baselineExchange = externalNet;
+      }
+      const relativeDrift =
+        this.baseline !== 0
+          ? (total - this.baseline - (externalNet - this.baselineExchange)) / this.baseline
+          : 0;
       this.latest = {
         total,
         liquid,
         snow,
         ice,
-        vapor,
-        cloud,
-        rain,
-        airSnow,
-        pending,
-        steam,
+        externalNet,
         relativeDrift,
         baseline: this.baseline,
       };
@@ -218,15 +205,13 @@ export class WaterBudget {
     if (summary) {
       summary.textContent = `Water total ${format(budget.total)} u³ · drift ${drift}`;
       summary.title =
-        'Measured GPU inventory, including all liquid, frozen and atmospheric reservoirs. Drift is relative to the latest reset or manual intervention; all boundaries are sealed.';
+        'Measured GPU inventory, including liquid, snow and ice. Drift accounts for measured precipitation, evaporation and boundary drainage since the latest manual intervention.';
     }
     const detail = document.getElementById('water-budget-detail');
     if (detail) {
       detail.textContent =
         `Liquid ${format(budget.liquid)} · snow ${format(budget.snow)} · ice ${format(budget.ice)} · ` +
-        `vapor ${format(budget.vapor)} · clouds ${format(budget.cloud)} · ` +
-        `rain ${format(budget.rain)} · airborne snow ${format(budget.airSnow)} · ` +
-        `steam ${format(budget.steam)} · pending evaporation ${format(budget.pending)}`;
+        `net rain − evaporation − drainage ${format(budget.externalNet)} u³`;
     }
   }
 

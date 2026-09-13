@@ -347,7 +347,7 @@ select {
   border-radius: 8px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .inspector-header {
@@ -752,7 +752,7 @@ kbd {
   border-radius: 4px;
 }
 
-/* All ten powers remain in the world view. */
+/* All powers remain in the world view. */
 .power-dock {
   position: absolute;
   bottom: 12px;
@@ -782,7 +782,7 @@ kbd {
 }
 .power-tools {
   display: grid;
-  grid-template-columns: repeat(11, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 5px;
   flex: 1;
   min-width: 0;
@@ -824,6 +824,22 @@ kbd {
   color: #eedaaa;
   border-color: #8b7d52;
   background: #37382c;
+}
+.btn-brush[data-brush='11'] {
+  color: #f5c95e;
+}
+.btn-brush[data-brush='11'][aria-pressed='true'] {
+  color: #fff0ad;
+  border-color: #e6b94f;
+  background: #554022;
+}
+#nuke-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: #fff8df;
+  opacity: 0;
+  z-index: 5;
 }
 .brush-controls {
   display: flex;
@@ -1130,7 +1146,7 @@ kbd {
   }
   .power-tools {
     width: 100%;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 2px;
   }
   .btn-brush {
@@ -1305,7 +1321,7 @@ kbd {
   }
 }
 
-/* A small, independent readout of the bottle's radiative boundary. */
+/* A small, independent readout of the world's radiative boundary. */
 .energy-panel {
   position: absolute;
   top: calc(var(--top-measured-height, 54px) + 28px);
@@ -1389,12 +1405,12 @@ kbd {
   font-size: 13px;
   overflow-wrap: anywhere;
 }
-.energy-bottle {
+.energy-world {
   display: flex;
   align-items: center;
   gap: 2px;
 }
-.energy-bottle svg {
+.energy-world svg {
   width: 38px;
   height: 46px;
   flex-shrink: 0;
@@ -1403,7 +1419,7 @@ kbd {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.energy-bottle .energy-water {
+.energy-world .energy-water {
   stroke: var(--cyan);
 }
 .energy-arrow {
@@ -1489,7 +1505,7 @@ kbd {
     flex-wrap: wrap;
     gap: 8px 16px;
   }
-  .view-controls [data-control='atmosphere-view'] {
+  .view-controls [data-control='weather-view'] {
     flex-basis: 100%;
   }
 }
@@ -1513,4 +1529,38 @@ kbd {
   color: #e6fbff;
   background: #263c48;
   border-color: #77b5c4;
+}
+
+/* Three-point climate editor; native numeric controls remain available below. */
+#cooling-curve {
+  display: block;
+  width: 100%;
+  height: 210px;
+  touch-action: none;
+  user-select: none;
+}
+#cooling-curve text {
+  fill: var(--muted);
+  font-size: 11px;
+}
+#cooling-curve .curve-grid {
+  fill: none;
+  stroke: var(--line);
+}
+#cooling-curve .curve-line {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 2;
+}
+#cooling-curve .curve-point {
+  fill: var(--cyan);
+  pointer-events: none;
+}
+#cooling-curve .curve-hit {
+  fill: transparent;
+  cursor: grab;
+}
+
+#nuke-flash.cold {
+  background: radial-gradient(ellipse, rgba(180, 230, 255, 0.95), rgba(70, 140, 255, 0.7));
 }

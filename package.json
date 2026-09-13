@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write .",
-    "test:weather": "node tests/run-gpu.mjs regional-ui regional-weather-full regional-integration bottom-ice snow-cover sediments"
+    "test:weather": "node tests/run-gpu.mjs painted-weather brushes snow-cover bottom-ice sediments repose brush-preview parameter-reset",
+    "test:ui": "node tests/run-ui.mjs",
+    "test:preferences": "node tests/run-preferences.mjs"
   },
   "dependencies": {
     "three": "^0.160.0"

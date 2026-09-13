@@ -108,7 +108,7 @@ export function setupCommandUI(): void {
   });
   document.getElementById('close-inspector')!.addEventListener('click', closeInspector);
   // Forward shortcut edits to the inspector controls, which own the bindings.
-  const shortcuts = ['sim-speed', 'atmosphere-time-scale'].map((id) => {
+  const shortcuts = ['sim-speed'].map((id) => {
     const range = document.getElementById(id) as HTMLInputElement;
     const group = range.closest<HTMLElement>('.control-group')!.cloneNode(true) as HTMLElement;
     group.removeAttribute('data-control');
@@ -128,8 +128,10 @@ export function setupCommandUI(): void {
     if (resetButton) {
       resetButton.dataset.resetFor = 'quick-' + id;
       resetButton.addEventListener('click', () => {
-        range.closest('.control-group')!
-          .querySelector<HTMLButtonElement>('[data-reset-for]')!.click();
+        range
+          .closest('.control-group')!
+          .querySelector<HTMLButtonElement>('[data-reset-for]')!
+          .click();
       });
     }
     const shortcut = group.querySelector<HTMLInputElement>('input[type="range"]')!;
@@ -151,7 +153,8 @@ export function setupCommandUI(): void {
     syncParameterResets(ui);
     for (const { range, shortcut } of shortcuts) {
       shortcut.value = range.value;
-      if (range.dataset.exactValue !== undefined) shortcut.dataset.exactValue = range.dataset.exactValue;
+      if (range.dataset.exactValue !== undefined)
+        shortcut.dataset.exactValue = range.dataset.exactValue;
       else delete shortcut.dataset.exactValue;
       shortcut.disabled = range.disabled;
     }
@@ -186,40 +189,16 @@ export function setupCommandUI(): void {
     pause.setAttribute('aria-pressed', String(config.paused));
     pause.classList.toggle('active', config.paused);
     state.dataset.paused = String(config.paused);
-    document
-      .getElementById('atmosphere-slice-group')!
-      .classList.toggle('context-active', config.atmosphereView !== 0);
-    legend.hidden = !config.thermalOverlay && config.atmosphereView === 0;
-    document.getElementById('slice-legend')!.hidden = config.atmosphereView === 0;
-    document.getElementById('slice-legend-title')!.textContent =
-      [
-        '',
-        'Air temperature',
-        'Relative humidity',
-        'Wind speed',
-        'Rain & snow radar',
-        'Recent wetness',
-        'Updrafts & downdrafts',
-      ][config.atmosphereView] +
-      (config.atmosphereView < 4
-        ? config.atmosphereSlice < 0.5
-          ? ' · lower air'
-          : ' · cloud layer'
-        : '');
-    const gradient = document.getElementById('slice-gradient')!;
-    gradient.style.background = [
+    legend.hidden = !config.thermalOverlay && config.weatherView === 0;
+    document.getElementById('slice-legend')!.hidden = config.weatherView === 0;
+    document.getElementById('slice-legend-title')!.textContent = [
       '',
-      'linear-gradient(to right, #2940d9, #d1f5ff 46.154%, #ffcc47 69.231%, #e61f14)',
-      'linear-gradient(to right, #916b48, #67dce9)',
-      'linear-gradient(to right, #364bc1, #49dbb4 38%, #f3a450)',
-      'linear-gradient(to right, #243342, #38c7b8, #f7c23d)',
-      'linear-gradient(to right, #b86e33, #29a8cc)',
-      'linear-gradient(to right, #3d99ed, #243342 50%, #f7bf47)',
-    ][config.atmosphereView];
-    document.getElementById('view-options')!.dataset.reveal =
-      config.atmosphereView === 2 || config.atmosphereView === 3
-        ? 'atmosphere-slice'
-        : 'atmosphere-view';
+      'Painted cloud intensity',
+      'Rain & snow',
+    ][config.weatherView];
+    document.getElementById('slice-gradient')!.style.background =
+      'linear-gradient(to right, #243342, #38c7b8, #f7c23d)';
+    document.getElementById('view-options')!.dataset.reveal = 'weather-view';
     persistUI();
   };
 

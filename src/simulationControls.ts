@@ -1,7 +1,6 @@
 import { config } from './config';
 import { defaultConfig } from './preferences';
 import { addParameterReset } from './parameterReset';
-import { ATMOSPHERE_DIMENSIONS } from './atmosphere';
 import { setupReposeControls } from './reposeControls';
 
 /** The UI only requests existing simulation actions; it does not own GPU state. */
@@ -18,8 +17,22 @@ export function setupSimulationControls(actions: SimulationActions): void {
   // Update footer text dynamically with actual grid size
   const perfDisplay = document.getElementById('perf-display');
   if (perfDisplay) {
-    perfDisplay.textContent = `Surface: ${config.gridSize}×${config.gridSize} · Atmosphere: ${ATMOSPHERE_DIMENSIONS.join('×')}`;
+    perfDisplay.textContent = `Surface: ${config.gridSize}×${config.gridSize} · Painted clouds & surface heat`;
   }
+
+  const border = document.getElementById('border-mode') as HTMLSelectElement;
+  border.value = String(config.borderMode);
+  border.addEventListener('change', () => {
+    config.borderMode = Number(border.value);
+  });
+  addParameterReset(
+    border,
+    () => {
+      config.borderMode = defaultConfig.borderMode;
+      border.value = String(config.borderMode);
+    },
+    () => config.borderMode === defaultConfig.borderMode
+  );
 
   // 1. Brush Tool Buttons Selection
   const brushBtns = document.querySelectorAll('.btn-brush');
@@ -108,10 +121,15 @@ export function setupSimulationControls(actions: SimulationActions): void {
     slider.addEventListener('input', () => {
       if (!slider.disabled) apply(parseFloat(slider.value));
     });
-    addParameterReset(slider, () => {
-      slider.value = String(defaultConfig[configKey]);
-      apply(defaultConfig[configKey]);
-    }, () => config[configKey] === defaultConfig[configKey], () => config[configKey]);
+    addParameterReset(
+      slider,
+      () => {
+        slider.value = String(defaultConfig[configKey]);
+        apply(defaultConfig[configKey]);
+      },
+      () => config[configKey] === defaultConfig[configKey],
+      () => config[configKey]
+    );
   };
 
   bindSlider('brush-radius', 'brushRadius', 'brush-radius-val');
@@ -189,10 +207,14 @@ export function setupSimulationControls(actions: SimulationActions): void {
   ) => {
     const chk = document.getElementById(id) as HTMLInputElement;
     if (!chk) return;
-    addParameterReset(chk, () => {
-      config[configKey] = defaultConfig[configKey];
-      chk.checked = config[configKey];
-    }, () => config[configKey] === defaultConfig[configKey]);
+    addParameterReset(
+      chk,
+      () => {
+        config[configKey] = defaultConfig[configKey];
+        chk.checked = config[configKey];
+      },
+      () => config[configKey] === defaultConfig[configKey]
+    );
     chk.checked = config[configKey];
     chk.addEventListener('change', () => {
       config[configKey] = chk.checked;
@@ -223,12 +245,16 @@ export function setupSimulationControls(actions: SimulationActions): void {
   if (terrainGenSelect) {
     terrainGenSelect.value = config.terrainType === 0 ? 'realistic' : 'flat';
     updateTerrainSettingsVisibility();
-    addParameterReset(terrainGenSelect, () => {
-      config.terrainType = defaultConfig.terrainType;
-      terrainGenSelect.value = config.terrainType === 0 ? 'realistic' : 'flat';
-      updateTerrainSettingsVisibility();
-      actions.resetTerrain(false);
-    }, () => config.terrainType === defaultConfig.terrainType);
+    addParameterReset(
+      terrainGenSelect,
+      () => {
+        config.terrainType = defaultConfig.terrainType;
+        terrainGenSelect.value = config.terrainType === 0 ? 'realistic' : 'flat';
+        updateTerrainSettingsVisibility();
+        actions.resetTerrain(false);
+      },
+      () => config.terrainType === defaultConfig.terrainType
+    );
     terrainGenSelect.addEventListener('change', () => {
       config.terrainType = terrainGenSelect.value === 'realistic' ? 0 : 1;
       updateTerrainSettingsVisibility();
@@ -239,10 +265,14 @@ export function setupSimulationControls(actions: SimulationActions): void {
   // 8.5. Smooth Rendering checkbox
   const smoothCheck = document.getElementById('smooth-rendering') as HTMLInputElement;
   if (smoothCheck) {
-    addParameterReset(smoothCheck, () => {
-      config.smoothRendering = defaultConfig.smoothRendering;
-      smoothCheck.checked = config.smoothRendering;
-    }, () => config.smoothRendering === defaultConfig.smoothRendering);
+    addParameterReset(
+      smoothCheck,
+      () => {
+        config.smoothRendering = defaultConfig.smoothRendering;
+        smoothCheck.checked = config.smoothRendering;
+      },
+      () => config.smoothRendering === defaultConfig.smoothRendering
+    );
     smoothCheck.checked = config.smoothRendering;
     smoothCheck.addEventListener('change', () => {
       config.smoothRendering = smoothCheck.checked;

@@ -33,7 +33,7 @@ struct SimUniforms {
     erosion_rate: f32,
     capacity_factor: f32,
     deposition_rate: f32,
-    reserved_evaporation: f32,
+    padding_1: f32,
     initialized: f32,
     paused: f32,
     brush_active: f32,
@@ -43,11 +43,11 @@ struct SimUniforms {
     brush_x: f32,
     brush_y: f32,
     time: f32,
-    reserved_rain_active: f32,
-    reserved_rain_quantity: f32,
-    reserved_rain_size: f32,
-    reserved_border_behavior: f32,
-    reserved_border_water_height: f32,
+    padding_2: f32,
+    padding_3: f32,
+    padding_4: f32,
+    border_mode: f32,
+    padding_5: f32,
     seed: f32,
     terrain_type: f32,
     terrain_sand_height: f32,
@@ -79,7 +79,7 @@ fn get_cell_solid_fluid(x: u32, y: u32, grid_size: u32, is_lava: bool) -> vec2<f
     let cell_b = fluids_in[idx];
     // Snow on land and bottom-grown ice form an immobile bed. Only liquid is transported.
     let frozen = max(weather_surface[idx].xy, vec2<f32>(0.0));
-    let frozen_height = frozen.x * 5.0 + frozen.y / 0.917;
+    let frozen_height = frozen.x * 2.5 + frozen.y / 0.917;
     if (is_lava) {
         let solid = cell_a.rock + cell_a.soil + cell_a.sand + frozen_height;
         let fluid = cell_b.lava;
@@ -151,10 +151,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     w_flux.top = max(0.0, w_flux.top * uniforms.water_damping + diff_w_t * g_dt_water);
 
     // Boundary conditions
-    if (x == 0u) { w_flux.left = 0.0; }
-    if (x == grid_size - 1u) { w_flux.right = 0.0; }
-    if (y == 0u) { w_flux.bottom = 0.0; }
-    if (y == grid_size - 1u) { w_flux.top = 0.0; }
+    if (x == 0u) { w_flux.left = select(0.0, max(0.0, w_flux.left + fluid_w * g_dt_water), uniforms.border_mode > 0.5); }
+    if (x == grid_size - 1u) { w_flux.right = select(0.0, max(0.0, w_flux.right + fluid_w * g_dt_water), uniforms.border_mode > 0.5); }
+    if (y == 0u) { w_flux.bottom = select(0.0, max(0.0, w_flux.bottom + fluid_w * g_dt_water), uniforms.border_mode > 0.5); }
+    if (y == grid_size - 1u) { w_flux.top = select(0.0, max(0.0, w_flux.top + fluid_w * g_dt_water), uniforms.border_mode > 0.5); }
 
     // Prevent draining more than exists
     let w_sum = w_flux.left + w_flux.right + w_flux.bottom + w_flux.top;
@@ -197,10 +197,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     l_flux.top = max(0.0, l_flux.top * uniforms.lava_damping + diff_l_t * g_dt_lava);
 
     // Boundary conditions
-    if (x == 0u) { l_flux.left = 0.0; }
-    if (x == grid_size - 1u) { l_flux.right = 0.0; }
-    if (y == 0u) { l_flux.bottom = 0.0; }
-    if (y == grid_size - 1u) { l_flux.top = 0.0; }
+    if (x == 0u) { l_flux.left = select(0.0, max(0.0, l_flux.left + fluid_l * g_dt_lava), uniforms.border_mode > 0.5); }
+    if (x == grid_size - 1u) { l_flux.right = select(0.0, max(0.0, l_flux.right + fluid_l * g_dt_lava), uniforms.border_mode > 0.5); }
+    if (y == 0u) { l_flux.bottom = select(0.0, max(0.0, l_flux.bottom + fluid_l * g_dt_lava), uniforms.border_mode > 0.5); }
+    if (y == grid_size - 1u) { l_flux.top = select(0.0, max(0.0, l_flux.top + fluid_l * g_dt_lava), uniforms.border_mode > 0.5); }
 
     // Prevent draining more than exists
     let l_sum = l_flux.left + l_flux.right + l_flux.bottom + l_flux.top;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { config } from './config';
-import { AtmosphereSimulation } from './atmosphere';
+import { WeatherSimulation } from './weather';
 import shader from './shaders/thermal.wgsl?raw';
 
 /** Composites temperature without handling any pointer or brush input. */
@@ -11,10 +11,10 @@ export class ThermalRenderer {
   constructor(
     private device: GPUDevice,
     private format: GPUTextureFormat,
-    private atmosphere: AtmosphereSimulation
+    private weather: WeatherSimulation
   ) {
     this.uniform = device.createBuffer({
-      size: 112,
+      size: 80,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
   }
@@ -49,25 +49,17 @@ export class ThermalRenderer {
     color: GPUTextureView,
     depth: GPUTextureView,
     mvp: THREE.Matrix4,
-    terrain: GPUBuffer,
-    fluids: GPUBuffer,
     size: number
   ) {
     if (!config.thermalOverlay) return;
-    const values = new Float32Array(28);
+    const values = new Float32Array(20);
     values.set(mvp.clone().invert().elements);
-    values.set([size, config.heightScale, config.thermalHeight, config.thermalOpacity], 16);
-    values[20] = config.thermalAir ? 1 : 0;
-    values.set([...this.atmosphere.dimensions, this.atmosphere.domainHeight], 24);
+    values.set([size, config.heightScale, 0, config.viewOpacity], 16);
     this.device.queue.writeBuffer(this.uniform, 0, values);
     const entries: GPUBindGroupEntry[] = [
       { binding: 0, resource: { buffer: this.uniform } },
       { binding: 1, resource: depth },
-      { binding: 2, resource: { buffer: this.atmosphere.surfaceBuffer } },
-      { binding: 3, resource: { buffer: this.atmosphere.volumeBuffer } },
-      { binding: 4, resource: { buffer: this.atmosphere.columns } },
-      { binding: 5, resource: { buffer: terrain } },
-      { binding: 6, resource: { buffer: fluids } },
+      { binding: 2, resource: { buffer: this.weather.surfaceBuffer } },
     ];
     const pass = encoder.beginRenderPass({
       colorAttachments: [{ view: color, loadOp: 'load', storeOp: 'store' }],

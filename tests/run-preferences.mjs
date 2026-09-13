@@ -5,6 +5,13 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+const testBase = (process.env.TEST_BASE_URL || 'http://localhost:5173/water-sim').replace(
+  /\/$/,
+  ''
+);
+const server = await fetch(testBase + '/', { signal: AbortSignal.timeout(5000) }).catch(() => null);
+if (!server?.ok) throw new Error('Start Vite first with npm run dev. Expected server: ' + testBase);
+
 const profile = await mkdtemp(join(tmpdir(), 'terragpu-ui-browser-'));
 const output =
   process.env.UI_ARTIFACT_DIR || (await mkdtemp(join(tmpdir(), 'terragpu-ui-review-')));
@@ -79,6 +86,7 @@ try {
   const settle = () =>
     evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
   await call('Runtime.enable');
+  await call('Page.enable');
   await call('Emulation.setDeviceMetricsOverride', {
     width: 1920,
     height: 1080,
@@ -107,9 +115,33 @@ try {
   await waitReady();
   await call('Page.removeScriptToEvaluateOnNewDocument', { identifier });
   await evaluate("localStorage.setItem('unrelated', 'keep')");
+  const migrationSeed = await call('Page.addScriptToEvaluateOnNewDocument', {
+    source: `localStorage.setItem('terragpu.preferences.v1',JSON.stringify({weatherModel:'previous-model',config:{waterGravity:13,brushType:10,cloudAltitude:7,solarHeating:50,weatherView:9,weatherTimeScale:7,windSpeed:2}}))`,
+  });
+  await call('Page.reload');
+  await waitReady();
+  await call('Page.removeScriptToEvaluateOnNewDocument', { identifier: migrationSeed.identifier });
+  const migrated = await evaluate(
+    `(async()=>{const {config}=await import(performance.getEntriesByType('resource').find(e=>new URL(e.name).pathname.endsWith('/src/config.ts')).name);const {savePreferences}=await import(performance.getEntriesByType('resource').find(e=>new URL(e.name).pathname.endsWith('/src/preferences.ts')).name);savePreferences();return {...config,stored:JSON.parse(localStorage.getItem('terragpu.preferences.v1'))};})()`
+  );
+  check(
+    'Previous weather settings migrate while terrain and fluid preferences remain',
+    migrated.waterGravity === 13 &&
+      migrated.brushType === 0 &&
+      migrated.cloudAltitude === 40 &&
+      migrated.solarHeating === 1 &&
+      migrated.weatherView === 0,
+    JSON.stringify(migrated)
+  );
+  check(
+    'Removed parameters are discarded on save',
+    migrated.stored.weatherModel === 'painted-weather-v1' &&
+      !('weatherTimeScale' in migrated.stored.config) &&
+      !('windSpeed' in migrated.stored.config)
+  );
   const observeCamera = async (move = false) => {
     await evaluate(`(async () => {
-      const {GPGPUSimulation} = await import('/water-sim/src/webgpuRenderer.ts');
+      const {GPGPUSimulation} = await import(performance.getEntriesByType('resource').find(e=>new URL(e.name).pathname.endsWith('/src/webgpuRenderer.ts')).name);
       const render = GPGPUSimulation.prototype.render;
       let move = ${move};
       GPGPUSimulation.prototype.render = function(camera) {
@@ -122,15 +154,16 @@ try {
   };
   await observeCamera(true);
   const expected = await evaluate(`(async () => {
-    const {config} = await import('/water-sim/src/config.ts');
+    const {config} = await import(performance.getEntriesByType('resource').find(e=>new URL(e.name).pathname.endsWith('/src/config.ts')).name);
     document.querySelector('[data-brush="9"]').click();
+    for(const [id,value] of [['cooling-middle-altitude','9.7'],['cooling-middle','1.23'],['cooling-high','2.18'],['albedo-strength','1.7']]) {const e=document.getElementById(id);e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));}
+    const border=document.getElementById('border-mode');border.value='1';border.dispatchEvent(new Event('change',{bubbles:true}));
     const radius = document.getElementById('brush-radius');
     radius.value = '27'; radius.dispatchEvent(new Event('input', {bubbles:true}));
     document.getElementById('btn-pause').click();
     document.querySelector('[data-domain="climate"]').click();
-    document.getElementById('toggle-advanced').click();
     const search = document.getElementById('command-search');
-    search.value = 'wind'; search.dispatchEvent(new Event('input', {bubbles:true}));
+    search.value = 'cooling'; search.dispatchEvent(new Event('input', {bubbles:true}));
     return {...config};
   })()`);
   await evaluate(`new Promise(resolve => setTimeout(resolve, 350))`);
@@ -148,9 +181,8 @@ try {
     JSON.stringify(await evaluate('window.testCamera')) === JSON.stringify(before.camera)
   );
   const restored = await evaluate(`(async () => {
-    const {config} = await import('/water-sim/src/config.ts');
+    const {config} = await import(performance.getEntriesByType('resource').find(e=>new URL(e.name).pathname.endsWith('/src/config.ts')).name);
     return {config: {...config}, domain: !document.getElementById('domain-climate').hidden,
-      advanced: document.getElementById('inspector').classList.contains('advanced'),
       search: document.getElementById('command-search').value,
       brush: document.querySelector('[data-brush="9"]').getAttribute('aria-pressed'),
       radius: document.getElementById('brush-radius').value,
@@ -161,10 +193,9 @@ try {
     JSON.stringify(restored.config) === JSON.stringify(expected)
   );
   check(
-    'Brush, sliders, pause, open tab, advanced mode and search are restored',
+    'Brush, sliders, pause, open tab and search are restored',
     restored.domain &&
-      restored.advanced &&
-      restored.search === 'wind' &&
+      restored.search === 'cooling' &&
       restored.brush === 'true' &&
       restored.radius === '27' &&
       restored.pause === 'Resume',
@@ -179,8 +210,8 @@ try {
     JSON.stringify(await evaluate('window.testCamera.position')) === '[185,155,215]'
   );
   const reset = await evaluate(`(async () => {
-    const {config} = await import('/water-sim/src/config.ts');
-    const {defaultConfig} = await import('/water-sim/src/preferences.ts');
+    const {config} = await import(performance.getEntriesByType('resource').find(e=>new URL(e.name).pathname.endsWith('/src/config.ts')).name);
+    const {defaultConfig} = await import(performance.getEntriesByType('resource').find(e=>new URL(e.name).pathname.endsWith('/src/preferences.ts')).name);
     return {defaults: JSON.stringify(config) === JSON.stringify(defaultConfig),
       closed: document.getElementById('inspector').hidden,
       search: document.getElementById('command-search').value,

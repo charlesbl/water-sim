@@ -1,9 +1,16 @@
 // Start Vite first. Usage: node tests/run-gpu.mjs sediments brushes bottom-ice
 // Set CHROME_PATH and TEST_BASE_URL when the defaults do not match your setup.
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+
+const testBase = (process.env.TEST_BASE_URL || 'http://localhost:5173/water-sim').replace(
+  /\/$/,
+  ''
+);
+const server = await fetch(testBase + '/', { signal: AbortSignal.timeout(5000) }).catch(() => null);
+if (!server?.ok) throw new Error('Start Vite first with npm run dev. Expected server: ' + testBase);
 
 const profile = await mkdtemp(join(tmpdir(), 'water-sim-gpu-'));
 const executable =
@@ -61,6 +68,8 @@ try {
   const suites = process.argv.slice(2);
   if (!suites.length) suites.push('sediments');
   for (const suite of suites) {
+    if (!/^[a-z0-9-]+$/.test(suite)) throw new Error('Invalid suite name: ' + suite);
+    await access(new URL(suite + '.html', import.meta.url));
     await call('Page.navigate', {
       url: `${process.env.TEST_BASE_URL || 'http://localhost:5173/water-sim'}/tests/${suite}.html`,
     });

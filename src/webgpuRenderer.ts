@@ -1,10 +1,12 @@
+import { changesWaterInventory } from './brushes';
 import * as THREE from 'three';
 import { config } from './config';
-import { AtmosphereSimulation } from './atmosphere';
-import { AtmosphereRenderer } from './atmosphereRenderer';
+import { WeatherSimulation } from './weather';
+import { WeatherRenderer } from './weatherRenderer';
 import { ThermalRenderer } from './thermalRenderer';
 import { WaterBudget } from './waterBudget';
 import { EnergyBudget } from './energyBudget';
+import { NUKE_BRUSH, COLD_BLAST, NUKE_HEAT, powerRadius } from './nuke';
 
 import simFluxWGSL from './shaders/simFlux.wgsl?raw';
 import simFluidsWGSL from './shaders/simFluids.wgsl?raw';
@@ -19,8 +21,8 @@ export class GPGPUSimulation {
   private adapter: GPUAdapter | null = null;
   private device: GPUDevice | null = null;
   private context: GPUCanvasContext | null = null;
-  private atmosphere: AtmosphereSimulation | null = null;
-  private atmosphereRenderer: AtmosphereRenderer | null = null;
+  private weather: WeatherSimulation | null = null;
+  private weatherRenderer: WeatherRenderer | null = null;
   private thermalRenderer: ThermalRenderer | null = null;
   private waterBudget: WaterBudget | null = null;
   private energyBudget: EnergyBudget | null = null;
@@ -84,7 +86,6 @@ export class GPGPUSimulation {
 
   // Brush settings cached to write during step
   private brushActive = 0;
-  private windBrushActive = false;
   private brushX = 0;
   private brushY = 0;
   private brushType = 0;
@@ -192,19 +193,14 @@ export class GPGPUSimulation {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
 
-    this.atmosphere = new AtmosphereSimulation(this.device, this.size);
-    await this.atmosphere.init();
-    this.energyBudget = new EnergyBudget(this.device, this.atmosphere.energyFlux);
-    this.atmosphereRenderer = new AtmosphereRenderer(this.device, this.format, this.atmosphere);
-    await this.atmosphereRenderer.init();
-    this.thermalRenderer = new ThermalRenderer(this.device, this.format, this.atmosphere);
+    this.weather = new WeatherSimulation(this.device, this.size);
+    await this.weather.init();
+    this.energyBudget = new EnergyBudget(this.device, this.weather.energyFlux);
+    this.weatherRenderer = new WeatherRenderer(this.device, this.format, this.weather);
+    await this.weatherRenderer.init();
+    this.thermalRenderer = new ThermalRenderer(this.device, this.format, this.weather);
     await this.thermalRenderer.init();
-    this.waterBudget = new WaterBudget(
-      this.device,
-      this.size,
-      this.atmosphere.dimensions,
-      this.atmosphere.domainHeight
-    );
+    this.waterBudget = new WaterBudget(this.device, this.size);
     await this.waterBudget.init();
 
     // 2. Create uniform buffers
@@ -498,7 +494,7 @@ export class GPGPUSimulation {
         { binding: 4, resource: { buffer: this.waterFluxBufferB! } },
         { binding: 5, resource: { buffer: this.lavaFluxBufferA! } },
         { binding: 6, resource: { buffer: this.lavaFluxBufferB! } },
-        { binding: 7, resource: { buffer: this.atmosphere!.surfaceBuffer } },
+        { binding: 7, resource: { buffer: this.weather!.surfaceBuffer } },
       ],
     });
 
@@ -512,7 +508,7 @@ export class GPGPUSimulation {
         { binding: 4, resource: { buffer: this.waterFluxBufferA! } },
         { binding: 5, resource: { buffer: this.lavaFluxBufferB! } },
         { binding: 6, resource: { buffer: this.lavaFluxBufferA! } },
-        { binding: 7, resource: { buffer: this.atmosphere!.surfaceBuffer } },
+        { binding: 7, resource: { buffer: this.weather!.surfaceBuffer } },
       ],
     });
 
@@ -525,7 +521,7 @@ export class GPGPUSimulation {
         { binding: 3, resource: { buffer: this.fluidsBufferB! } },
         { binding: 4, resource: { buffer: this.waterFluxBufferB! } }, // Read newest fluxes (written in B)
         { binding: 5, resource: { buffer: this.lavaFluxBufferB! } },
-        { binding: 6, resource: { buffer: this.atmosphere!.surfaceBuffer } },
+        { binding: 6, resource: { buffer: this.weather!.surfaceBuffer } },
       ],
     });
 
@@ -538,7 +534,7 @@ export class GPGPUSimulation {
         { binding: 3, resource: { buffer: this.fluidsBufferA! } },
         { binding: 4, resource: { buffer: this.waterFluxBufferA! } }, // Read newest fluxes (written in A)
         { binding: 5, resource: { buffer: this.lavaFluxBufferA! } },
-        { binding: 6, resource: { buffer: this.atmosphere!.surfaceBuffer } },
+        { binding: 6, resource: { buffer: this.weather!.surfaceBuffer } },
       ],
     });
 
@@ -572,7 +568,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferA! } },
         { binding: 2, resource: { buffer: this.fluidsBufferA! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferA! } },
-        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
+        { binding: 4, resource: { buffer: this.weather!.surfaceBuffer } },
       ],
     });
 
@@ -583,7 +579,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferB! } },
         { binding: 2, resource: { buffer: this.fluidsBufferB! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferB! } },
-        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
+        { binding: 4, resource: { buffer: this.weather!.surfaceBuffer } },
       ],
     });
 
@@ -595,7 +591,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferA! } },
         { binding: 2, resource: { buffer: this.fluidsBufferA! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferA! } },
-        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
+        { binding: 4, resource: { buffer: this.weather!.surfaceBuffer } },
       ],
     });
 
@@ -606,7 +602,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferB! } },
         { binding: 2, resource: { buffer: this.fluidsBufferB! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferB! } },
-        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
+        { binding: 4, resource: { buffer: this.weather!.surfaceBuffer } },
       ],
     });
 
@@ -618,7 +614,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferA! } },
         { binding: 2, resource: { buffer: this.fluidsBufferA! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferA! } },
-        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
+        { binding: 4, resource: { buffer: this.weather!.surfaceBuffer } },
       ],
     });
 
@@ -629,7 +625,7 @@ export class GPGPUSimulation {
         { binding: 1, resource: { buffer: this.terrainBufferB! } },
         { binding: 2, resource: { buffer: this.fluidsBufferB! } },
         { binding: 3, resource: { buffer: this.waterFluxBufferB! } },
-        { binding: 4, resource: { buffer: this.atmosphere!.surfaceBuffer } },
+        { binding: 4, resource: { buffer: this.weather!.surfaceBuffer } },
       ],
     });
   }
@@ -644,7 +640,8 @@ export class GPGPUSimulation {
     radius: number,
     strength: number
   ) {
-    this.brushActive = active && uv !== null && type !== 10 ? 1.0 : 0.0;
+    this.brushActive =
+      active && uv !== null && type !== NUKE_BRUSH && type !== COLD_BLAST ? 1.0 : 0.0;
     this.brushX = uv ? uv.x : 0.0;
     this.brushY = uv ? uv.y : 0.0;
     this.brushRadius = radius / this.size; // in UV coordinates
@@ -656,16 +653,48 @@ export class GPGPUSimulation {
     this.isPaused = config.paused ? 1.0 : 0.0;
   }
 
-  public setWindBrush(uv: THREE.Vector2 | null, direction: THREE.Vector2, strength: number) {
-    this.windBrushActive = uv !== null && strength > 0 && config.atmosphereEnabled;
-    this.atmosphere?.setWindBrush(
-      uv?.x ?? 0, uv?.y ?? 0, uv ? config.brushRadius / this.size : 0,
-      direction.x * strength * 8, direction.y * strength * 8
-    );
+  public setBrushPreview(uv: THREE.Vector2 | null, radius: number, type: number) {
+    this.brushPreview.set([
+      uv?.x ?? 0,
+      uv?.y ?? 0,
+      uv ? powerRadius(type, radius) / this.size : 0,
+      type,
+    ]);
   }
 
-  public setBrushPreview(uv: THREE.Vector2 | null, radius: number, type: number) {
-    this.brushPreview.set([uv?.x ?? 0, uv?.y ?? 0, uv ? radius / this.size : 0, type]);
+  /** One click deposits one finite heat pulse, even while the simulation is held. */
+  public detonateNuke(
+    uv: THREE.Vector2,
+    radius: number,
+    strength: number,
+    type = NUKE_BRUSH
+  ): boolean {
+    if (
+      !this.device ||
+      !this.resourcesReady ||
+      !this.initialized ||
+      !this.weather ||
+      ![uv.x, uv.y, radius, strength].every(Number.isFinite) ||
+      uv.x < 0 ||
+      uv.x > 1 ||
+      uv.y < 0 ||
+      uv.y > 1 ||
+      radius <= 0 ||
+      strength <= 0
+    )
+      return false;
+    const encoder = this.device.createCommandEncoder({ label: 'Nuke thermal pulse' });
+    this.weather.addSurfaceHeat(
+      encoder,
+      (this.pingPongToggle ? this.terrainBufferB : this.terrainBufferA)!,
+      (this.pingPongToggle ? this.fluidsBufferB : this.fluidsBufferA)!,
+      uv.x,
+      uv.y,
+      powerRadius(NUKE_BRUSH, Math.min(radius, 200)) / this.size,
+      NUKE_HEAT * Math.min(strength, 2) * (type === COLD_BLAST ? -1 : 1)
+    );
+    this.device.queue.submit([encoder.finish()]);
+    return true;
   }
 
   /**
@@ -685,7 +714,7 @@ export class GPGPUSimulation {
       if (buffer) encoder.clearBuffer(buffer);
     }
     this.device.queue.submit([encoder.finish()]);
-    this.atmosphere?.clearSurface();
+    this.weather?.clearSurface();
     this.waterBudget?.resetBaseline();
     this.energyBudget?.reset();
   }
@@ -702,17 +731,21 @@ export class GPGPUSimulation {
     this.resetWeather();
   }
 
-  public resetWeather(clearSurface = true) {
-    this.atmosphere?.reset(clearSurface);
+  public clearClouds() {
+    this.weather?.clearClouds();
+  }
+
+  public resetWeather() {
+    this.weather?.reset();
     this.waterBudget?.resetBaseline();
     this.energyBudget?.reset();
   }
 
   /** One fixed weather tick, after all surface work has been submitted. */
-  public stepAtmosphere(dt: number) {
-    if (!this.device || !this.resourcesReady || !this.initialized || !this.atmosphere) return;
+  public stepWeather(dt: number) {
+    if (!this.device || !this.resourcesReady || !this.initialized || !this.weather) return;
     const encoder = this.device.createCommandEncoder();
-    this.atmosphere.step(
+    this.weather.step(
       encoder,
       (this.pingPongToggle ? this.terrainBufferB : this.terrainBufferA)!,
       (this.pingPongToggle ? this.fluidsBufferB : this.fluidsBufferA)!,
@@ -743,7 +776,7 @@ export class GPGPUSimulation {
     computeUniforms[8] = config.erosionRate;
     computeUniforms[9] = config.capacityFactor;
     computeUniforms[10] = config.depositionRate;
-    computeUniforms[11] = 0; // Reserved; bottle has no external water sources or open edges.
+    computeUniforms[11] = 0; // Uniform layout padding.
     computeUniforms[12] = this.initialized ? 1.0 : 0.0;
     computeUniforms[13] = this.isPaused;
     computeUniforms[14] = this.brushActive;
@@ -753,11 +786,11 @@ export class GPGPUSimulation {
     computeUniforms[18] = this.brushX;
     computeUniforms[19] = this.brushY;
     computeUniforms[20] = this.time;
-    computeUniforms[21] = 0; // Reserved; bottle has no external water sources or open edges.
-    computeUniforms[22] = 0; // Reserved; bottle has no external water sources or open edges.
-    computeUniforms[23] = 0; // Reserved; bottle has no external water sources or open edges.
-    computeUniforms[24] = 0; // Reserved; bottle has no external water sources or open edges.
-    computeUniforms[25] = 0; // Reserved; bottle has no external water sources or open edges.
+    computeUniforms[21] = 0; // Uniform layout padding.
+    computeUniforms[22] = 0; // Uniform layout padding.
+    computeUniforms[23] = 0; // Uniform layout padding.
+    computeUniforms[24] = config.borderMode;
+    computeUniforms[25] = 0; // Uniform layout padding.
     computeUniforms[26] = this.seed;
     computeUniforms[27] = config.terrainType;
     computeUniforms[28] = config.terrainSandHeight;
@@ -771,10 +804,7 @@ export class GPGPUSimulation {
     computeUniforms[36] = config.soilStaticReposeSlope;
     computeUniforms[37] = config.soilDynamicReposeSlope;
     computeUniforms[38] = config.terrainSoilHeight;
-    if (
-      this.brushActive &&
-      (this.brushType === 0 || this.brushType === 5 || this.brushType === 6)
-    ) {
+    if (this.brushActive && changesWaterInventory(this.brushType)) {
       this.waterBudget?.resetBaseline();
     }
 
@@ -799,6 +829,12 @@ export class GPGPUSimulation {
     passFlux.setBindGroup(0, activeBindGroup);
     passFlux.dispatchWorkgroups(workgroupCount, workgroupCount, 1);
     passFlux.end();
+    if (this.initialized && !config.paused && config.borderMode === 1) {
+      this.weather!.recordOutflow(
+        commandEncoder,
+        (this.pingPongToggle ? this.waterFluxBufferA : this.waterFluxBufferB)!
+      );
+    }
 
     // 2. Sim Terrain Pass
     const passTerrain = commandEncoder.beginComputePass();
@@ -1082,12 +1118,10 @@ export class GPGPUSimulation {
       canvasTextureView,
       this.depthTexture!.createView(),
       mvp,
-      (this.pingPongToggle ? this.terrainBufferB : this.terrainBufferA)!,
-      (this.pingPongToggle ? this.fluidsBufferB : this.fluidsBufferA)!,
       this.size
     );
 
-    this.atmosphereRenderer?.render(
+    this.weatherRenderer?.render(
       commandEncoder,
       canvasTextureView,
       this.depthTexture!.createView(),
@@ -1118,16 +1152,16 @@ export class GPGPUSimulation {
 
   public sampleEnergyBudget() {
     if (!this.resourcesReady || !this.initialized) return;
-    this.energyBudget?.sample(Boolean(this.brushActive) || this.windBrushActive);
+    this.energyBudget?.sample(Boolean(this.brushActive));
   }
 
   public sampleWaterBudget() {
-    if (!this.resourcesReady || !this.initialized || !this.atmosphere || !this.waterBudget) return;
+    if (!this.resourcesReady || !this.initialized || !this.weather || !this.waterBudget) return;
     if (this.brushActive) return;
     this.waterBudget.sample(
       (this.pingPongToggle ? this.fluidsBufferB : this.fluidsBufferA)!,
-      this.atmosphere.surfaceBuffer,
-      this.atmosphere.volumeBuffer
+      this.weather.surfaceBuffer,
+      this.weather.waterExchange
     );
   }
 }

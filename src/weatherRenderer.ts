@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { AtmosphereSimulation } from './atmosphere';
+import { WeatherSimulation } from './weather';
 import { config } from './config';
-import atmosphereRenderWGSL from './shaders/renderAtmosphere.wgsl?raw';
-import cloudPhysicsWGSL from './shaders/cloudPhysics.wgsl?raw';
-/** Reconstruct visible clouds from the two simulated layers; composite weather maps and rain. */
-export class AtmosphereRenderer {
+import weatherRenderWGSL from './shaders/renderWeather.wgsl?raw';
+import materials from './shaders/surfaceThermal.wgsl?raw';
+/** Render the painted cloud field, surface diagnostics and falling precipitation. */
+export class WeatherRenderer {
   private uniformBuffer: GPUBuffer | null = null;
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   private overlayPipeline: GPURenderPipeline | null = null;
@@ -15,22 +15,22 @@ export class AtmosphereRenderer {
   constructor(
     private readonly device: GPUDevice,
     private readonly format: GPUTextureFormat,
-    private readonly atmosphere: AtmosphereSimulation
+    private readonly weather: WeatherSimulation
   ) {}
   async init(): Promise<void> {
     const module = this.device.createShaderModule({
-      label: 'Regional clouds and precipitation',
-      code: cloudPhysicsWGSL + '\n' + atmosphereRenderWGSL,
+      label: 'Painted clouds and precipitation',
+      code: materials + '\n' + weatherRenderWGSL,
     });
     const compilation = await module.getCompilationInfo();
     const errors = compilation.messages.filter((message) => message.type === 'error');
     if (errors.length > 0) {
       throw new Error(
-        `Atmosphere rendering shader: ${errors.map((m) => `${m.lineNum}:${m.linePos} ${m.message}`).join('\n')}`
+        `Weather rendering shader: ${errors.map((m) => `${m.lineNum}:${m.linePos} ${m.message}`).join('\n')}`
       );
     }
     this.uniformBuffer = this.device.createBuffer({
-      label: 'Atmosphere render uniforms',
+      label: 'Weather render uniforms',
       size: this.uniforms.byteLength,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
@@ -87,7 +87,7 @@ export class AtmosphereRenderer {
       primitive: { topology: 'triangle-list' },
     });
     this.particlePipeline = await this.device.createRenderPipelineAsync({
-      label: 'Atmosphere rain snow and wind tracers',
+      label: 'Weather rain and snow',
       layout,
       vertex: { module, entryPoint: 'vs_particle' },
       fragment: { module, entryPoint: 'fs_particle', targets: [target] },
@@ -101,21 +101,28 @@ export class AtmosphereRenderer {
     mvp: THREE.Matrix4,
     localCamera: THREE.Vector3
   ): void {
-    if (!config.atmosphereEnabled || !this.volumePipeline || !this.particlePipeline) return;
+    if (!this.volumePipeline || !this.particlePipeline) return;
     this.inverseMvp.copy(mvp).invert();
     this.uniforms.set(this.inverseMvp.elements, 0);
     this.uniforms.set(mvp.elements, 16);
     this.uniforms.set(
-      [localCamera.x, localCamera.y, localCamera.z, this.atmosphere.simulationTime],
+      [localCamera.x, localCamera.y, localCamera.z, this.weather.simulationTime],
       32
     );
-    const scale = 200 / Math.max(5, Math.min(50, config.weatherMapSizeKm));
-    const base = config.cloudAltitude * scale;
-    const thickness = config.cloudThickness * scale;
-    this.uniforms.set([...this.atmosphere.dimensions, Math.max(100, base + thickness * 3)], 36);
+    const base = config.cloudAltitude;
+    const thickness = config.cloudThickness;
+    this.uniforms.set(
+      [
+        this.weather.mapSize,
+        this.weather.mapSize,
+        this.weather.size,
+        Math.max(100, base + thickness * 3),
+      ],
+      36
+    );
     this.uniforms.set([base, thickness, config.cloudDetail, config.rainVisibility], 52);
     this.uniforms.set(
-      [config.weatherMapSizeKm, config.cloudShadows, this.atmosphere.domainHeight / 2, 0],
+      [config.rainRate, config.cloudShadows, config.weatherEnabled ? 1 : 0, 32],
       56
     );
     const sunElevation = (config.sunElevation * Math.PI) / 180;
@@ -131,10 +138,11 @@ export class AtmosphereRenderer {
     );
     this.uniforms.set(
       [
-        config.atmosphereView,
-        config.atmosphereSlice,
-        config.cloudOpacity,
-        config.showWind || config.atmosphereView === 3 ? 1 : 0,
+        config.weatherView,
+        0,
+        config.cloudOpacity *
+          (config.brushType === 10 || config.thermalOverlay || config.weatherView !== 0 ? 0.25 : 1),
+        0,
       ],
       40
     );
@@ -148,28 +156,28 @@ export class AtmosphereRenderer {
       layout: this.bindGroupLayout!,
       entries: [
         { binding: 0, resource: { buffer: this.uniformBuffer! } },
-        { binding: 1, resource: { buffer: this.atmosphere.volumeBuffer } },
+        { binding: 1, resource: { buffer: this.weather.surfaceBuffer } },
         { binding: 2, resource: depthView },
-        { binding: 3, resource: { buffer: this.atmosphere.columns } },
-        { binding: 4, resource: { buffer: this.atmosphere.weatherMap } },
+        { binding: 3, resource: { buffer: this.weather.weatherMap } },
+        { binding: 4, resource: { buffer: this.weather.cloudCanopy } },
       ],
     });
     // Depth is sampled, never attached at the same time, so clouds stop at the
     // opaque terrain and work from above, below and inside the air volume.
     const pass = encoder.beginRenderPass({
-      label: 'Atmosphere compositing',
+      label: 'Weather compositing',
       colorAttachments: [{ view: colorView, loadOp: 'load', storeOp: 'store' }],
     });
     pass.setBindGroup(0, bindGroup);
     // Diagnostics tint the surface; clouds and precipitation remain independent above them.
-    if (config.atmosphereView !== 0 && config.viewOpacity > 0 && this.overlayPipeline) {
+    if (config.weatherView !== 0 && config.viewOpacity > 0 && this.overlayPipeline) {
       pass.setPipeline(this.overlayPipeline);
       pass.draw(3);
     }
     pass.setPipeline(this.volumePipeline);
     pass.draw(3);
     pass.setPipeline(this.particlePipeline);
-    pass.draw(6, 8192 + (config.showWind || config.atmosphereView === 3 ? 2048 : 0));
+    pass.draw(6, 8192);
     pass.end();
   }
   destroy(): void {
