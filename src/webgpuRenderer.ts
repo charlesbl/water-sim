@@ -6,7 +6,8 @@ import { WeatherRenderer } from './weatherRenderer';
 import { ThermalRenderer } from './thermalRenderer';
 import { WaterBudget } from './waterBudget';
 import { EnergyBudget } from './energyBudget';
-import { NUKE_BRUSH, COLD_BLAST, NUKE_HEAT, powerRadius } from './nuke';
+import { NUKE_BRUSH, COLD_BLAST, NUKE_HEAT, NUKE_MELT_LEAD_CELLS, powerRadius } from './nuke';
+import { NukeEffects } from './nukeEffects';
 
 import simFluxWGSL from './shaders/simFlux.wgsl?raw';
 import simFluidsWGSL from './shaders/simFluids.wgsl?raw';
@@ -26,6 +27,7 @@ export class GPGPUSimulation {
   private thermalRenderer: ThermalRenderer | null = null;
   private waterBudget: WaterBudget | null = null;
   private energyBudget: EnergyBudget | null = null;
+  private nukeEffects: NukeEffects | null = null;
   private format: GPUTextureFormat = 'rgba8unorm';
 
   // State
@@ -202,6 +204,8 @@ export class GPGPUSimulation {
     await this.thermalRenderer.init();
     this.waterBudget = new WaterBudget(this.device, this.size);
     await this.waterBudget.init();
+    this.nukeEffects = new NukeEffects(this.device, this.size, this.format);
+    await this.nukeEffects.init();
 
     // 2. Create uniform buffers
     this.computeUniformBuffer = this.device.createBuffer({
@@ -662,7 +666,22 @@ export class GPGPUSimulation {
     ]);
   }
 
-  /** One click deposits one finite heat pulse, even while the simulation is held. */
+  private nukeState(): [GPUBuffer, GPUBuffer, GPUBuffer, GPUBuffer, GPUBuffer] {
+    return [
+      (this.pingPongToggle ? this.terrainBufferB : this.terrainBufferA)!,
+      (this.pingPongToggle ? this.fluidsBufferB : this.fluidsBufferA)!,
+      this.weather!.surfaceBuffer,
+      (this.pingPongToggle ? this.waterFluxBufferB : this.waterFluxBufferA)!,
+      (this.pingPongToggle ? this.lavaFluxBufferB : this.lavaFluxBufferA)!,
+    ];
+  }
+
+  public advanceNukes(elapsed: number) {
+    if (this.resourcesReady && this.initialized)
+      this.nukeEffects?.advance(elapsed, this.nukeState());
+  }
+
+  /** One click deposits heat and starts one finite, outward mechanical blast. */
   public detonateNuke(
     uv: THREE.Vector2,
     radius: number,
@@ -674,6 +693,7 @@ export class GPGPUSimulation {
       !this.resourcesReady ||
       !this.initialized ||
       !this.weather ||
+      (type !== NUKE_BRUSH && type !== COLD_BLAST) ||
       ![uv.x, uv.y, radius, strength].every(Number.isFinite) ||
       uv.x < 0 ||
       uv.x > 1 ||
@@ -683,6 +703,12 @@ export class GPGPUSimulation {
       strength <= 0
     )
       return false;
+    const blastRadius = Math.min(radius, 300);
+    // Heat starts at the center; the moving front melts the rest just before impact.
+    const heatRadius =
+      type === COLD_BLAST
+        ? blastRadius
+        : Math.min(blastRadius, blastRadius * 0.035 + NUKE_MELT_LEAD_CELLS);
     const encoder = this.device.createCommandEncoder({ label: 'Nuke thermal pulse' });
     this.weather.addSurfaceHeat(
       encoder,
@@ -690,10 +716,18 @@ export class GPGPUSimulation {
       (this.pingPongToggle ? this.fluidsBufferB : this.fluidsBufferA)!,
       uv.x,
       uv.y,
-      powerRadius(NUKE_BRUSH, Math.min(radius, 200)) / this.size,
+      heatRadius / this.size,
       NUKE_HEAT * Math.min(strength, 2) * (type === COLD_BLAST ? -1 : 1)
     );
     this.device.queue.submit([encoder.finish()]);
+    this.nukeEffects?.add(
+      uv.x,
+      uv.y,
+      blastRadius / this.size,
+      Math.min(strength, 2),
+      type === COLD_BLAST,
+      this.nukeState()
+    );
     return true;
   }
 
@@ -702,6 +736,7 @@ export class GPGPUSimulation {
    */
   public clearFluids() {
     if (!this.device) return;
+    this.nukeEffects?.clear();
     const encoder = this.device.createCommandEncoder();
     for (const buffer of [
       this.fluidsBufferA,
@@ -1127,6 +1162,15 @@ export class GPGPUSimulation {
       this.depthTexture!.createView(),
       mvp,
       localCameraPos
+    );
+
+    this.nukeEffects?.render(
+      commandEncoder,
+      canvasTextureView,
+      this.depthTexture!.createView(),
+      mvp,
+      camera,
+      this.nukeState()
     );
 
     if (this.brushPreview[2] > 0) {

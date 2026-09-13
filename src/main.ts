@@ -440,6 +440,8 @@ function animate() {
     gpgpu.step();
   }
 
+  gpgpu.advanceNukes(elapsed);
+
   // Surface weather runs at 20 Hz; the surface water keeps its original 60 Hz.
   if (!config.paused && config.weatherEnabled) {
     const weatherDt = WEATHER_TIMESTEP;

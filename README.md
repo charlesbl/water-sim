@@ -11,7 +11,8 @@ A WebGPU god-game sandbox inspired by _From Dust_. Paint water, lava, sand, soil
 - **Sun:** adjust intensity, elevation and direction. Surface orientation, cloud shade and material albedo affect heating. Albedo strength ranges from 0 (equal solar absorption) through 1 (normal) to 2 (doubled reflectivity, capped at 100%). Materials retain their own thermal inertia.
 - **Water and terrain:** rain feeds the existing river, lake and erosion solver. Sculpt rock or add sand/soil to divert the flow. Sand and soil have separate reservoirs and repose angles, with shared erosion and transport rules.
 - **Snow and ice:** cold precipitation accumulates as snow. Cooling freezes existing water gradually; warming returns frozen mass to liquid. Snow occupies 2.5 times its liquid-equivalent depth. Ice is attached to the bed, with liquid flowing above it.
-- **Heat, Cool and Nuke:** apply local thermal impulses. Nuke acts once per click over six times the brush radius; right-click applies a cold impulse. Residual heat/cold diffuses and fades toward the surrounding climate.
+- **Heat and Cool:** apply local thermal impulses. Residual heat/cold diffuses and fades toward the surrounding climate.
+- **Nuke:** uses the same selected radius as every other tool, up to 300 cells. The pressure front expands over about 8.3 seconds (×1.5 wave speed), with a rolling volumetric dust cloud and a mushroom cloud that dissipates over 45 seconds. Rock stays fixed, soil moves normally, sand moves 25% more readily, and water is strongly swept out of the interior. Ice melts instantly three cells ahead of the advancing hot front, becoming an equal quantity of liquid water, which is then pushed outward. The nuclear heat source supplies fusion energy when needed. The moving ridge consists of displaced sediment, with no added terrain or material. Right-click creates an icy blast. Each click produces one finite effect, including while paused; size and strength control its reach and force.
 - **Right-click:** remove the selected material only. Raise/Dig and Heat/Cool reverse each other. **Erase** removes all local material layers and clouds with either mouse button.
 - **Map edges:** choose **Walls** or **Passthrough** in Water & Lava. Passthrough lets water, lava and carried sediment leave the map; nothing flows in from outside.
 
@@ -44,6 +45,7 @@ Keep Vite running in a separate terminal, then run:
 
 ```bash
 npm run test:weather
+npm run test:nuke
 npm run test:ui
 npm run test:preferences
 ```
@@ -51,5 +53,7 @@ npm run test:preferences
 The GPU runner exercises the production shaders for painted rain, local thermal diffusion, the cooling curve, albedo, high cloud clearance, progressive phase changes, snow depth, water accounting, selective erasing, open edges, sediments and brush picking. UI tests exercise the real app, including dragging the cooling curve, painting, right-click input and layouts from 390 to 1920 px. Preferences are checked through an actual page reload and reset.
 
 The runners use installed Chrome with WebGPU. Override `CHROME_PATH` or `TEST_BASE_URL` for another local setup. UI tests print the temporary directory containing screenshots and their checks. Individual GPU fixtures can be run with, for example, `node tests/run-gpu.mjs painted-weather sediments`, or opened under `/water-sim/tests/`.
+
+The nuke fixture checks equal tool radii, immobile rock, material-dependent transport, ice-to-water conversion, near-total clearing of interior water, a traveling sediment ridge, and conservation of sediment, water inventory and sensible plus latent heat. It also covers boundary and overlapping blasts, frame-rate independence, simulation buffer swaps, effect expiry and hot/cold volume rendering. Blast computation uses a local scratch region rather than another full-size simulation grid.
 
 See [the weather model and validation notes](docs/painted-weather.md) for rules, buffer ownership and deliberate limitations.
